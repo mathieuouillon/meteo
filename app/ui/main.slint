@@ -510,8 +510,8 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
-    // Which day's hour-by-hour chart is open (-1: none).
-    in-out property <int> open-day: -1;
+    // Which day's hour-by-hour chart is open (-1: none); Today by default.
+    in-out property <int> open-day: 0;
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;

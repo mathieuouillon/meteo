@@ -81,7 +81,8 @@ hour by hour, in a chart that scrolls sideways:
 - the expected rain as a bar with its amount in mm. Bars share one scale for the whole
   week (at least 2 mm), so a wet day looks wetter than a drizzly one.
 
-Today opens at the current hour, marked "Now"; other days open in the morning. Each
+Today is open when the app starts, at the current hour marked "Now"; other days open
+in the morning. Each
 day row also shows the day's total rain. Amounts are Open-Meteo's `precipitation`:
 rain, showers and snow as water, in mm.
 

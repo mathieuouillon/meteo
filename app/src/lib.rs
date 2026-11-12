@@ -189,7 +189,7 @@ impl App {
         let city = self.places.borrow().selected().clone();
         let source = self.settings.borrow().source;
         self.shown_at.store(NOTHING_SHOWN, Ordering::Relaxed);
-        ui.set_open_day(-1);
+        ui.set_open_day(0); // Today open, also after switching city
         match self.dir.as_deref().and_then(|d| cache::load(d, &city, source, unix_now())) {
             Some(cached) => {
                 apply(&ui, &MainScreen::from_forecast(&cached.forecast));
