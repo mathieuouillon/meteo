@@ -130,19 +130,22 @@ METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, dr
 
 ## Look
 
-Material 3 Expressive over a nature scene:
+The whole UI takes the colours of the weather: warm amber on a clear afternoon, peach at
+dawn and dusk, cool blue-white in the rain, grey in fog, deep charcoal in a storm, and deep
+blue at night. Inspired by Gradient Weather.
 
-- **Landscape** ([core/src/landscape.rs](core/src/landscape.rs)): layered mountains, hills
-  and a pine treeline drawn as paths, with each city getting its own skyline. They're
-  coloured for the time of day (night, dawn, day, dusk, from sunrise and sunset) and the
-  weather: overcast greys the scene, snow whitens it, fog hazes the far ridges. The sun
-  moves along its arc, and the moon shows at night. Clouds pass behind the mountains,
-  and rain and snow fall in front of them.
-- **Colours** ([app/src/theme.rs](app/src/theme.rs)): Material 3 roles taken from Material
-  You's tonal palettes (from the wallpaper, Android 12+, read through JNI), in light or
-  dark with the system. Without them, a built-in blue scheme is used.
-- **Layout:** the current weather over the sky, then a Material sheet with the 7-day
-  card, the details and a footer.
+- **Palettes** ([core/src/palette.rs](core/src/palette.rs)): one for each condition and
+  time of day. Each gives the background gradient, the cards, the text, the accent (curve,
+  "Now", buttons), the rain and snow streaks, and the clouds.
+- **Hero:** centred, with a city pill, a line-drawn weather icon, a large bold
+  temperature, the condition, and "Feels like · Day · Night". Cards float on the
+  gradient.
+- **Weather icons** ([app/ui/icons.slint](app/ui/icons.slint)): our own line icons drawn
+  as paths in one consistent style: sun, moon, partly cloudy (day and night), cloud,
+  fog, drizzle, rain, snow and storm. Core picks which one to draw (`icon_kind`).
+- **Landscape** ([core/src/landscape.rs](core/src/landscape.rs)): mountains, hills and
+  pines (each city its own skyline), drawn tone-on-tone in the palette's colours at the
+  bottom of the hero. Clouds pass behind them; rain and snow fall in front.
 
 To preview a weather or time of day: `METEO_WEATHER=snow METEO_TIME=dusk cargo run -p meteo`
 on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and

@@ -9,6 +9,7 @@ use crate::date::weekday_index;
 use crate::i18n::Lang;
 use crate::model::{Day, Forecast};
 use crate::landscape::{Landscape, Phase, landscape, seed_for};
+use crate::palette::{Palette, icon_kind};
 use crate::scene::SceneSpec;
 
 /// Horizontal space per hour in a day's detail chart, in logical pixels.
@@ -23,8 +24,12 @@ pub struct MainScreen {
     pub city: String,
     pub temperature: String,
     pub condition: String,
+    /// Emoji (for the widget) and the drawn icon's name (for the app).
     pub icon: String,
+    pub icon_kind: String,
     pub high_low: String,
+    /// "Feels like 9°".
+    pub feels_like: String,
     pub sky_top: u32,
     pub sky_bottom: u32,
     pub sky_top_css: String,
@@ -37,6 +42,8 @@ pub struct MainScreen {
     pub scene: SceneSpec,
     /// The nature scene behind everything.
     pub landscape: Landscape,
+    /// The UI's colours, from the weather and time of day.
+    pub palette: Palette,
 }
 
 /// One of the next hours, for the widgets.
@@ -112,14 +119,22 @@ impl MainScreen {
         let (rise, set) = (today.and_then(|d| d.sunrise.as_deref()), today.and_then(|d| d.sunset.as_deref()));
         let phase = Phase::at(&c.time, rise, set, c.is_day);
         let progress = sun_progress(&c.time, rise, set);
-        let land = landscape(c.condition, phase, progress, seed_for(&f.location));
+        let palette = Palette::for_weather(c.condition, phase);
+        let mut land = landscape(c.condition, phase, progress, seed_for(&f.location));
+        // Quiet, tone-on-tone hills in the palette's colours.
+        for (layer, color) in land.layers.iter_mut().zip(palette.hills()) {
+            layer.color = color;
+        }
+        land.ground = palette.hills()[3];
 
         Self {
             city: f.location.clone(),
             temperature: temp(c.temperature),
             condition: lang.condition(c.condition).into(),
             icon: c.condition.icon(c.is_day).into(),
+            icon_kind: icon_kind(c.condition, c.is_day).into(),
             high_low: lang.day_night(&temp(f.today_max), &temp(f.today_min)),
+            feels_like: lang.feels_like(&temp(c.apparent_temperature)),
             sky_top: sky.top,
             sky_bottom: sky.bottom,
             sky_top_css: sky.top_css(),
@@ -129,6 +144,7 @@ impl MainScreen {
             details: DetailsView::new(f, rise, set, progress, lang),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
             landscape: land,
+            palette,
         }
     }
 }
@@ -206,6 +222,7 @@ fn sun_progress(now: &str, sunrise: Option<&str>, sunset: Option<&str>) -> f64 {
 pub struct DayView {
     pub label: String,
     pub icon: String,
+    pub icon_kind: String,
     /// Empty when rain is unlikely.
     pub precipitation: String,
     pub min: String,
@@ -231,6 +248,7 @@ pub struct DayHourView {
     pub is_now: bool,
     pub temperature: String,
     pub icon: String,
+    pub icon_kind: String,
     /// Chance of rain, e.g. "40%"; empty when unlikely.
     pub precipitation: String,
     /// Expected amount, e.g. "1.2"; empty when dry.
@@ -273,6 +291,7 @@ impl DayView {
                         is_now: Some(i) == now_index,
                         temperature: temp(h.temperature),
                         icon: h.condition.icon(h.is_day).into(),
+                        icon_kind: icon_kind(h.condition, h.is_day).into(),
                         precipitation: rain_chance(h.precipitation_probability),
                         rain: rain_amount(h.precipitation, false),
                         rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
@@ -288,6 +307,7 @@ impl DayView {
                         weekday_index(&d.date).map_or_else(|| d.label.clone(), |w| lang.weekday(w).into())
                     },
                     icon: d.condition.icon(true).into(),
+                    icon_kind: icon_kind(d.condition, true).into(),
                     precipitation: rain_chance(d.precipitation_probability),
                     min: temp(d.min),
                     max: temp(d.max),

@@ -115,6 +115,13 @@ impl Lang {
         }
     }
 
+    pub fn feels_like(self, value: &str) -> String {
+        match self {
+            Lang::En => format!("Feels like {value}"),
+            Lang::Fr => format!("Ressenti {value}"),
+        }
+    }
+
     pub fn dew_point(self, value: &str) -> String {
         match self {
             Lang::En => format!("Dew point {value}"),

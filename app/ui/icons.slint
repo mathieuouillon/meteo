@@ -1,0 +1,130 @@
+// ── Weather icons ──────────────────────────────────────────────────────
+// Line icons drawn in a 32×32 box, one consistent stroke. `kind` comes from
+// core (palette::icon_kind): clear-day, clear-night, partly-day,
+// partly-night, cloudy, fog, drizzle, rain, snow, storm.
+
+/// One stroked/filled shape of an icon, in the icon's 32×32 box.
+component IconPath inherits Path {
+    in property <length> size;
+    width: root.size;
+    height: root.size;
+    viewbox-width: 32;
+    viewbox-height: 32;
+    fit: fill;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+}
+
+export component WeatherIcon inherits Rectangle {
+    in property <string> kind;
+    /// Line colour of clouds and fog, and the fill that hides what's behind a cloud.
+    in property <color> ink: #5d6672;
+    in property <color> cloud-fill: white;
+    property <length> size: min(self.width, self.height);
+    property <length> line: root.size * 0.07;
+    property <color> sun: #f5a623;
+    property <color> moon: #e9c46a;
+    property <color> drop: #3d8bea;
+    property <color> flake: #7fb2e5;
+    property <color> bolt: #f5b700;
+
+    property <bool> full-sun: root.kind == "clear-day";
+    property <bool> full-moon: root.kind == "clear-night";
+    property <bool> partly: root.kind == "partly-day" || root.kind == "partly-night";
+    // Clouds raised to leave room for rain, snow or a bolt underneath.
+    property <bool> raised-cloud: root.kind == "rain" || root.kind == "drizzle" || root.kind == "snow" || root.kind == "storm";
+
+    // Sun: disc and eight rays.
+    if root.full-sun: IconPath {
+        size: root.size;
+        commands: "M 10.5 16 A 5.5 5.5 0 1 0 21.5 16 A 5.5 5.5 0 1 0 10.5 16 Z";
+        fill: root.sun.transparentize(70%);
+        stroke: root.sun;
+        stroke-width: root.line;
+    }
+    if root.full-sun: IconPath {
+        size: root.size;
+        commands: "M 24.5 16 L 27.5 16 M 22 22 L 24.1 24.1 M 16 24.5 L 16 27.5 M 10 22 L 7.9 24.1 M 7.5 16 L 4.5 16 M 10 10 L 7.9 7.9 M 16 7.5 L 16 4.5 M 22 10 L 24.1 7.9";
+        stroke: root.sun;
+        stroke-width: root.line;
+    }
+    // Moon: a crescent.
+    if root.full-moon: IconPath {
+        size: root.size;
+        commands: "M 19 6.5 A 9.5 9.5 0 1 0 25.5 20 A 7.5 7.5 0 0 1 19 6.5 Z";
+        fill: root.moon.transparentize(70%);
+        stroke: root.moon;
+        stroke-width: root.line;
+    }
+    // Partly: a small sun or moon behind a cloud.
+    if root.kind == "partly-day": IconPath {
+        size: root.size;
+        commands: "M 7 12 A 4 4 0 1 0 15 12 A 4 4 0 1 0 7 12 Z M 5 12 L 3 12 M 6.8 7.8 L 5.3 6.3 M 11 6 L 11 4 M 15.2 7.8 L 16.7 6.3 M 6.8 16.2 L 5.3 17.7";
+        fill: root.sun.transparentize(70%);
+        stroke: root.sun;
+        stroke-width: root.line;
+    }
+    if root.kind == "partly-night": IconPath {
+        size: root.size;
+        commands: "M 12.5 4.5 A 6 6 0 1 0 17 13.5 A 4.8 4.8 0 0 1 12.5 4.5 Z";
+        fill: root.moon.transparentize(70%);
+        stroke: root.moon;
+        stroke-width: root.line;
+    }
+    if root.partly: IconPath {
+        size: root.size;
+        commands: "M 14 27 A 5 5 0 0 1 13.06 17.09 A 7 7 0 0 1 26.97 17.41 A 5 5 0 0 1 25 27 Z";
+        fill: root.cloud-fill;
+        stroke: root.ink;
+        stroke-width: root.line;
+    }
+    // Cloudy: one big cloud.
+    if root.kind == "cloudy": IconPath {
+        size: root.size;
+        commands: "M 11 25 A 5 5 0 0 1 10.06 15.09 A 7 7 0 0 1 23.97 15.41 A 5 5 0 0 1 22 25 Z";
+        fill: root.cloud-fill;
+        stroke: root.ink;
+        stroke-width: root.line;
+    }
+    // Fog: drifting lines.
+    if root.kind == "fog": IconPath {
+        size: root.size;
+        commands: "M 6 11 L 24 11 M 9 16 L 27 16 M 5 21 L 22 21 M 11 26 L 25 26";
+        stroke: root.ink;
+        stroke-width: root.line;
+    }
+    // Rain, drizzle, snow, storm: a raised cloud...
+    if root.raised-cloud: IconPath {
+        size: root.size;
+        commands: "M 11 20 A 5 5 0 0 1 10.06 10.09 A 7 7 0 0 1 23.97 10.41 A 5 5 0 0 1 22 20 Z";
+        fill: root.cloud-fill;
+        stroke: root.ink;
+        stroke-width: root.line;
+    }
+    // ...with what falls from it.
+    if root.kind == "rain": IconPath {
+        size: root.size;
+        commands: "M 11.5 23.5 L 10 28 M 16.5 23.5 L 15 28 M 21.5 23.5 L 20 28";
+        stroke: root.drop;
+        stroke-width: root.line;
+    }
+    if root.kind == "drizzle": IconPath {
+        size: root.size;
+        commands: "M 11.5 23.5 L 11 25 M 16.5 23.5 L 16 25 M 21.5 23.5 L 21 25 M 14 27.5 L 13.5 29 M 19 27.5 L 18.5 29";
+        stroke: root.drop;
+        stroke-width: root.line;
+    }
+    if root.kind == "snow": IconPath {
+        size: root.size;
+        commands: "M 11 24 L 11.01 24 M 16 24 L 16.01 24 M 21 24 L 21.01 24 M 13.5 28 L 13.51 28 M 18.5 28 L 18.51 28";
+        stroke: root.flake;
+        stroke-width: root.line * 1.5;
+    }
+    if root.kind == "storm": IconPath {
+        size: root.size;
+        commands: "M 17 19 L 12.5 25.5 L 16 25.5 L 14.5 30 L 20 23 L 16.5 23 L 18.5 19 Z";
+        fill: root.bolt;
+        stroke: root.bolt;
+        stroke-width: root.line * 0.6;
+    }
+}

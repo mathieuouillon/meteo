@@ -12,7 +12,6 @@ use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
-mod theme;
 mod animation;
 
 #[cfg(target_os = "android")]
@@ -97,7 +96,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
     });
     APP.with(|a| a.set(app.clone()).ok());
     animation::start(&ui);
-    ui.set_theme(ui_theme(&theme::system()));
     ui.set_labels(ui_labels(&lang().labels()));
     ui.set_can_locate(can_locate());
     app.show_selected();
@@ -396,8 +394,7 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     ui.set_city(city.name.as_str().into());
     ui.set_temperature("--°".into());
     ui.set_condition(lang().loading().into());
-    ui.set_weather_icon(SharedString::new());
-    ui.set_high_low(SharedString::new());
+    ui.set_subline(SharedString::new());
     ui.set_details(Details::default());
     ui.set_updated(SharedString::new());
     ui.set_days(ModelRc::default());
@@ -409,27 +406,32 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
     ui.set_city(s.city.as_str().into());
     ui.set_temperature(s.temperature.as_str().into());
     ui.set_condition(s.condition.as_str().into());
-    ui.set_weather_icon(s.icon.as_str().into());
-    ui.set_high_low(s.high_low.as_str().into());
+    ui.set_subline(format!("{} · {}", s.feels_like, s.high_low).into());
     ui.set_details(ui_details(&s.details));
-    // Desktop preview overrides (METEO_WEATHER / METEO_TIME), see animation.rs.
+    // Preview overrides (METEO_WEATHER / METEO_TIME, or debug.meteo.* on
+    // Android), see animation.rs: redo the scene, palette and icon for them.
     let forced = match (animation::forced_condition(), animation::forced_phase()) {
         (None, None) => None,
         (condition, phase) => {
-            let condition = condition.map_or(meteo_core::Condition::Clear, |(c, _)| c);
-            let (phase, sun) = phase.unwrap_or((s.landscape.phase, 0.5));
-            Some(meteo_core::landscape(condition, phase, sun, meteo_core::seed_for(&s.city)))
+            let (condition, day) = condition.unwrap_or((meteo_core::Condition::Clear, true));
+            let (phase, sun) = phase.unwrap_or((if day { meteo_core::Phase::Day } else { meteo_core::Phase::Night }, 0.5));
+            let palette = meteo_core::Palette::for_weather(condition, phase);
+            let mut land = meteo_core::landscape(condition, phase, sun, meteo_core::seed_for(&s.city));
+            for (layer, color) in land.layers.iter_mut().zip(palette.hills()) {
+                layer.color = color;
+            }
+            land.ground = palette.hills()[3];
+            let icon = meteo_core::icon_kind(condition, phase != meteo_core::Phase::Night);
+            Some((palette, land, icon))
         }
     };
-    let land = forced.as_ref().unwrap_or(&s.landscape);
-    ui.set_sky_top(rgb(land.sky_top));
-    ui.set_sky_bottom(rgb(land.sky_bottom));
+    let (palette, land, icon) = match &forced {
+        Some((p, l, i)) => (p, l, *i),
+        None => (&s.palette, &s.landscape, s.icon_kind.as_str()),
+    };
+    ui.set_theme(ui_theme(palette));
+    ui.set_icon_kind(icon.into());
     ui.set_ground(rgb(land.ground));
-    ui.set_orb_visible(land.orb_visible);
-    ui.set_orb_is_moon(land.orb_is_moon);
-    ui.set_orb_x(land.orb_x as f32);
-    ui.set_orb_y(land.orb_y as f32);
-    ui.set_orb_color(rgb(land.orb_color));
     let layers: Vec<LandLayer> = land
         .layers
         .iter()
@@ -443,6 +445,7 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
         .map(|d| DayItem {
             label: d.label.as_str().into(),
             icon: d.icon.as_str().into(),
+            icon_kind: d.icon_kind.as_str().into(),
             precipitation: d.precipitation.as_str().into(),
             min: d.min.as_str().into(),
             max: d.max.as_str().into(),
@@ -461,6 +464,7 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
                         label: h.label.as_str().into(),
                         temperature: h.temperature.as_str().into(),
                         icon: h.icon.as_str().into(),
+                        icon_kind: h.icon_kind.as_str().into(),
                         precipitation: h.precipitation.as_str().into(),
                         rain: h.rain.as_str().into(),
                         rain_height: h.rain_height as f32,
@@ -524,22 +528,27 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
     }
 }
 
-fn ui_theme(t: &theme::Scheme) -> Theme {
+/// The weather palette as the UI's colour roles.
+fn ui_theme(p: &meteo_core::Palette) -> Theme {
     Theme {
-        primary: rgb(t.primary),
-        on_primary: rgb(t.on_primary),
-        primary_container: rgb(t.primary_container),
-        on_primary_container: rgb(t.on_primary_container),
-        secondary_container: rgb(t.secondary_container),
-        on_secondary_container: rgb(t.on_secondary_container),
-        tertiary_container: rgb(t.tertiary_container),
-        on_tertiary_container: rgb(t.on_tertiary_container),
-        surface: rgb(t.surface),
-        surface_container: rgb(t.surface_container),
-        surface_container_high: rgb(t.surface_container_high),
-        on_surface: rgb(t.on_surface),
-        on_surface_variant: rgb(t.on_surface_variant),
-        outline_variant: rgb(t.outline_variant),
+        primary: rgb(p.accent),
+        on_primary: rgb(p.on_accent),
+        primary_container: rgb(p.card_strong),
+        on_primary_container: rgb(p.ink),
+        secondary_container: rgb(p.card_strong),
+        on_secondary_container: rgb(p.ink),
+        tertiary_container: rgb(p.card_strong),
+        on_tertiary_container: rgb(p.ink),
+        surface: rgb(p.bottom),
+        surface_container: rgb(p.card),
+        surface_container_high: rgb(p.card_strong),
+        on_surface: rgb(p.ink),
+        on_surface_variant: rgb(p.ink_soft),
+        outline_variant: rgb(meteo_core::mix(p.card, p.ink, 0.18)),
+        bg_top: rgb(p.top),
+        bg_bottom: rgb(p.bottom),
+        particle: rgb(p.particle),
+        cloud: rgb(p.cloud),
     }
 }
 

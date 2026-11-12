@@ -1,4 +1,7 @@
-// Météo — Material 3 Expressive over an animated nature scene.
+// Météo — a UI whose colours follow the weather, over a quiet animated
+// landscape, with drawn line icons.
+
+import { WeatherIcon } from "icons.slint";
 //
 // All values (texts, colours, chart and landscape geometry) come ready-made
 // from Rust (meteo-core); this file only lays them out.
@@ -19,6 +22,11 @@ export struct Theme {
     on-surface: color,
     on-surface-variant: color,
     outline-variant: color,
+    /// Background gradient, rain/snow streaks and clouds.
+    bg-top: color,
+    bg-bottom: color,
+    particle: color,
+    cloud: color,
 }
 
 /// Fixed texts, in the user's language (core/src/i18n.rs).
@@ -73,6 +81,7 @@ export struct DayHour {
     label: string,
     temperature: string,
     icon: string,
+    icon-kind: string,
     precipitation: string,
     rain: string,
     rain-height: float,
@@ -84,6 +93,7 @@ export struct DayHour {
 export struct DayItem {
     label: string,
     icon: string,
+    icon-kind: string,
     precipitation: string,
     min: string,
     max: string,
@@ -156,13 +166,13 @@ component Puff inherits Rectangle {
 /// overlapping puffs from looking darker where they overlap.
 component Cloud inherits Rectangle {
     in property <CloudItem> cloud;
+    in property <color> tint: white;
     x: root.cloud.x * 1px;
     y: root.cloud.y * 1px;
     width: 180px * root.cloud.scale;
     height: 80px * root.cloud.scale;
     opacity: root.cloud.opacity;
     property <float> k: root.cloud.scale;
-    property <color> tint: root.cloud.dark ? #5b6474 : white;
     Puff { tint: root.tint; k: root.k; x: 15px * k; y: 40px * k; width: 150px * k; height: 38px * k; }
     Puff { tint: root.tint; k: root.k; x: 30px * k; y: 15px * k; width: 60px * k; height: self.width; }
     Puff { tint: root.tint; k: root.k; x: 70px * k; y: 0px; width: 78px * k; height: self.width; }
@@ -194,18 +204,6 @@ component Landscape inherits Rectangle {
         height: root.height - root.horizon + 1px;
         background: root.ground;
     }
-}
-
-/// The sun (with a soft glow) or the moon.
-component Orb inherits Rectangle {
-    in property <bool> moon;
-    in property <color> tint;
-    width: root.moon ? 44px : 58px;
-    height: self.width;
-    border-radius: self.width / 2;
-    background: root.tint;
-    drop-shadow-color: root.tint.transparentize(root.moon ? 40% : 10%);
-    drop-shadow-blur: root.moon ? 24px : 48px;
 }
 
 // ── Material 3 pieces ───────────────────────────────────────────────────
@@ -389,7 +387,16 @@ component DayRow inherits Rectangle {
             color: root.theme.on-surface; font-size: 16px; font-weight: root.day.label == "Today" ? 600 : 400;
             vertical-alignment: center;
         }
-        Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
+        VerticalLayout {
+            width: 30px;
+            alignment: center;
+            WeatherIcon {
+                width: 30px; height: 30px;
+                kind: root.day.icon-kind;
+                ink: root.theme.on-surface-variant;
+                cloud-fill: root.theme.surface-container;
+            }
+        }
         // Rain: a small tonal chip with the day's total (or the chance).
         chip := Rectangle {
             width: 62px;
@@ -501,11 +508,13 @@ component DayChart inherits Rectangle {
                 border-width: column.now ? 3px : 0px;
                 border-color: root.theme.surface-container;
             }
-            Text {
+            WeatherIcon {
+                x: (column.width - self.width) / 2;
                 y: root.icon-y;
-                width: parent.width;
-                text: h.icon; font-size: 20px;
-                horizontal-alignment: center;
+                width: 26px; height: 26px;
+                kind: h.icon-kind;
+                ink: root.theme.on-surface-variant;
+                cloud-fill: root.theme.surface-container;
             }
             Text {
                 y: root.chance-y;
@@ -761,8 +770,6 @@ export component MainWindow inherits Window {
     in property <string> city: "—";
     in property <string> temperature: "--°";
     in property <string> condition: "Loading…";
-    in property <string> weather-icon;
-    in property <string> high-low;
     in property <Details> details;
     // "Updated 5 min ago", in the footer.
     in property <string> updated;
@@ -793,18 +800,15 @@ export component MainWindow inherits Window {
         tertiary-container: #fbd7fc, on-tertiary-container: #29132d,
         surface: #faf9ff, surface-container: #ededf4, surface-container-high: #e3e4ec,
         on-surface: #1a1b21, on-surface-variant: #44464f, outline-variant: #c5c6d0,
+        bg-top: #f8e9d2, bg-bottom: #f2d3a6, particle: #3d7bd9, cloud: #ffffff,
     };
 
-    // The nature scene (core/src/landscape.rs).
-    in property <color> sky-top: #3a7bd5;
-    in property <color> sky-bottom: #a8d8f0;
+    // The quiet landscape (core/src/landscape.rs), coloured by the palette.
     in property <[LandLayer]> land-layers;
-    in property <color> ground: #2a4f39;
-    in property <bool> orb-visible;
-    in property <bool> orb-is-moon;
-    in property <float> orb-x: 0.5;
-    in property <float> orb-y: 0.3;
-    in property <color> orb-color: #fff1c2;
+    in property <color> ground: #d0c8b8;
+    in property <string> icon-kind: "clear-day";
+    // "Feels like 9° · Day 15° · Night 10°".
+    in property <string> subline;
 
     // Animated weather (see animation.rs).
     in property <string> rain-far;
@@ -833,24 +837,18 @@ export component MainWindow inherits Window {
     property <length> land-height: root.width * 0.75;
 
     // Animated copies, so condition and time changes fade smoothly.
-    property <color> top: root.sky-top;
-    property <color> bottom: root.sky-bottom;
+    property <color> top: root.theme.bg-top;
+    property <color> bottom: root.theme.bg-bottom;
     animate top, bottom { duration: 800ms; easing: ease-in-out; }
     background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
 
-    // ── Behind: stars, the sun or moon, clouds ──
+    // ── Behind: stars (at night), clouds ──
     Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
     Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
     Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
-    if root.orb-visible: Orb {
-        moon: root.orb-is-moon;
-        tint: root.orb-color;
-        x: root.width * root.orb-x - self.width / 2;
-        y: root.horizon - root.land-height + root.land-height * root.orb-y - self.height / 2;
-    }
-    for c in root.clouds: Cloud { cloud: c; }
+    for c in root.clouds: Cloud { cloud: c; tint: root.theme.cloud; }
 
-    // ── The land ──
+    // ── The land, tone on tone ──
     Landscape {
         layers: root.land-layers;
         ground: root.ground;
@@ -862,14 +860,14 @@ export component MainWindow inherits Window {
         x: f.x * 1px; y: f.y * 1px;
         width: f.width * 1px; height: f.height * 1px;
         border-radius: self.height / 2;
-        background: white;
+        background: root.theme.cloud;
         opacity: f.opacity;
     }
-    Particles { d: root.rain-far; stroke: #ffffff40; stroke-width: 1px; }
-    Particles { d: root.rain-near; stroke: #ffffff8c; stroke-width: 1.6px; }
-    Particles { d: root.splashes; stroke: #ffffffaa; stroke-width: 2.5px; }
-    Particles { d: root.snow-small; stroke: #ffffffb3; stroke-width: 4px; }
-    Particles { d: root.snow-large; stroke: #ffffffee; stroke-width: 7px; }
+    Particles { d: root.rain-far; stroke: root.theme.particle.transparentize(70%); stroke-width: 1px; }
+    Particles { d: root.rain-near; stroke: root.theme.particle.transparentize(40%); stroke-width: 1.6px; }
+    Particles { d: root.splashes; stroke: root.theme.particle.transparentize(35%); stroke-width: 2.5px; }
+    Particles { d: root.snow-small; stroke: root.theme.particle.transparentize(25%); stroke-width: 4px; }
+    Particles { d: root.snow-large; stroke: root.theme.particle; stroke-width: 7px; }
     Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
     Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
     if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
@@ -887,72 +885,93 @@ export component MainWindow inherits Window {
             width: parent.width;
             spacing: 0px;
 
-            // Hero: over the sky, leaving the landscape in view.
+            // Hero: city, icon, big temperature, condition — centred.
             Rectangle {
-                height: root.horizon - 56px;
+                height: root.horizon - 40px;
                 VerticalLayout {
                     padding-left: 24px;
                     padding-right: 24px;
-                    padding-top: 44px;
-                    spacing: 0px;
+                    padding-top: 40px;
+                    spacing: 2px;
                     alignment: start;
+                    // City pill: tap to switch or add cities.
                     HorizontalLayout {
-                        spacing: 8px;
-                        // Tap the city name to switch or add cities.
+                        alignment: center;
                         Rectangle {
-                            horizontal-stretch: 1;
-                            height: 40px;
-                            HorizontalLayout {
-                                alignment: start;
+                            height: 36px;
+                            width: city-row.preferred-width;
+                            border-radius: 18px;
+                            background: city-touch.pressed ? root.theme.surface-container-high : root.theme.surface-container.transparentize(35%);
+                            city-row := HorizontalLayout {
+                                padding-left: 16px;
+                                padding-right: 14px;
                                 spacing: 8px;
-                                Text { text: root.city; color: white; font-size: 24px; font-weight: 600; vertical-alignment: center; }
+                                Text { text: root.city; color: root.theme.on-surface; font-size: 16px; font-weight: 600; vertical-alignment: center; }
                                 // Chevron drawn as a path ("▾" is missing from Android's font).
                                 VerticalLayout {
                                     alignment: center;
                                     Path {
-                                        width: 14px; height: 8px;
+                                        width: 12px; height: 7px;
                                         viewbox-width: 14; viewbox-height: 8;
                                         fit: fill;
                                         commands: "M 1 1 L 7 7 L 13 1";
-                                        stroke: white;
-                                        stroke-width: 2.5px;
+                                        stroke: root.theme.on-surface-variant;
+                                        stroke-width: 2px;
                                     }
                                 }
                             }
-                            TouchArea { clicked => { root.picker-open = true; } }
+                            city-touch := TouchArea { clicked => { root.picker-open = true; } }
                         }
-                        if root.status != "": Rectangle {
-                            height: 28px;
+                    }
+                    if root.status != "": HorizontalLayout {
+                        alignment: center;
+                        padding-top: 6px;
+                        Rectangle {
+                            height: 26px;
                             width: status-text.preferred-width + 20px;
-                            y: 6px;
-                            border-radius: 14px;
-                            background: #00000033;
-                            status-text := Text { text: root.status; color: white; font-size: 12px; }
+                            border-radius: 13px;
+                            background: root.theme.surface-container-high;
+                            status-text := Text { text: root.status; color: root.theme.on-surface-variant; font-size: 12px; }
                         }
                     }
-                    Text { text: root.condition; color: white; font-size: 20px; font-weight: 500; }
+                    Rectangle { height: 14px; }
                     HorizontalLayout {
-                        alignment: start;
-                        spacing: 4px;
-                        Text { text: root.temperature; color: white; font-size: 112px; font-weight: 300; }
-                        Text { text: root.weather-icon; font-size: 56px; vertical-alignment: center; }
+                        alignment: center;
+                        WeatherIcon {
+                            width: 76px; height: 76px;
+                            kind: root.icon-kind;
+                            ink: root.theme.on-surface-variant;
+                            cloud-fill: root.theme.bg-top;
+                        }
                     }
-                    Text { text: root.high-low; color: #ffffffe6; font-size: 16px; font-weight: 500; }
+                    Text {
+                        text: root.temperature;
+                        color: root.theme.on-surface; font-size: 104px; font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: root.condition;
+                        color: root.theme.on-surface; font-size: 20px; font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: root.subline;
+                        color: root.theme.on-surface-variant; font-size: 14px;
+                        horizontal-alignment: center;
+                    }
                     if root.error != "": Text {
-                        text: root.error; color: #ffe0e0; font-size: 13px; wrap: word-wrap;
+                        text: root.error; color: root.theme.on-surface; font-size: 13px; wrap: word-wrap;
+                        horizontal-alignment: center;
                     }
                 }
             }
 
-            // A Material sheet rising over the foreground hills, holding the cards.
+            // Cards, floating on the gradient.
             Rectangle {
-                min-height: root.height - root.horizon + 56px;
-                border-top-left-radius: 32px;
-                border-top-right-radius: 32px;
-                background: root.theme.surface;
+                min-height: root.height - root.horizon + 40px;
                 VerticalLayout {
-                    padding: 12px;
-                    padding-top: 16px;
+                    padding: 14px;
+                    padding-top: 0px;
                     // Room above Android's gesture bar.
                     padding-bottom: 40px;
                     spacing: 12px;

@@ -229,52 +229,6 @@ pub fn notify_widgets(app: &AndroidApp) {
     });
 }
 
-/// Material You's tonal palettes (Android 12+), from the wallpaper:
-/// `tone("accent1", 600)` reads `android.R.color.system_accent1_600`.
-/// Also says whether the system is in dark mode.
-pub struct SystemColors {
-    tones: std::collections::HashMap<String, u32>,
-    pub dark: bool,
-}
-
-impl SystemColors {
-    /// 0xRRGGBB of e.g. ("neutral2", 100).
-    pub fn tone(&self, palette: &str, tone: u32) -> Option<u32> {
-        self.tones.get(&format!("{palette}_{tone}")).copied()
-    }
-}
-
-const PALETTES: [&str; 5] = ["accent1", "accent2", "accent3", "neutral1", "neutral2"];
-const TONES: [u32; 13] = [0, 10, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
-
-/// Dark mode, plus the dynamic palettes on Android 12+ (empty before).
-pub fn system_colors(app: &AndroidApp) -> Option<SystemColors> {
-    with_activity(app, |env, activity| {
-        // Configuration.uiMode & UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES
-        let resources = env.call_method(activity, "getResources", "()Landroid/content/res/Resources;", &[])?.l()?;
-        let config = env
-            .call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?
-            .l()?;
-        let ui_mode = env.get_field(&config, "uiMode", "I")?.i()?;
-        let dark = ui_mode & 0x30 == 0x20;
-
-        let mut tones = std::collections::HashMap::new();
-        let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
-        if sdk >= 31 {
-            for palette in PALETTES {
-                for tone in TONES {
-                    let name = format!("system_{palette}_{tone}");
-                    let id = env.get_static_field("android/R$color", name.as_str(), "I")?.i()?;
-                    let argb = env.call_method(activity, "getColor", "(I)I", &[JValue::Int(id)])?.i()?;
-                    tones.insert(format!("{palette}_{tone}"), argb as u32 & 0xFF_FFFF);
-                }
-            }
-        }
-        Ok(SystemColors { tones, dark })
-    })
-    .ok()
-}
-
 /// The app's language, e.g. "fr" (from its configuration, so a per-app
 /// language chosen in Android's settings counts too).
 pub fn language(app: &AndroidApp) -> Option<String> {
