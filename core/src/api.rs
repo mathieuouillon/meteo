@@ -32,7 +32,7 @@ pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forec
          ?latitude={}&longitude={}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m\
          &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day\
-         &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max\
+         &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset\
          &timezone=auto&forecast_days={}&models={}",
         location.latitude,
         location.longitude,
@@ -124,6 +124,8 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                     .unwrap_or_else(|| day_hours.iter().map(|h| h.precipitation).sum()),
                 condition: Condition::from_wmo(at(&d.weather_code, i).unwrap_or(0)),
                 hours: day_hours,
+                sunrise: d.sunrise.get(i).cloned().flatten(),
+                sunset: d.sunset.get(i).cloned().flatten(),
                 date,
             })
         })
@@ -195,6 +197,10 @@ struct RawHourly {
 #[derive(Deserialize)]
 struct RawDaily {
     time: Vec<String>,
+    #[serde(default)]
+    sunrise: Vec<Option<String>>,
+    #[serde(default)]
+    sunset: Vec<Option<String>>,
     #[serde(default)]
     weather_code: Vec<Option<u8>>,
     #[serde(default)]

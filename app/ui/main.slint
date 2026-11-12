@@ -1,3 +1,26 @@
+// Météo — Material 3 Expressive over an animated nature scene.
+//
+// All values (texts, colours, chart and landscape geometry) come ready-made
+// from Rust (meteo-core); this file only lays them out.
+
+/// Material 3 colour roles (see app/src/theme.rs).
+export struct Theme {
+    primary: color,
+    on-primary: color,
+    primary-container: color,
+    on-primary-container: color,
+    secondary-container: color,
+    on-secondary-container: color,
+    tertiary-container: color,
+    on-tertiary-container: color,
+    surface: color,
+    surface-container: color,
+    surface-container-high: color,
+    on-surface: color,
+    on-surface-variant: color,
+    outline-variant: color,
+}
+
 /// One hour of a day's chart (see DayHourView in core/src/view.rs).
 export struct DayHour {
     label: string,
@@ -43,6 +66,22 @@ export struct FogItem {
     opacity: float,
 }
 
+/// One silhouette of the landscape (core/src/landscape.rs), far to near.
+export struct LandLayer {
+    path: string,
+    color: color,
+}
+
+export struct CityItem {
+    name: string,
+    detail: string,
+    selected: bool,
+    /// The device's own position.
+    device: bool,
+}
+
+// ── The scene ───────────────────────────────────────────────────────────
+
 /// One particle layer: a path in window coordinates, drawn 1:1.
 component Particles inherits Path {
     in property <string> d;
@@ -82,252 +121,152 @@ component Cloud inherits Rectangle {
     Puff { tint: root.tint; k: root.k; x: 115px * k; y: 22px * k; width: 50px * k; height: self.width; }
 }
 
-/// The animated weather behind the content (driven from Rust, animation.rs).
-component Sky inherits Rectangle {
-    in property <string> rain-far;
-    in property <string> rain-near;
-    in property <string> splashes;
-    in property <string> snow-small;
-    in property <string> snow-large;
-    in property <string> stars-dim;
-    in property <string> stars-mid;
-    in property <string> stars-bright;
-    in property <string> bolt;
-    in property <float> flash;
-    in property <[CloudItem]> clouds;
-    in property <[FogItem]> fog;
-
-    Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
-    Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
-    Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
-    for c in root.clouds: Cloud { cloud: c; }
-    for f in root.fog: Rectangle {
-        x: f.x * 1px; y: f.y * 1px;
-        width: f.width * 1px; height: f.height * 1px;
-        border-radius: self.height / 2;
-        background: white;
-        opacity: f.opacity;
+/// Mountains, hills and pines, drawn in a 400×300 box scaled to the width,
+/// with the ground colour continuing below to the bottom of the screen.
+component Landscape inherits Rectangle {
+    in property <[LandLayer]> layers;
+    in property <color> ground;
+    /// Where the landscape's bottom edge sits.
+    in property <length> horizon;
+    property <length> box-height: self.width * 0.75;
+    for layer in root.layers: Path {
+        x: 0;
+        y: root.horizon - root.box-height;
+        width: root.width;
+        height: root.box-height;
+        viewbox-width: 400;
+        viewbox-height: 300;
+        fit: fill;
+        commands: layer.path == "" ? "M 0 0" : layer.path;
+        fill: layer.color;
+        stroke-width: 0px;
     }
-    Particles { d: root.rain-far; stroke: #ffffff40; stroke-width: 1px; }
-    Particles { d: root.rain-near; stroke: #ffffff8c; stroke-width: 1.6px; }
-    Particles { d: root.splashes; stroke: #ffffffaa; stroke-width: 2.5px; }
-    Particles { d: root.snow-small; stroke: #ffffffb3; stroke-width: 4px; }
-    Particles { d: root.snow-large; stroke: #ffffffee; stroke-width: 7px; }
-    // Lightning: a soft glow under a bright core, then the whole sky lights up.
-    Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
-    Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
-    if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
+    Rectangle {
+        y: root.horizon - 1px;
+        height: root.height - root.horizon + 1px;
+        background: root.ground;
+    }
 }
 
-export struct CityItem {
-    name: string,
-    detail: string,
-    selected: bool,
-    /// The device's own position.
-    device: bool,
+/// The sun (with a soft glow) or the moon.
+component Orb inherits Rectangle {
+    in property <bool> moon;
+    in property <color> tint;
+    width: root.moon ? 44px : 58px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: root.tint;
+    drop-shadow-color: root.tint.transparentize(root.moon ? 40% : 10%);
+    drop-shadow-blur: root.moon ? 24px : 48px;
 }
 
-/// One city in the picker: name, region/country, and optional actions.
-component CityRow inherits Rectangle {
-    in property <CityItem> city;
-    in property <bool> removable;
-    in property <color> accent;
-    in property <color> accent-strong;
+// ── Material 3 pieces ───────────────────────────────────────────────────
+
+/// A pill-shaped tonal button.
+component TonalButton inherits Rectangle {
+    in property <string> text;
+    in property <Theme> theme;
     callback clicked();
-    callback remove();
-    min-height: 60px;
-    border-radius: 14px;
-    background: touch.pressed ? #ffffff26 : (root.city.selected ? root.accent-strong.with-alpha(0.3) : transparent);
+    height: 52px;
+    border-radius: self.height / 2;
+    background: touch.pressed ? root.theme.secondary-container.darker(8%) : root.theme.secondary-container;
+    Text { text: root.text; color: root.theme.on-secondary-container; font-size: 16px; font-weight: 500; }
     touch := TouchArea { clicked => { root.clicked(); } }
-    HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 6px;
-        padding-top: 8px;
-        padding-bottom: 8px;
-        spacing: 8px;
+}
+
+/// A detail tile; `shape` picks Material 3 Expressive's playful forms:
+/// 0 rounded square, 1 circle, 2 soft "squircle".
+component StatTile inherits Rectangle {
+    in property <string> title;
+    in property <string> value;
+    in property <int> shape;
+    in property <color> fill;
+    in property <color> ink;
+    height: 108px;
+    Rectangle {
+        width: root.shape == 1 ? min(parent.width, parent.height) : parent.width;
+        height: parent.height;
+        border-radius: root.shape == 1 ? self.height / 2 : (root.shape == 2 ? 40px : 28px);
+        background: root.fill;
         VerticalLayout {
             alignment: center;
+            padding: 12px;
             spacing: 2px;
-            Text {
-                text: (root.city.device ? "📍 " : "") + root.city.name;
-                color: white; font-size: 18px; font-weight: root.city.selected ? 600 : 400; overflow: elide;
-            }
-            if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; wrap: word-wrap; }
-        }
-        if root.city.selected: Text { text: "✓"; color: root.accent; font-size: 18px; vertical-alignment: center; }
-        if root.removable: Rectangle {
-            width: 44px;
-            // Drawn rather than a "✕" glyph, which Android's font lacks.
-            Path {
-                width: 12px; height: 12px;
-                viewbox-width: 12; viewbox-height: 12;
-                fit: fill;
-                commands: "M 1 1 L 11 11 M 11 1 L 1 11";
-                stroke: remove-touch.pressed ? white : #ffffff80;
-                stroke-width: 2px;
-            }
-            remove-touch := TouchArea { clicked => { root.remove(); } }
+            Text { text: root.title; color: root.ink.transparentize(25%); font-size: 13px; horizontal-alignment: center; }
+            Text { text: root.value; color: root.ink; font-size: 24px; font-weight: 600; horizontal-alignment: center; }
         }
     }
 }
 
-/// Full-screen list of saved cities with a search box to add new ones.
-component CityPicker inherits Rectangle {
-    in property <[CityItem]> cities;
-    in property <[CityItem]> results;
-    in property <string> search-status;
-    in property <bool> can-locate;
-    in property <color> accent;
-    in property <color> accent-strong;
-    callback close();
-    callback locate();
-    callback search(string);
-    callback add-city(int);
-    callback select-city(int);
-    callback remove-city(int);
-
-    background: @linear-gradient(180deg, #141b3a 0%, #0b1026 100%);
-    // Swallow taps so they don't reach the screen underneath.
-    TouchArea { }
-
-    VerticalLayout {
-        padding: 20px;
-        padding-top: 48px;
-        spacing: 14px;
-
-        HorizontalLayout {
-            spacing: 10px;
-            Rectangle {
-                height: 48px;
-                border-radius: 14px;
-                background: #ffffff1f;
-                border-width: 1.5px;
-                border-color: input.has-focus ? root.accent : transparent;
-                input := TextInput {
-                    x: 16px;
-                    width: parent.width - 32px;
-                    vertical-alignment: center;
-                    color: white;
-                    font-size: 17px;
-                    single-line: true;
-                    selection-background-color: root.accent-strong;
-                    edited => { root.search(self.text); }
-                }
-                if input.text == "": Text {
-                    x: 16px;
-                    text: "Search for a city";
-                    color: #ffffff80;
-                    font-size: 17px;
-                }
-            }
-            Rectangle {
-                width: 70px;
-                Text { text: "Done"; color: root.accent; font-size: 17px; font-weight: 600; }
-                TouchArea { clicked => { root.close(); } }
-            }
-        }
-
-        if root.search-status != "": Text {
-            text: root.search-status;
-            color: #ffffffb3;
-            font-size: 14px;
-            wrap: word-wrap;
-        }
-
-        Flickable {
-            vertical-stretch: 1;
-            content-width: self.width;
-            content-height: list.preferred-height;
-            list := VerticalLayout {
-                width: parent.width;
-                alignment: start;
-                spacing: 2px;
-                if input.text == "" && root.can-locate: Rectangle {
-                    height: 52px;
-                    border-radius: 14px;
-                    background: root.accent-strong.with-alpha(locate-touch.pressed ? 0.6 : 0.4);
-                    Text { text: "📍  Use my location"; color: white; font-size: 17px; }
-                    locate-touch := TouchArea { clicked => { root.locate(); } }
-                }
-                if input.text == "" && root.can-locate: Rectangle { height: 10px; }
-                if input.text == "": Text {
-                    text: "SAVED CITIES"; color: #ffffffb3; font-size: 12px; font-weight: 600;
-                }
-                if input.text == "": VerticalLayout {
-                    spacing: 2px;
-                    for c[i] in root.cities: CityRow {
-                        city: c;
-                        accent: root.accent;
-                        accent-strong: root.accent-strong;
-                        removable: root.cities.length > 1;
-                        clicked => { root.select-city(i); }
-                        remove => { root.remove-city(i); }
-                    }
-                }
-                if input.text != "": VerticalLayout {
-                    spacing: 2px;
-                    for c[i] in root.results: CityRow {
-                        city: c;
-                        accent: root.accent;
-                        accent-strong: root.accent-strong;
-                        clicked => { root.add-city(i); }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// One day of the 7-day list; tap it to see the day's rain hour by hour.
+/// One day of the 7-day list; tap it to open its hour-by-hour chart.
 component DayRow inherits Rectangle {
     in property <DayItem> day;
     in property <bool> open;
+    in property <Theme> theme;
     callback clicked();
-    height: 48px;
-    border-radius: 12px;
-    background: touch.pressed || root.open ? #ffffff14 : transparent;
+    height: 52px;
+    border-radius: 18px;
+    background: touch.pressed || root.open ? root.theme.surface-container-high : transparent;
     touch := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
         spacing: 8px;
-        Text { text: root.day.label; width: 52px; color: white; font-size: 17px; vertical-alignment: center; }
-        Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
-        // Chance of rain over the expected amount.
-        VerticalLayout {
-            width: 50px;
-            alignment: center;
-            if root.day.precipitation != "": Text { text: root.day.precipitation; color: #cfe8ff; font-size: 13px; }
-            if root.day.rain-total != "": Text { text: root.day.rain-total; color: #9fd3ff; font-size: 11px; }
+        Text {
+            text: root.day.label; width: 54px;
+            color: root.theme.on-surface; font-size: 16px; font-weight: root.day.label == "Today" ? 600 : 400;
+            vertical-alignment: center;
         }
-        Text { text: root.day.min; width: 32px; color: #ffffffb3; font-size: 17px; horizontal-alignment: right; vertical-alignment: center; }
-        // Min–max bar, positioned on the whole week's temperature scale.
+        Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
+        // Rain: a small tonal chip with the day's total (or the chance).
+        chip := Rectangle {
+            width: 62px;
+            property <string> label: root.day.rain-total != "" ? root.day.rain-total : root.day.precipitation;
+            if chip.label != "": Rectangle {
+                y: (chip.height - self.height) / 2;
+                height: 24px;
+                border-radius: 12px;
+                background: root.theme.primary-container;
+                Text { text: chip.label; color: root.theme.on-primary-container; font-size: 12px; font-weight: 500; }
+            }
+        }
+        Text {
+            text: root.day.min; width: 30px;
+            color: root.theme.on-surface-variant; font-size: 16px;
+            horizontal-alignment: right; vertical-alignment: center;
+        }
+        // Min–max bar on the whole week's temperature scale.
         Rectangle {
             horizontal-stretch: 1;
             Rectangle {
                 y: (parent.height - self.height) / 2;
-                height: 6px;
-                border-radius: 3px;
-                background: #0000001f;
+                height: 8px;
+                border-radius: 4px;
+                background: root.theme.surface-container-high;
                 Rectangle {
                     x: parent.width * root.day.bar-start;
                     y: 0;
                     width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
                     height: parent.height;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     background: @linear-gradient(90deg, #6ec1ff 0%, #ffb84d 100%);
                 }
             }
         }
-        Text { text: root.day.max; width: 34px; color: white; font-size: 17px; font-weight: 600; horizontal-alignment: right; vertical-alignment: center; }
+        Text {
+            text: root.day.max; width: 34px;
+            color: root.theme.on-surface; font-size: 16px; font-weight: 600;
+            horizontal-alignment: right; vertical-alignment: center;
+        }
     }
 }
 
-/// Rain for each hour of one day: a bar chart that scrolls sideways, with
-/// the amount (mm) above each wet hour. Bars share the week's scale.
 /// A day hour by hour, shown when its row is opened: the temperature curve,
 /// the weather, the chance of rain and the expected amount, scrolling
 /// sideways. Rain bars share the week's scale.
 component DayChart inherits Rectangle {
     in property <DayItem> day;
+    in property <Theme> theme;
     property <length> step: 56px;
     property <length> curve: root.day.chart-height * 1px;
     // Rows below the curve.
@@ -335,7 +274,7 @@ component DayChart inherits Rectangle {
     property <length> chance-y: root.curve + 36px;
     property <length> rain-base: root.curve + 112px;
     property <length> bar-max: 40px;
-    height: root.curve + 136px;
+    height: root.curve + 140px;
 
     Flickable {
         content-width: root.day.chart-width * 1px;
@@ -353,7 +292,7 @@ component DayChart inherits Rectangle {
             // Map the viewbox 1:1 (the default `contain` rescales a stroked path).
             fit: fill;
             commands: root.day.area-path == "" ? "M 0 0" : root.day.area-path;
-            fill: @linear-gradient(180deg, #ffffff40 0%, #ffffff00 100%);
+            fill: @linear-gradient(180deg, root.theme.primary.transparentize(75%) 0%, root.theme.primary.transparentize(100%) 100%);
             stroke-width: 0px;
         }
         Path {
@@ -364,28 +303,31 @@ component DayChart inherits Rectangle {
             viewbox-height: root.day.chart-height;
             fit: fill;
             commands: root.day.line-path == "" ? "M 0 0" : root.day.line-path;
-            stroke: white;
-            stroke-width: 2.5px;
+            stroke: root.theme.primary;
+            stroke-width: 3px;
         }
 
-        for h in root.day.hours: Rectangle {
+        for h in root.day.hours: column := Rectangle {
             x: h.x * 1px - root.step / 2;
             y: 0;
             width: root.step;
             height: parent.height;
-            property <length> bar: h.rain == "" ? 2px : max(3px, h.rain-height * root.bar-max);
+            property <length> bar: h.rain == "" ? 3px : max(4px, h.rain-height * root.bar-max);
+            property <bool> now: h.label == "Now";
             Text {
                 y: h.y * 1px - 24px;
                 width: parent.width;
                 text: h.temperature;
-                color: white; font-size: 14px; font-weight: 600;
+                color: root.theme.on-surface; font-size: 14px; font-weight: 600;
                 horizontal-alignment: center;
             }
             Rectangle {
                 x: (parent.width - self.width) / 2;
-                y: h.y * 1px - 4px;
-                width: 8px; height: 8px; border-radius: 4px;
-                background: white;
+                y: h.y * 1px - self.height / 2;
+                width: column.now ? 12px : 8px; height: self.width; border-radius: self.width / 2;
+                background: root.theme.primary;
+                border-width: column.now ? 3px : 0px;
+                border-color: root.theme.surface-container;
             }
             Text {
                 y: root.icon-y;
@@ -396,76 +338,225 @@ component DayChart inherits Rectangle {
             Text {
                 y: root.chance-y;
                 width: parent.width;
-                text: h.precipitation; color: #cfe8ff; font-size: 11px;
+                text: h.precipitation; color: root.theme.on-surface-variant; font-size: 11px;
                 horizontal-alignment: center;
             }
             // Rain: the amount above a bar growing up from the baseline.
             Text {
                 y: root.rain-base - parent.bar - 16px;
                 width: parent.width;
-                text: h.rain; color: #cfe8ff; font-size: 11px;
+                text: h.rain; color: root.theme.on-surface-variant; font-size: 11px; font-weight: 500;
                 horizontal-alignment: center;
             }
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: root.rain-base - parent.bar;
-                width: 16px;
+                width: 18px;
                 height: parent.bar;
-                border-radius: 4px;
-                background: h.rain == "" ? #ffffff26 : @linear-gradient(180deg, #8fd0ff 0%, #4a9eea 100%);
+                border-radius: 6px;
+                background: h.rain == "" ? root.theme.outline-variant : @linear-gradient(180deg, #8fd0ff 0%, #3d8fe0 100%);
             }
-            Text {
-                y: root.rain-base + 6px;
-                width: parent.width;
-                text: h.label;
-                color: h.label == "Now" ? white : #ffffffb3;
-                font-size: 12px;
-                font-weight: h.label == "Now" ? 700 : 400;
-                horizontal-alignment: center;
+            // "Now" in a pill.
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: root.rain-base + 4px;
+                width: column.now ? 44px : column.width;
+                height: 22px;
+                border-radius: 11px;
+                background: column.now ? root.theme.primary : transparent;
+                Text {
+                    text: h.label;
+                    color: column.now ? root.theme.on-primary : root.theme.on-surface-variant;
+                    font-size: 12px;
+                    font-weight: column.now ? 600 : 400;
+                }
             }
         }
     }
 }
 
-component Stat inherits Rectangle {
-    in property <string> title;
-    in property <string> value;
-    background: #ffffff26;
-    border-radius: 18px;
+// ── Pickers ─────────────────────────────────────────────────────────────
+
+/// One city (or data source) in a picker list.
+component CityRow inherits Rectangle {
+    in property <CityItem> city;
+    in property <bool> removable;
+    in property <Theme> theme;
+    callback clicked();
+    callback remove();
+    min-height: 64px;
+    border-radius: 20px;
+    background: root.city.selected ? root.theme.secondary-container
+        : (touch.pressed ? root.theme.surface-container-high : transparent);
+    touch := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 6px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: (root.city.device ? "📍 " : "") + root.city.name;
+                color: root.city.selected ? root.theme.on-secondary-container : root.theme.on-surface;
+                font-size: 17px; font-weight: root.city.selected ? 600 : 400; overflow: elide;
+            }
+            if root.city.detail != "": Text {
+                text: root.city.detail;
+                color: root.city.selected ? root.theme.on-secondary-container.transparentize(25%) : root.theme.on-surface-variant;
+                font-size: 13px; wrap: word-wrap;
+            }
+        }
+        if root.city.selected: Text { text: "✓"; color: root.theme.primary; font-size: 18px; font-weight: 600; vertical-alignment: center; }
+        if root.removable: Rectangle {
+            width: 44px;
+            // Drawn rather than a "✕" glyph, which Android's font lacks.
+            Path {
+                width: 12px; height: 12px;
+                viewbox-width: 12; viewbox-height: 12;
+                fit: fill;
+                commands: "M 1 1 L 11 11 M 11 1 L 1 11";
+                stroke: remove-touch.pressed ? root.theme.on-surface : root.theme.on-surface-variant;
+                stroke-width: 2px;
+            }
+            remove-touch := TouchArea { clicked => { root.remove(); } }
+        }
+    }
+}
+
+/// Full-screen list of saved cities with a search bar to add new ones.
+component CityPicker inherits Rectangle {
+    in property <[CityItem]> cities;
+    in property <[CityItem]> results;
+    in property <string> search-status;
+    in property <bool> can-locate;
+    in property <Theme> theme;
+    callback close();
+    callback locate();
+    callback search(string);
+    callback add-city(int);
+    callback select-city(int);
+    callback remove-city(int);
+
+    background: root.theme.surface;
+    // Swallow taps so they don't reach the screen underneath.
+    TouchArea { }
+
     VerticalLayout {
-        padding: 14px;
-        spacing: 4px;
-        Text { text: root.title; color: #ffffffb3; font-size: 13px; }
-        Text { text: root.value; color: white; font-size: 22px; font-weight: 600; }
+        padding: 16px;
+        padding-top: 44px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            // Material 3 search bar.
+            Rectangle {
+                height: 56px;
+                border-radius: 28px;
+                background: root.theme.surface-container-high;
+                border-width: input.has-focus ? 2px : 0px;
+                border-color: root.theme.primary;
+                input := TextInput {
+                    x: 22px;
+                    width: parent.width - 44px;
+                    vertical-alignment: center;
+                    color: root.theme.on-surface;
+                    font-size: 17px;
+                    single-line: true;
+                    selection-background-color: root.theme.primary-container;
+                    edited => { root.search(self.text); }
+                }
+                if input.text == "": Text {
+                    x: 22px;
+                    text: "Search for a city";
+                    color: root.theme.on-surface-variant;
+                    font-size: 17px;
+                }
+            }
+            Rectangle {
+                width: 72px;
+                Text { text: "Done"; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                TouchArea { clicked => { root.close(); } }
+            }
+        }
+
+        if root.search-status != "": Text {
+            text: root.search-status;
+            color: root.theme.on-surface-variant;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                spacing: 4px;
+                if input.text == "" && root.can-locate: Rectangle {
+                    height: 56px;
+                    border-radius: 28px;
+                    background: locate-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
+                    Text { text: "📍  Use my location"; color: root.theme.on-primary-container; font-size: 16px; font-weight: 500; }
+                    locate-touch := TouchArea { clicked => { root.locate(); } }
+                }
+                if input.text == "" && root.can-locate: Rectangle { height: 12px; }
+                if input.text == "": Text {
+                    text: "Saved cities"; color: root.theme.primary; font-size: 14px; font-weight: 600;
+                }
+                if input.text == "": VerticalLayout {
+                    spacing: 4px;
+                    for c[i] in root.cities: CityRow {
+                        city: c;
+                        theme: root.theme;
+                        removable: root.cities.length > 1;
+                        clicked => { root.select-city(i); }
+                        remove => { root.remove-city(i); }
+                    }
+                }
+                if input.text != "": VerticalLayout {
+                    spacing: 4px;
+                    for c[i] in root.results: CityRow {
+                        city: c;
+                        theme: root.theme;
+                        clicked => { root.add-city(i); }
+                    }
+                }
+            }
+        }
     }
 }
 
 /// Full-screen list of weather models to choose from.
 component SourcePicker inherits Rectangle {
     in property <[CityItem]> sources;
-    in property <color> accent;
-    in property <color> accent-strong;
+    in property <Theme> theme;
     callback close();
     callback select(int);
-    background: @linear-gradient(180deg, #141b3a 0%, #0b1026 100%);
+    background: root.theme.surface;
     TouchArea { }
     VerticalLayout {
-        padding: 20px;
-        padding-top: 48px;
+        padding: 16px;
+        padding-top: 44px;
         spacing: 12px;
         HorizontalLayout {
-            Text { text: "Data source"; color: white; font-size: 22px; font-weight: 600; vertical-alignment: center; }
+            padding-left: 8px;
+            Text { text: "Data source"; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
             Rectangle {
-                width: 70px;
-                height: 44px;
-                Text { text: "Done"; color: root.accent; font-size: 17px; font-weight: 600; }
+                width: 72px;
+                height: 48px;
+                Text { text: "Done"; color: root.theme.primary; font-size: 16px; font-weight: 600; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
         Text {
             text: "Forecasts come from Open-Meteo, which runs the models of national weather services. Detailed regional models are best near home; some cover fewer days.";
-            color: #ffffffb3;
-            font-size: 13px;
+            color: root.theme.on-surface-variant;
+            font-size: 14px;
             wrap: word-wrap;
         }
         Flickable {
@@ -475,17 +566,18 @@ component SourcePicker inherits Rectangle {
             list := VerticalLayout {
                 width: parent.width;
                 alignment: start;
-                spacing: 2px;
+                spacing: 4px;
                 for s[i] in root.sources: CityRow {
                     city: s;
-                    accent: root.accent;
-                    accent-strong: root.accent-strong;
+                    theme: root.theme;
                     clicked => { root.select(i); }
                 }
             }
         }
     }
 }
+
+// ── The main window ─────────────────────────────────────────────────────
 
 export component MainWindow inherits Window {
     title: "Météo";
@@ -500,8 +592,6 @@ export component MainWindow inherits Window {
     in property <string> feels-like: "--";
     in property <string> humidity: "--";
     in property <string> wind: "--";
-    in property <color> sky-top: #2f80ed;
-    in property <color> sky-bottom: #8ec5fc;
     in property <[DayItem]> days;
     in property <string> error;
     // "Updated 2 h ago" when showing a cached forecast; empty when fresh.
@@ -515,8 +605,28 @@ export component MainWindow inherits Window {
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
-    callback select-source(int);
-    // Animated background (see animation.rs).
+    in property <bool> can-locate;
+    in property <Theme> theme: {
+        primary: #3c5fa8, on-primary: #ffffff,
+        primary-container: #d9e2ff, on-primary-container: #001944,
+        secondary-container: #dce2f9, on-secondary-container: #141b2c,
+        tertiary-container: #fbd7fc, on-tertiary-container: #29132d,
+        surface: #faf9ff, surface-container: #ededf4, surface-container-high: #e3e4ec,
+        on-surface: #1a1b21, on-surface-variant: #44464f, outline-variant: #c5c6d0,
+    };
+
+    // The nature scene (core/src/landscape.rs).
+    in property <color> sky-top: #3a7bd5;
+    in property <color> sky-bottom: #a8d8f0;
+    in property <[LandLayer]> land-layers;
+    in property <color> ground: #2a4f39;
+    in property <bool> orb-visible;
+    in property <bool> orb-is-moon;
+    in property <float> orb-x: 0.5;
+    in property <float> orb-y: 0.3;
+    in property <color> orb-color: #fff1c2;
+
+    // Animated weather (see animation.rs).
     in property <string> rain-far;
     in property <string> rain-near;
     in property <string> splashes;
@@ -529,140 +639,205 @@ export component MainWindow inherits Window {
     in property <float> flash;
     in property <[CloudItem]> clouds;
     in property <[FogItem]> fog;
-    in property <bool> can-locate;
-    // System accent (Material You on Android 12+, macOS accent colour); see accent.rs.
-    in property <color> accent: #9ecbff;
-    in property <color> accent-strong: #2f80ed;
+
     callback refresh();
     callback locate();
     callback search(string);
     callback add-city(int);
     callback select-city(int);
     callback remove-city(int);
+    callback select-source(int);
 
-    // Animated copies, so condition changes fade smoothly.
+    // Where the landscape meets the content cards.
+    property <length> horizon: root.height * 0.56;
+    property <length> land-height: root.width * 0.75;
+
+    // Animated copies, so condition and time changes fade smoothly.
     property <color> top: root.sky-top;
     property <color> bottom: root.sky-bottom;
     animate top, bottom { duration: 800ms; easing: ease-in-out; }
-
     background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
 
-    Sky {
+    // ── Behind: stars, the sun or moon, clouds ──
+    Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
+    Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
+    Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
+    if root.orb-visible: Orb {
+        moon: root.orb-is-moon;
+        tint: root.orb-color;
+        x: root.width * root.orb-x - self.width / 2;
+        y: root.horizon - root.land-height + root.land-height * root.orb-y - self.height / 2;
+    }
+    for c in root.clouds: Cloud { cloud: c; }
+
+    // ── The land ──
+    Landscape {
+        layers: root.land-layers;
+        ground: root.ground;
+        horizon: root.horizon;
+    }
+
+    // ── In front: mist, rain, snow, lightning ──
+    for f in root.fog: Rectangle {
+        x: f.x * 1px; y: f.y * 1px;
+        width: f.width * 1px; height: f.height * 1px;
+        border-radius: self.height / 2;
+        background: white;
+        opacity: f.opacity;
+    }
+    Particles { d: root.rain-far; stroke: #ffffff40; stroke-width: 1px; }
+    Particles { d: root.rain-near; stroke: #ffffff8c; stroke-width: 1.6px; }
+    Particles { d: root.splashes; stroke: #ffffffaa; stroke-width: 2.5px; }
+    Particles { d: root.snow-small; stroke: #ffffffb3; stroke-width: 4px; }
+    Particles { d: root.snow-large; stroke: #ffffffee; stroke-width: 7px; }
+    Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
+    Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
+    if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
+
+    // ── Content: scrolls over the scene ──
+    // Explicit size, so the content's height (which depends on the window's)
+    // doesn't feed back into the window's own size constraints.
+    Flickable {
+        x: 0; y: 0;
         width: root.width;
         height: root.height;
-        rain-far: root.rain-far;
-        rain-near: root.rain-near;
-        splashes: root.splashes;
-        snow-small: root.snow-small;
-        snow-large: root.snow-large;
-        stars-dim: root.stars-dim;
-        stars-mid: root.stars-mid;
-        stars-bright: root.stars-bright;
-        bolt: root.bolt;
-        flash: root.flash;
-        clouds: root.clouds;
-        fog: root.fog;
-    }
+        content-width: self.width;
+        content-height: content.preferred-height;
+        content := VerticalLayout {
+            width: parent.width;
+            spacing: 0px;
 
-    // The whole screen scrolls vertically; the sky stays fixed behind it.
-    Flickable {
-    content-width: self.width;
-    content-height: content.preferred-height;
-    content := VerticalLayout {
-        width: parent.width;
-        padding: 24px;
-        padding-top: 48px;
-        // Room above Android's gesture bar.
-        padding-bottom: 40px;
-        spacing: 18px;
-
-        // ── Header ─────────────────────────────────────────────
-        VerticalLayout {
-            alignment: start;
-            spacing: 2px;
-            // Tap the city name to switch or add cities.
+            // Hero: over the sky, leaving the landscape in view.
             Rectangle {
-                HorizontalLayout {
-                    alignment: center;
-                    spacing: 6px;
-                    Text { text: root.city; color: white; font-size: 28px; font-weight: 600; }
-                    // Chevron drawn as a path ("▾" is missing from Android's font).
+                height: root.horizon - 56px;
                 VerticalLayout {
-                    alignment: center;
-                    Path {
-                        width: 14px; height: 8px;
-                        viewbox-width: 14; viewbox-height: 8;
-                        fit: fill;
-                        commands: "M 1 1 L 7 7 L 13 1";
-                        stroke: root.accent;
-                        stroke-width: 2.5px;
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 44px;
+                    spacing: 0px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        // Tap the city name to switch or add cities.
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 40px;
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 8px;
+                                Text { text: root.city; color: white; font-size: 24px; font-weight: 600; vertical-alignment: center; }
+                                // Chevron drawn as a path ("▾" is missing from Android's font).
+                                VerticalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 14px; height: 8px;
+                                        viewbox-width: 14; viewbox-height: 8;
+                                        fit: fill;
+                                        commands: "M 1 1 L 7 7 L 13 1";
+                                        stroke: white;
+                                        stroke-width: 2.5px;
+                                    }
+                                }
+                            }
+                            TouchArea { clicked => { root.picker-open = true; } }
+                        }
+                        if root.status != "": Rectangle {
+                            height: 28px;
+                            width: status-text.preferred-width + 20px;
+                            y: 6px;
+                            border-radius: 14px;
+                            background: #00000033;
+                            status-text := Text { text: root.status; color: white; font-size: 12px; }
+                        }
+                    }
+                    Text { text: root.condition; color: white; font-size: 20px; font-weight: 500; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 4px;
+                        Text { text: root.temperature; color: white; font-size: 112px; font-weight: 300; }
+                        Text { text: root.weather-icon; font-size: 56px; vertical-alignment: center; }
+                    }
+                    Text { text: root.high-low; color: #ffffffe6; font-size: 16px; font-weight: 500; }
+                    if root.error != "": Text {
+                        text: root.error; color: #ffe0e0; font-size: 13px; wrap: word-wrap;
                     }
                 }
-                }
-                TouchArea { clicked => { root.picker-open = true; } }
             }
-            Text { text: root.weather-icon; font-size: 64px; horizontal-alignment: center; }
-            Text { text: root.temperature; color: white; font-size: 96px; font-weight: 200; horizontal-alignment: center; }
-            Text { text: root.condition; color: white; font-size: 22px; horizontal-alignment: center; }
-            Text { text: root.high-low; color: #ffffffcc; font-size: 16px; horizontal-alignment: center; }
-            if root.status != "": Text {
-                text: root.status; color: #ffffffb3; font-size: 13px; horizontal-alignment: center;
-            }
-            if root.error != "": Text {
-                text: root.error; color: #ffd0d0; font-size: 13px;
-                horizontal-alignment: center; wrap: word-wrap;
-            }
-        }
 
-        // ── 7-day forecast ─────────────────────────────────────
-        Rectangle {
-            background: #ffffff26;
-            border-radius: 22px;
-            VerticalLayout {
-                padding: 16px;
-                padding-bottom: 8px;
-                spacing: 0px;
-                Text { text: "7-DAY FORECAST"; color: #ffffffb3; font-size: 12px; font-weight: 600; }
-                for d[i] in root.days: VerticalLayout {
-                    DayRow {
-                        day: d;
-                        open: root.open-day == i;
-                        clicked => { root.open-day = root.open-day == i ? -1 : i; }
+            // A Material sheet rising over the foreground hills, holding the cards.
+            Rectangle {
+                min-height: root.height - root.horizon + 56px;
+                border-top-left-radius: 32px;
+                border-top-right-radius: 32px;
+                background: root.theme.surface;
+                VerticalLayout {
+                    padding: 12px;
+                    padding-top: 16px;
+                    // Room above Android's gesture bar.
+                    padding-bottom: 40px;
+                    spacing: 12px;
+                    alignment: start;
+                    // 7-day forecast; a day opens hour by hour.
+                    Rectangle {
+                        background: root.theme.surface-container;
+                        border-radius: 28px;
+                        VerticalLayout {
+                            padding: 10px;
+                            padding-top: 18px;
+                            spacing: 2px;
+                            Text {
+                                x: 10px;
+                                text: "7-day forecast";
+                                color: root.theme.on-surface; font-size: 18px; font-weight: 600;
+                            }
+                            Rectangle { height: 6px; }
+                            for d[i] in root.days: VerticalLayout {
+                                DayRow {
+                                    day: d;
+                                    theme: root.theme;
+                                    open: root.open-day == i;
+                                    clicked => { root.open-day = root.open-day == i ? -1 : i; }
+                                }
+                                if root.open-day == i: DayChart { day: d; theme: root.theme; }
+                            }
+                        }
                     }
-                    if root.open-day == i: DayChart { day: d; }
+
+                    // Details, in Material 3 Expressive shapes.
+                    HorizontalLayout {
+                        spacing: 10px;
+                        StatTile {
+                            title: "Feels like"; value: root.feels-like; shape: 0;
+                            fill: root.theme.primary-container; ink: root.theme.on-primary-container;
+                        }
+                        StatTile {
+                            title: "Humidity"; value: root.humidity; shape: 1;
+                            fill: root.theme.secondary-container; ink: root.theme.on-secondary-container;
+                        }
+                        StatTile {
+                            title: "Wind"; value: root.wind; shape: 2;
+                            fill: root.theme.tertiary-container; ink: root.theme.on-tertiary-container;
+                        }
+                    }
+
+                    TonalButton { text: "Refresh"; theme: root.theme; clicked => { root.refresh(); } }
+
+                    // Which weather model the forecast comes from; tap to change.
+                    Rectangle {
+                        height: 44px;
+                        border-radius: 22px;
+                        background: data-touch.pressed ? root.theme.surface-container : transparent;
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            Text { text: "Data: " + root.source-name + " · Open-Meteo"; color: root.theme.on-surface-variant; font-size: 13px; vertical-alignment: center; }
+                            Text { text: "›"; color: root.theme.primary; font-size: 18px; font-weight: 600; vertical-alignment: center; }
+                        }
+                        data-touch := TouchArea { clicked => { root.source-open = true; } }
+                    }
                 }
             }
         }
-
-        // ── Details ────────────────────────────────────────────
-        HorizontalLayout {
-            spacing: 12px;
-            Stat { title: "FEELS LIKE"; value: root.feels-like; }
-            Stat { title: "HUMIDITY"; value: root.humidity; }
-            Stat { title: "WIND"; value: root.wind; }
-        }
-
-        Rectangle {
-            height: 44px;
-            border-radius: 22px;
-            background: root.accent-strong.with-alpha(touch.pressed ? 0.7 : 0.45);
-            Text { text: "Refresh"; color: white; font-size: 16px; font-weight: 600; }
-            touch := TouchArea { clicked => { root.refresh(); } }
-        }
-
-        // Which weather model the forecast comes from; tap to change.
-        Rectangle {
-            height: 32px;
-            HorizontalLayout {
-                alignment: center;
-                spacing: 4px;
-                Text { text: "Data: " + root.source-name + " · Open-Meteo"; color: #ffffffb3; font-size: 13px; vertical-alignment: center; }
-                Text { text: "›"; color: root.accent; font-size: 16px; vertical-alignment: center; }
-            }
-            TouchArea { clicked => { root.source-open = true; } }
-        }
-
-    }
     }
 
     if root.picker-open: CityPicker {
@@ -672,8 +847,7 @@ export component MainWindow inherits Window {
         results: root.results;
         search-status: root.search-status;
         can-locate: root.can-locate;
-        accent: root.accent;
-        accent-strong: root.accent-strong;
+        theme: root.theme;
         locate => { root.locate(); }
         close => { root.picker-open = false; root.search(""); }
         search(text) => { root.search(text); }
@@ -686,8 +860,7 @@ export component MainWindow inherits Window {
         width: root.width;
         height: root.height;
         sources: root.sources;
-        accent: root.accent;
-        accent-strong: root.accent-strong;
+        theme: root.theme;
         close => { root.source-open = false; }
         select(i) => { root.select-source(i); root.source-open = false; }
     }

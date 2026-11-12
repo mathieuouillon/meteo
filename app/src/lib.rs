@@ -13,7 +13,7 @@ use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
-mod accent;
+mod theme;
 mod animation;
 
 #[cfg(target_os = "android")]
@@ -83,9 +83,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     });
     APP.with(|a| a.set(app.clone()).ok());
     animation::start(&ui);
-    let accent = accent::system();
-    ui.set_accent(rgb(accent.light));
-    ui.set_accent_strong(rgb(accent.strong));
+    ui.set_theme(ui_theme(&theme::system()));
     ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
@@ -401,8 +399,30 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
     ui.set_feels_like(s.feels_like.as_str().into());
     ui.set_humidity(s.humidity.as_str().into());
     ui.set_wind(s.wind.as_str().into());
-    ui.set_sky_top(rgb(s.sky_top));
-    ui.set_sky_bottom(rgb(s.sky_bottom));
+    // Desktop preview overrides (METEO_WEATHER / METEO_TIME), see animation.rs.
+    let forced = match (animation::forced_condition(), animation::forced_phase()) {
+        (None, None) => None,
+        (condition, phase) => {
+            let condition = condition.map_or(meteo_core::Condition::Clear, |(c, _)| c);
+            let (phase, sun) = phase.unwrap_or((s.landscape.phase, 0.5));
+            Some(meteo_core::landscape(condition, phase, sun, meteo_core::seed_for(&s.city)))
+        }
+    };
+    let land = forced.as_ref().unwrap_or(&s.landscape);
+    ui.set_sky_top(rgb(land.sky_top));
+    ui.set_sky_bottom(rgb(land.sky_bottom));
+    ui.set_ground(rgb(land.ground));
+    ui.set_orb_visible(land.orb_visible);
+    ui.set_orb_is_moon(land.orb_is_moon);
+    ui.set_orb_x(land.orb_x as f32);
+    ui.set_orb_y(land.orb_y as f32);
+    ui.set_orb_color(rgb(land.orb_color));
+    let layers: Vec<LandLayer> = land
+        .layers
+        .iter()
+        .map(|l| LandLayer { path: l.path.as_str().into(), color: rgb(l.color) })
+        .collect();
+    ui.set_land_layers(ModelRc::from(Rc::new(VecModel::from(layers))));
 
     let days: Vec<DayItem> = s
         .days
@@ -439,6 +459,25 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
         })
         .collect();
     ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
+}
+
+fn ui_theme(t: &theme::Scheme) -> Theme {
+    Theme {
+        primary: rgb(t.primary),
+        on_primary: rgb(t.on_primary),
+        primary_container: rgb(t.primary_container),
+        on_primary_container: rgb(t.on_primary_container),
+        secondary_container: rgb(t.secondary_container),
+        on_secondary_container: rgb(t.on_secondary_container),
+        tertiary_container: rgb(t.tertiary_container),
+        on_tertiary_container: rgb(t.on_tertiary_container),
+        surface: rgb(t.surface),
+        surface_container: rgb(t.surface_container),
+        surface_container_high: rgb(t.surface_container_high),
+        on_surface: rgb(t.on_surface),
+        on_surface_variant: rgb(t.on_surface_variant),
+        outline_variant: rgb(t.outline_variant),
+    }
 }
 
 fn rgb(c: u32) -> Color {

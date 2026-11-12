@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart};
 use crate::model::{Day, Forecast};
+use crate::landscape::{Landscape, Phase, landscape, seed_for};
 use crate::scene::SceneSpec;
 
 /// Horizontal space per hour in a day's detail chart, in logical pixels.
@@ -34,6 +35,8 @@ pub struct MainScreen {
     pub days: Vec<DayView>,
     /// What the animated background shows.
     pub scene: SceneSpec,
+    /// The nature scene behind everything.
+    pub landscape: Landscape,
 }
 
 /// One of the next hours, for the widgets.
@@ -60,13 +63,17 @@ impl MainScreen {
             .collect();
         // The current hour, "15" in "…T15:00", marks "Now" in today's chart.
         let now = f.hours.first().map(|h| h.time.clone());
+        let today = f.days.first();
+        let (rise, set) = (today.and_then(|d| d.sunrise.as_deref()), today.and_then(|d| d.sunset.as_deref()));
+        let phase = Phase::at(&c.time, rise, set, c.is_day);
+        let land = landscape(c.condition, phase, sun_progress(&c.time, rise, set), seed_for(&f.location));
 
         Self {
             city: f.location.clone(),
             temperature: temp(c.temperature),
             condition: c.condition.label().into(),
             icon: c.condition.icon(c.is_day).into(),
-            high_low: format!("H {}  L {}", temp(f.today_max), temp(f.today_min)),
+            high_low: format!("Day {} · Night {}", temp(f.today_max), temp(f.today_min)),
             feels_like: temp(c.apparent_temperature),
             humidity: format!("{:.0}%", c.humidity),
             wind: format!("{:.0} km/h", c.wind_speed),
@@ -77,7 +84,19 @@ impl MainScreen {
             hours,
             days: DayView::list(&f.days, now.as_deref()),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
+            landscape: land,
         }
+    }
+}
+
+/// How far the sun is between sunrise (0) and sunset (1); 0.5 if unknown.
+fn sun_progress(now: &str, sunrise: Option<&str>, sunset: Option<&str>) -> f64 {
+    let minutes = |t: &str| -> Option<f64> {
+        Some(t.get(11..13)?.parse::<f64>().ok()? * 60.0 + t.get(14..16)?.parse::<f64>().ok()?)
+    };
+    match (minutes(now), sunrise.and_then(minutes), sunset.and_then(minutes)) {
+        (Some(n), Some(r), Some(s)) if s > r => (n - r) / (s - r),
+        _ => 0.5,
     }
 }
 
@@ -234,6 +253,8 @@ mod tests {
             max,
             precipitation_probability: rain,
             precipitation_sum: rain / 10.0,
+            sunrise: None,
+            sunset: None,
             hours: vec![
                 hour(&format!("{date}T00:00"), min, 0.0),
                 hour(&format!("{date}T01:00"), max, rain / 20.0),

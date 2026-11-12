@@ -12,6 +12,8 @@ tokio = { version = "1.54.1", features = ["rt", "net", "time"] }
 slint = { version = "1.18.1", features = ["backend-android-activity-06"] }
 # Same version as already used by the TLS stack; for LocationManager/Geocoder calls.
 jni = "0.21.1"
+# __system_property_get, for the preview overrides (animation.rs).
+libc = "0.2"
 
 [lib]
 crate-type = ["lib", "cdylib"]

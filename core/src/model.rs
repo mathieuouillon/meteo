@@ -130,5 +130,11 @@ pub struct Day {
     /// for the day's detail chart.
     #[serde(default)]
     pub hours: Vec<Hour>,
+    /// Local times, e.g. "2026-11-12T07:42" (absent in old caches and when
+    /// the model has none).
+    #[serde(default)]
+    pub sunrise: Option<String>,
+    #[serde(default)]
+    pub sunset: Option<String>,
     pub condition: Condition,
 }

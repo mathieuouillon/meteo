@@ -66,12 +66,14 @@ pub fn set_weather(spec: SceneSpec) {
     });
 }
 
-/// For trying the animations: `METEO_WEATHER=storm cargo run -p meteo`
-/// (clear, night, partly, cloudy, fog, drizzle, rain, snow, storm).
-fn forced_weather() -> Option<SceneSpec> {
+/// For trying the scene on the desktop preview:
+/// `METEO_WEATHER=storm METEO_TIME=dusk cargo run -p meteo`
+/// (weather: clear, night, partly, cloudy, fog, drizzle, rain, snow, storm;
+/// time: dawn, day, dusk, night).
+pub fn forced_condition() -> Option<(meteo_core::Condition, bool)> {
     use meteo_core::Condition::*;
-    let name = std::env::var("METEO_WEATHER").ok()?;
-    let (condition, day) = match name.as_str() {
+    let name = setting("METEO_WEATHER", "debug.meteo.weather")?;
+    Some(match name.as_str() {
         "clear" => (Clear, true),
         "night" => (Clear, false),
         "partly" => (PartlyCloudy, true),
@@ -82,7 +84,42 @@ fn forced_weather() -> Option<SceneSpec> {
         "snow" => (Snow, true),
         "storm" => (Thunderstorm, true),
         _ => return None,
-    };
+    })
+}
+
+/// `METEO_TIME`: the part of the day to show, with the sun's position.
+pub fn forced_phase() -> Option<(meteo_core::Phase, f64)> {
+    use meteo_core::Phase::*;
+    Some(match setting("METEO_TIME", "debug.meteo.time")?.as_str() {
+        "dawn" => (Dawn, 0.02),
+        "day" => (Day, 0.45),
+        "dusk" => (Dusk, 0.98),
+        "night" => (Night, 0.0),
+        _ => return None,
+    })
+}
+
+/// A preview override: an environment variable on the desktop, a debug
+/// system property on Android (`adb shell setprop debug.meteo.weather snow`).
+fn setting(_env: &str, _property: &str) -> Option<String> {
+    #[cfg(target_os = "android")]
+    {
+        let name = std::ffi::CString::new(_property).ok()?;
+        let mut value = [0u8; 92]; // PROP_VALUE_MAX
+        // SAFETY: bionic writes at most PROP_VALUE_MAX bytes, NUL-terminated.
+        let len = unsafe { libc::__system_property_get(name.as_ptr(), value.as_mut_ptr().cast()) };
+        if len > 0 {
+            return Some(String::from_utf8_lossy(&value[..len as usize]).into_owned());
+        }
+        None
+    }
+    #[cfg(not(target_os = "android"))]
+    std::env::var(_env).ok()
+}
+
+fn forced_weather() -> Option<SceneSpec> {
+    let (condition, day) = forced_condition()?;
+    let day = forced_phase().map_or(day, |(p, _)| p != meteo_core::Phase::Night);
     Some(SceneSpec::for_weather(condition, day, 20.0, 250.0))
 }
 
