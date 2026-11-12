@@ -8,7 +8,9 @@ core/        meteo-core: Open-Meteo client, models, weather codes → icons/colo
              chart geometry, cache, saved cities, and the view models for the
              main screen and the widgets. No UI code.
 app/         meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
-widget-ffi/  JNI functions for the Android widget (libmeteo_widget.so, no UI code).
+widget-ffi/  Functions for the widgets (no UI code): JNI for Android (libmeteo_widget.so),
+             C for macOS (libmeteo_widget.a).
+macos/       The macOS WidgetKit extension (Swift).
 android/     Gradle project: packages the Rust libraries + the Kotlin Glance widget.
 scripts/     bundle-macos.sh builds Météo.app.
 docs/        screenshots.
@@ -127,6 +129,32 @@ To see a given weather whatever the forecast says:
 ```bash
 METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, drizzle, rain, snow, storm
 ```
+
+## macOS widget
+
+A WidgetKit widget in small and medium sizes, the same content as the Android
+widget. The medium size adds the next 5 hours. Clicking it opens the app.
+
+```bash
+scripts/bundle-macos.sh      # builds Météo.app with the widget inside
+open target/Météo.app        # run it once so macOS lists the widget
+```
+
+Then right-click the desktop, choose **Edit Widgets…**, search for "Météo" and drag it
+out. It also works in Notification Center.
+
+- [macos/MeteoWidget](macos/MeteoWidget) holds the Swift code. It only does layout: its
+  content comes from the Rust core through a small C API (`meteo_widget.h`, built from
+  `widget-ffi` as a static library and linked into the extension).
+- Timeline: one entry now and one at the start of each of the next 6 hours, so "Now"
+  moves on without waking the widget. It reloads every 30 minutes and downloads a new
+  forecast itself when the cache is older than that.
+- Data: widget extensions must be sandboxed. Without a development team there is no
+  App Group to share a container, so the extension's entitlements allow just the app's
+  data folder (`~/Library/Application Support/dev.meteo.app/`, read and write).
+  Everything is signed ad hoc.
+- To check the layout without placing the widget,
+  `scripts/bundle-macos.sh --snapshot <dir>` renders both sizes with real data to PNG.
 
 ## Accent colour
 

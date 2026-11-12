@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Widget extensions must be sandboxed. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- To download the forecast when the cache is old. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- The app's data folder (cities, settings, forecast cache). Without a
+         development team there is no App Group to share instead. -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/Library/Application Support/dev.meteo.app/</string>
+    </array>
+</dict>
+</plist>
