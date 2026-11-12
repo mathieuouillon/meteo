@@ -3,9 +3,11 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::condition::Condition;
-use crate::model::{Current, Forecast, Hour, Location};
+use crate::date::weekday_short;
+use crate::model::{Current, Day, Forecast, Hour, Location};
 
 const HOURS_SHOWN: usize = 24;
+const DAYS_SHOWN: usize = 7;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -24,9 +26,9 @@ pub async fn fetch_forecast(location: &Location) -> Result<Forecast, Error> {
          ?latitude={}&longitude={}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m\
          &hourly=temperature_2m,precipitation_probability,weather_code,is_day\
-         &daily=temperature_2m_max,temperature_2m_min\
-         &timezone=auto&forecast_days=2",
-        location.latitude, location.longitude
+         &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max\
+         &timezone=auto&forecast_days={}",
+        location.latitude, location.longitude, DAYS_SHOWN
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
     parse_forecast(&location.name, &body)
@@ -82,6 +84,23 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         })
         .collect();
 
+    let d = &raw.daily;
+    let days: Vec<Day> = (0..d.time.len().min(DAYS_SHOWN))
+        .map(|i| Day {
+            label: if i == 0 {
+                "Today".into()
+            } else {
+                weekday_short(&d.time[i]).unwrap_or("?").into()
+            },
+            date: d.time[i].clone(),
+            min: d.temperature_2m_min[i],
+            max: d.temperature_2m_max[i],
+            precipitation_probability: d.precipitation_probability_max[i].unwrap_or(0.0),
+            condition: Condition::from_wmo(d.weather_code[i]),
+        })
+        .collect();
+    let today = days.first().ok_or(Error::MissingData)?;
+
     Ok(Forecast {
         location: location_name.to_owned(),
         current: Current {
@@ -93,9 +112,10 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
             humidity: c.relative_humidity_2m,
             wind_speed: c.wind_speed_10m,
         },
-        today_min: *raw.daily.temperature_2m_min.first().ok_or(Error::MissingData)?,
-        today_max: *raw.daily.temperature_2m_max.first().ok_or(Error::MissingData)?,
+        today_min: today.min,
+        today_max: today.max,
         hours,
+        days,
     })
 }
 
@@ -128,6 +148,9 @@ struct RawHourly {
 
 #[derive(Deserialize)]
 struct RawDaily {
+    time: Vec<String>,
+    weather_code: Vec<u8>,
+    precipitation_probability_max: Vec<Option<f64>>,
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
 }
@@ -146,7 +169,9 @@ mod tests {
             "weather_code": [3, 61, 63],
             "is_day": [1, 1, 1]
         },
-        "daily": {"temperature_2m_max": [12.4], "temperature_2m_min": [7.9]}
+        "daily": {"time": ["2026-11-12", "2026-11-13"], "weather_code": [61, 0],
+                  "temperature_2m_max": [12.4, 14.0], "temperature_2m_min": [7.9, 6.5],
+                  "precipitation_probability_max": [80, null]}
     }"#;
 
     #[test]
@@ -158,6 +183,11 @@ mod tests {
         assert_eq!(f.hours[0].precipitation_probability, 0.0);
         assert_eq!(f.hours[1].label, "15h");
         assert_eq!(f.today_max, 12.4);
+        assert_eq!(f.days.len(), 2);
+        assert_eq!(f.days[0].label, "Today");
+        assert_eq!(f.days[1].label, "Fri"); // 2026-11-13
+        assert_eq!(f.days[1].condition, Condition::Clear);
+        assert_eq!(f.days[1].precipitation_probability, 0.0);
     }
 
     #[tokio::test]

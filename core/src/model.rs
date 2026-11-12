@@ -29,6 +29,8 @@ pub struct Forecast {
     pub today_max: f64,
     /// The next 24 hours, starting with the current hour.
     pub hours: Vec<Hour>,
+    /// Today and the following days (7 in total).
+    pub days: Vec<Day>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -54,4 +56,17 @@ pub struct Hour {
     pub precipitation_probability: f64,
     pub condition: Condition,
     pub is_day: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Day {
+    /// Local date, e.g. "2026-11-12".
+    pub date: String,
+    /// "Today", then short weekday names ("Fri").
+    pub label: String,
+    pub min: f64,
+    pub max: f64,
+    /// Highest hourly chance of precipitation that day, 0–100 %.
+    pub precipitation_probability: f64,
+    pub condition: Condition,
 }

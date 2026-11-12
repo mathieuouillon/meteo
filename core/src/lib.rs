@@ -7,11 +7,12 @@
 mod api;
 mod chart;
 mod condition;
+mod date;
 mod model;
 mod view;
 
 pub use api::{Error, fetch_forecast, parse_forecast};
 pub use chart::{ChartGeometry, ChartPoint, temperature_chart};
 pub use condition::{Condition, Sky};
-pub use model::{Current, Forecast, Hour, Location};
-pub use view::{CHART_HEIGHT, HOUR_STEP, HourView, MainScreen, temp};
+pub use model::{Current, Day, Forecast, Hour, Location};
+pub use view::{CHART_HEIGHT, DayView, HOUR_STEP, HourView, MainScreen, temp};

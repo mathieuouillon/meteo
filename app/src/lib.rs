@@ -64,6 +64,21 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
         })
         .collect();
     ui.set_hours(ModelRc::from(Rc::new(VecModel::from(hours))));
+
+    let days: Vec<DayItem> = s
+        .days
+        .iter()
+        .map(|d| DayItem {
+            label: d.label.as_str().into(),
+            icon: d.icon.as_str().into(),
+            precipitation: d.precipitation.as_str().into(),
+            min: d.min.as_str().into(),
+            max: d.max.as_str().into(),
+            bar_start: d.bar_start as f32,
+            bar_end: d.bar_end as f32,
+        })
+        .collect();
+    ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
 }
 
 fn rgb(c: u32) -> Color {

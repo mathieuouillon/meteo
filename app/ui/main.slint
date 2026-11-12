@@ -7,6 +7,45 @@ export struct HourItem {
     y: float,
 }
 
+export struct DayItem {
+    label: string,
+    icon: string,
+    precipitation: string,
+    min: string,
+    max: string,
+    bar-start: float,
+    bar-end: float,
+}
+
+component DayRow inherits HorizontalLayout {
+    in property <DayItem> day;
+    spacing: 8px;
+    height: 44px;
+    Text { text: root.day.label; width: 56px; color: white; font-size: 17px; vertical-alignment: center; }
+    Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
+    Text { text: root.day.precipitation; width: 38px; color: #cfe8ff; font-size: 13px; vertical-alignment: center; }
+    Text { text: root.day.min; width: 36px; color: #ffffffb3; font-size: 17px; horizontal-alignment: right; vertical-alignment: center; }
+    // Min–max bar, positioned on the whole week's temperature scale.
+    Rectangle {
+        horizontal-stretch: 1;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 6px;
+            border-radius: 3px;
+            background: #0000001f;
+            Rectangle {
+                x: parent.width * root.day.bar-start;
+                y: 0;
+                width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
+                height: parent.height;
+                border-radius: 3px;
+                background: @linear-gradient(90deg, #6ec1ff 0%, #ffb84d 100%);
+            }
+        }
+    }
+    Text { text: root.day.max; width: 36px; color: white; font-size: 17px; font-weight: 600; horizontal-alignment: right; vertical-alignment: center; }
+}
+
 component Stat inherits Rectangle {
     in property <string> title;
     in property <string> value;
@@ -36,6 +75,7 @@ export component MainWindow inherits Window {
     in property <color> sky-top: #2f80ed;
     in property <color> sky-bottom: #8ec5fc;
     in property <[HourItem]> hours;
+    in property <[DayItem]> days;
     in property <string> line-path;
     in property <string> area-path;
     in property <float> chart-width: 1;
@@ -50,7 +90,12 @@ export component MainWindow inherits Window {
 
     background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
 
-    VerticalLayout {
+    // The whole screen scrolls vertically; the sky gradient stays fixed behind it.
+    Flickable {
+    content-width: self.width;
+    content-height: content.preferred-height;
+    content := VerticalLayout {
+        width: parent.width;
         padding: 24px;
         padding-top: 48px;
         spacing: 18px;
@@ -148,6 +193,19 @@ export component MainWindow inherits Window {
             }
         }
 
+        // ── 7-day forecast ─────────────────────────────────────
+        Rectangle {
+            background: #ffffff26;
+            border-radius: 22px;
+            VerticalLayout {
+                padding: 16px;
+                padding-bottom: 8px;
+                spacing: 0px;
+                Text { text: "7-DAY FORECAST"; color: #ffffffb3; font-size: 12px; font-weight: 600; }
+                for d in root.days: DayRow { day: d; }
+            }
+        }
+
         // ── Details ────────────────────────────────────────────
         HorizontalLayout {
             spacing: 12px;
@@ -164,6 +222,6 @@ export component MainWindow inherits Window {
             touch := TouchArea { clicked => { root.refresh(); } }
         }
 
-        Rectangle { vertical-stretch: 1; }
+    }
     }
 }

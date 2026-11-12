@@ -5,7 +5,7 @@
 use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart};
-use crate::model::Forecast;
+use crate::model::{Day, Forecast};
 
 /// Horizontal space per hour in the hourly chart, in logical pixels.
 pub const HOUR_STEP: f64 = 60.0;
@@ -27,6 +27,7 @@ pub struct MainScreen {
     pub sky_bottom_css: String,
     pub chart: ChartGeometry,
     pub hours: Vec<HourView>,
+    pub days: Vec<DayView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -54,11 +55,7 @@ impl MainScreen {
                 label: h.label.clone(),
                 temperature: temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
-                precipitation: if h.precipitation_probability >= 20.0 {
-                    format!("{:.0}%", h.precipitation_probability)
-                } else {
-                    String::new()
-                },
+                precipitation: rain_chance(h.precipitation_probability),
                 x: p.x,
                 y: p.y,
             })
@@ -79,8 +76,48 @@ impl MainScreen {
             sky_bottom_css: sky.bottom_css(),
             chart,
             hours,
+            days: DayView::list(&f.days),
         }
     }
+}
+
+/// One row of the 7-day list.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DayView {
+    pub label: String,
+    pub icon: String,
+    /// Empty when rain is unlikely.
+    pub precipitation: String,
+    pub min: String,
+    pub max: String,
+    /// Where this day's min–max bar starts and ends, as fractions (0–1) of
+    /// the whole week's temperature range, so all rows share one scale.
+    pub bar_start: f64,
+    pub bar_end: f64,
+}
+
+impl DayView {
+    fn list(days: &[Day]) -> Vec<Self> {
+        let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
+        let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
+        let range = (hi - lo).max(1.0);
+        days.iter()
+            .map(|d| Self {
+                label: d.label.clone(),
+                icon: d.condition.icon(true).into(),
+                precipitation: rain_chance(d.precipitation_probability),
+                min: temp(d.min),
+                max: temp(d.max),
+                bar_start: (d.min - lo) / range,
+                bar_end: (d.max - lo) / range,
+            })
+            .collect()
+    }
+}
+
+/// "40%" when rain is worth mentioning, otherwise empty.
+fn rain_chance(p: f64) -> String {
+    if p >= 20.0 { format!("{p:.0}%") } else { String::new() }
 }
 
 /// "11°", never "-0°".
@@ -91,7 +128,29 @@ pub fn temp(t: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::temp;
+    use super::*;
+    use crate::condition::Condition;
+
+    fn day(min: f64, max: f64, rain: f64) -> Day {
+        Day {
+            date: "2026-11-12".into(),
+            label: "Today".into(),
+            min,
+            max,
+            precipitation_probability: rain,
+            condition: Condition::Rain,
+        }
+    }
+
+    #[test]
+    fn day_bars_share_the_week_scale() {
+        let rows = DayView::list(&[day(5.0, 10.0, 80.0), day(0.0, 20.0, 5.0)]);
+        assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
+        assert_eq!((rows[1].bar_start, rows[1].bar_end), (0.0, 1.0));
+        assert_eq!(rows[0].precipitation, "80%");
+        assert_eq!(rows[1].precipitation, "");
+        assert_eq!(rows[0].max, "10°");
+    }
 
     #[test]
     fn rounds_and_avoids_negative_zero() {
