@@ -3,13 +3,15 @@
 use serde::Deserialize;
 
 use crate::api::{Error, client};
+use crate::i18n::Lang;
 use crate::model::Location;
 
 const MAX_RESULTS: usize = 8;
 
 /// Finds places matching `query` (e.g. "Lyon"), most relevant first.
 /// Queries shorter than 2 characters return nothing (the API needs 2).
-pub async fn search_cities(query: &str) -> Result<Vec<Location>, Error> {
+/// Place names come back in `lang` ("Allemagne" rather than "Germany").
+pub async fn search_cities(query: &str, lang: Lang) -> Result<Vec<Location>, Error> {
     let query = query.trim();
     if query.chars().count() < 2 {
         return Ok(Vec::new());
@@ -19,7 +21,7 @@ pub async fn search_cities(query: &str) -> Result<Vec<Location>, Error> {
         &[
             ("name", query),
             ("count", &MAX_RESULTS.to_string()),
-            ("language", "en"),
+            ("language", lang.code()),
             ("format", "json"),
         ],
     )
@@ -88,7 +90,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "hits the network"]
     async fn finds_lyon() {
-        let places = search_cities("Lyon").await.unwrap();
+        let places = search_cities("Lyon", Lang::En).await.unwrap();
         assert!(places.iter().any(|p| p.detail.ends_with("France")));
     }
 }

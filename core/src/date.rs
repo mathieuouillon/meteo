@@ -2,16 +2,21 @@
 
 const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/// Short weekday name for an ISO date like "2026-11-12" (→ "Thu").
-pub fn weekday_short(iso_date: &str) -> Option<&'static str> {
+/// Day of the week for an ISO date like "2026-11-12", 0 = Sunday.
+pub fn weekday_index(iso_date: &str) -> Option<usize> {
     let mut parts = iso_date.get(..10)?.split('-').map(|p| p.parse::<i64>().ok());
     let (y, m, d) = (parts.next()??, parts.next()??, parts.next()??);
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
     // 1970-01-01 was a Thursday.
-    let weekday = (days_from_civil(y, m, d) + 4).rem_euclid(7);
-    Some(WEEKDAYS[weekday as usize])
+    Some((days_from_civil(y, m, d) + 4).rem_euclid(7) as usize)
+}
+
+/// Short English weekday name for an ISO date like "2026-11-12" (→ "Thu").
+/// (Screens use `Lang::weekday`; this is for the parsed data.)
+pub fn weekday_short(iso_date: &str) -> Option<&'static str> {
+    weekday_index(iso_date).map(|i| WEEKDAYS[i])
 }
 
 /// Local time as "YYYY-MM-DDTHH:MM" (Open-Meteo's format) for a Unix

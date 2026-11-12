@@ -30,19 +30,6 @@ impl Condition {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Clear => "Clear",
-            Self::PartlyCloudy => "Partly cloudy",
-            Self::Cloudy => "Cloudy",
-            Self::Fog => "Fog",
-            Self::Drizzle => "Drizzle",
-            Self::Rain => "Rain",
-            Self::Snow => "Snow",
-            Self::Thunderstorm => "Thunderstorm",
-        }
-    }
-
     pub fn icon(self, is_day: bool) -> &'static str {
         match (self, is_day) {
             (Self::Clear, true) => "☀️",

@@ -21,6 +21,53 @@ export struct Theme {
     outline-variant: color,
 }
 
+/// Fixed texts, in the user's language (core/src/i18n.rs).
+export struct Labels {
+    forecast: string,
+    details: string,
+    feels-like: string,
+    humidity: string,
+    wind: string,
+    sun: string,
+    sunrise: string,
+    sunset: string,
+    uv-index: string,
+    pressure: string,
+    refresh: string,
+    data-source: string,
+    data-source-help: string,
+    search: string,
+    done: string,
+    use-location: string,
+    saved-cities: string,
+}
+
+/// The details tiles (DetailsView in core/src/view.rs).
+export struct Details {
+    feels-like: string,
+    feels-note: string,
+    humidity: string,
+    humidity-fraction: float,
+    dew-point: string,
+    wind-speed: string,
+    wind-unit: string,
+    wind-gusts: string,
+    wind-from: string,
+    wind-arrow-path: string,
+    sunrise: string,
+    sunset: string,
+    daylight: string,
+    sun-up: bool,
+    sun-x: float,
+    sun-y: float,
+    uv: string,
+    uv-level: string,
+    uv-position: float,
+    uv-known: bool,
+    pressure: string,
+    pressure-note: string,
+}
+
 /// One hour of a day's chart (see DayHourView in core/src/view.rs).
 export struct DayHour {
     label: string,
@@ -29,6 +76,7 @@ export struct DayHour {
     precipitation: string,
     rain: string,
     rain-height: float,
+    is-now: bool,
     x: float,
     y: float,
 }
@@ -174,27 +222,151 @@ component TonalButton inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
-/// A detail tile; `shape` picks Material 3 Expressive's playful forms:
-/// 0 rounded square, 1 circle, 2 soft "squircle".
-component StatTile inherits Rectangle {
+/// A details card: a title, then the tile's own content.
+component DetailCard inherits Rectangle {
     in property <string> title;
+    in property <Theme> theme;
+    height: 164px;
+    border-radius: 28px;
+    background: root.theme.surface-container;
+    Text {
+        x: 16px; y: 14px;
+        text: root.title;
+        color: root.theme.on-surface-variant; font-size: 13px; font-weight: 500;
+    }
+    @children
+}
+
+/// A value with an explanation under it, at the bottom of a card.
+component ValueNote inherits VerticalLayout {
     in property <string> value;
-    in property <int> shape;
-    in property <color> fill;
-    in property <color> ink;
-    height: 108px;
-    Rectangle {
-        width: root.shape == 1 ? min(parent.width, parent.height) : parent.width;
-        height: parent.height;
-        border-radius: root.shape == 1 ? self.height / 2 : (root.shape == 2 ? 40px : 28px);
-        background: root.fill;
-        VerticalLayout {
-            alignment: center;
-            padding: 12px;
-            spacing: 2px;
-            Text { text: root.title; color: root.ink.transparentize(25%); font-size: 13px; horizontal-alignment: center; }
-            Text { text: root.value; color: root.ink; font-size: 24px; font-weight: 600; horizontal-alignment: center; }
+    in property <string> note;
+    in property <Theme> theme;
+    in property <length> value-size: 30px;
+    spacing: 2px;
+    Text { text: root.value; color: root.theme.on-surface; font-size: root.value-size; font-weight: 600; }
+    if root.note != "": Text {
+        text: root.note; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap;
+    }
+}
+
+/// Wind: speed, where it comes from and gusts, with a compass.
+component WindCard inherits DetailCard {
+    in property <Details> details;
+    VerticalLayout {
+        x: 16px; y: 40px;
+        width: parent.width - 32px - 70px;
+        height: parent.height - 52px;
+        alignment: end;
+        spacing: 2px;
+        HorizontalLayout {
+            alignment: start;
+            spacing: 4px;
+            Text { text: root.details.wind-speed; color: root.theme.on-surface; font-size: 34px; font-weight: 600; }
+            Text { text: root.details.wind-unit; color: root.theme.on-surface-variant; font-size: 14px; vertical-alignment: bottom; }
         }
+        Text { text: root.details.wind-from; color: root.theme.on-surface-variant; font-size: 12px; }
+        if root.details.wind-gusts != "": Text { text: root.details.wind-gusts; color: root.theme.on-surface-variant; font-size: 12px; }
+    }
+    // Compass: a ring, north marked, the arrow pointing where the wind goes.
+    Rectangle {
+        x: parent.width - self.width - 14px;
+        y: 14px;
+        width: 64px; height: 64px;
+        border-radius: 32px;
+        border-width: 2px;
+        border-color: root.theme.outline-variant;
+        background: root.theme.surface-container-high;
+        Text { y: 3px; text: "N"; color: root.theme.on-surface-variant; font-size: 10px; font-weight: 600; }
+        Path {
+            width: 64px; height: 64px;
+            viewbox-width: 64; viewbox-height: 64;
+            fit: fill;
+            commands: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
+            fill: root.theme.primary;
+            stroke-width: 0px;
+        }
+    }
+}
+
+/// Sun: sunrise and sunset, the sun's place on its arc, hours of daylight.
+component SunCard inherits DetailCard {
+    in property <Details> details;
+    in property <Labels> labels;
+    property <length> arc-w: self.width - 32px;
+    property <length> arc-h: self.arc-w * 0.56;
+    Path {
+        x: 16px; y: 34px;
+        width: root.arc-w; height: root.arc-h;
+        viewbox-width: 100; viewbox-height: 56;
+        fit: fill;
+        commands: "M 8 50 A 42 42 0 0 1 92 50";
+        stroke: root.theme.outline-variant;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+    }
+    // Horizon line.
+    Rectangle {
+        x: 16px; y: 34px + root.arc-h * 50 / 56;
+        width: root.arc-w; height: 1px;
+        background: root.theme.outline-variant;
+    }
+    if root.details.sun-up: Rectangle {
+        x: 16px + root.arc-w * root.details.sun-x / 100 - self.width / 2;
+        y: 34px + root.arc-h * root.details.sun-y / 56 - self.height / 2;
+        width: 14px; height: 14px; border-radius: 7px;
+        background: #ffb84d;
+        drop-shadow-color: #ffb84d99;
+        drop-shadow-blur: 8px;
+    }
+    // Hours of daylight, under the arc's middle.
+    Text {
+        x: 16px; y: 34px + root.arc-h * 0.62;
+        width: root.arc-w;
+        text: root.details.daylight;
+        color: root.theme.on-surface-variant; font-size: 11px;
+        horizontal-alignment: center;
+    }
+    HorizontalLayout {
+        x: 16px; y: parent.height - 46px;
+        width: parent.width - 32px; height: 34px;
+        VerticalLayout {
+            Text { text: root.details.sunrise; color: root.theme.on-surface; font-size: 15px; font-weight: 600; }
+            Text { text: root.labels.sunrise; color: root.theme.on-surface-variant; font-size: 11px; }
+        }
+        VerticalLayout {
+            Text { text: root.details.sunset; color: root.theme.on-surface; font-size: 15px; font-weight: 600; horizontal-alignment: right; }
+            Text { text: root.labels.sunset; color: root.theme.on-surface-variant; font-size: 11px; horizontal-alignment: right; }
+        }
+    }
+}
+
+/// A gauge bar (0–1) with a dot marker; `gradient` for the UV scale.
+component Gauge inherits Rectangle {
+    in property <float> value;
+    in property <bool> uv-scale;
+    // Hide the marker when the value is unknown.
+    in property <bool> known: true;
+    in property <Theme> theme;
+    height: 8px;
+    border-radius: 4px;
+    background: root.uv-scale
+        ? @linear-gradient(90deg, #6fcf7c 0%, #f5d24a 30%, #f59a3e 55%, #e5533d 75%, #9b5de5 100%)
+        : root.theme.surface-container-high;
+    if !root.uv-scale: Rectangle {
+        x: 0; y: 0;
+        width: max(parent.height, parent.width * root.value);
+        height: parent.height;
+        border-radius: 4px;
+        background: root.theme.primary;
+    }
+    if root.uv-scale && root.known: Rectangle {
+        x: parent.width * root.value - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: 14px; height: 14px; border-radius: 7px;
+        background: white;
+        border-width: 3px;
+        border-color: root.theme.on-surface;
     }
 }
 
@@ -313,7 +485,7 @@ component DayChart inherits Rectangle {
             width: root.step;
             height: parent.height;
             property <length> bar: h.rain == "" ? 3px : max(4px, h.rain-height * root.bar-max);
-            property <bool> now: h.label == "Now";
+            property <bool> now: h.is-now;
             Text {
                 y: h.y * 1px - 24px;
                 width: parent.width;
@@ -360,11 +532,11 @@ component DayChart inherits Rectangle {
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: root.rain-base + 4px;
-                width: column.now ? 44px : column.width;
+                width: column.now ? now-label.preferred-width + 16px : column.width;
                 height: 22px;
                 border-radius: 11px;
                 background: column.now ? root.theme.primary : transparent;
-                Text {
+                now-label := Text {
                     text: h.label;
                     color: column.now ? root.theme.on-primary : root.theme.on-surface-variant;
                     font-size: 12px;
@@ -433,6 +605,7 @@ component CityPicker inherits Rectangle {
     in property <string> search-status;
     in property <bool> can-locate;
     in property <Theme> theme;
+    in property <Labels> labels;
     callback close();
     callback locate();
     callback search(string);
@@ -470,14 +643,14 @@ component CityPicker inherits Rectangle {
                 }
                 if input.text == "": Text {
                     x: 22px;
-                    text: "Search for a city";
+                    text: root.labels.search;
                     color: root.theme.on-surface-variant;
                     font-size: 17px;
                 }
             }
             Rectangle {
                 width: 72px;
-                Text { text: "Done"; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
@@ -501,12 +674,12 @@ component CityPicker inherits Rectangle {
                     height: 56px;
                     border-radius: 28px;
                     background: locate-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
-                    Text { text: "📍  Use my location"; color: root.theme.on-primary-container; font-size: 16px; font-weight: 500; }
+                    Text { text: "📍  " + root.labels.use-location; color: root.theme.on-primary-container; font-size: 16px; font-weight: 500; }
                     locate-touch := TouchArea { clicked => { root.locate(); } }
                 }
                 if input.text == "" && root.can-locate: Rectangle { height: 12px; }
                 if input.text == "": Text {
-                    text: "Saved cities"; color: root.theme.primary; font-size: 14px; font-weight: 600;
+                    text: root.labels.saved-cities; color: root.theme.primary; font-size: 14px; font-weight: 600;
                 }
                 if input.text == "": VerticalLayout {
                     spacing: 4px;
@@ -535,6 +708,7 @@ component CityPicker inherits Rectangle {
 component SourcePicker inherits Rectangle {
     in property <[CityItem]> sources;
     in property <Theme> theme;
+    in property <Labels> labels;
     callback close();
     callback select(int);
     background: root.theme.surface;
@@ -545,16 +719,16 @@ component SourcePicker inherits Rectangle {
         spacing: 12px;
         HorizontalLayout {
             padding-left: 8px;
-            Text { text: "Data source"; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
+            Text { text: root.labels.data-source; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
             Rectangle {
                 width: 72px;
                 height: 48px;
-                Text { text: "Done"; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
         Text {
-            text: "Forecasts come from Open-Meteo, which runs the models of national weather services. Detailed regional models are best near home; some cover fewer days.";
+            text: root.labels.data-source-help;
             color: root.theme.on-surface-variant;
             font-size: 14px;
             wrap: word-wrap;
@@ -589,12 +763,12 @@ export component MainWindow inherits Window {
     in property <string> condition: "Loading…";
     in property <string> weather-icon;
     in property <string> high-low;
-    in property <string> feels-like: "--";
-    in property <string> humidity: "--";
-    in property <string> wind: "--";
+    in property <Details> details;
+    // "Updated 5 min ago", in the footer.
+    in property <string> updated;
     in property <[DayItem]> days;
     in property <string> error;
-    // "Updated 2 h ago" when showing a cached forecast; empty when fresh.
+    // "Offline · updated 2 h ago" when a refresh failed; empty otherwise.
     in property <string> status;
     in property <[CityItem]> cities;
     in property <[CityItem]> results;
@@ -606,6 +780,12 @@ export component MainWindow inherits Window {
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
     in property <bool> can-locate;
+    in property <Labels> labels: {
+        forecast: "7-day forecast", details: "Details", feels-like: "Feels like", humidity: "Humidity",
+        wind: "Wind", sun: "Sun", sunrise: "Sunrise", sunset: "Sunset", uv-index: "UV index",
+        pressure: "Pressure", refresh: "Refresh", data-source: "Data source", data-source-help: "",
+        search: "Search for a city", done: "Done", use-location: "Use my location", saved-cities: "Saved cities",
+    };
     in property <Theme> theme: {
         primary: #3c5fa8, on-primary: #ffffff,
         primary-container: #d9e2ff, on-primary-container: #001944,
@@ -787,7 +967,7 @@ export component MainWindow inherits Window {
                             spacing: 2px;
                             Text {
                                 x: 10px;
-                                text: "7-day forecast";
+                                text: root.labels.forecast;
                                 color: root.theme.on-surface; font-size: 18px; font-weight: 600;
                             }
                             Rectangle { height: 6px; }
@@ -803,37 +983,98 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // Details, in Material 3 Expressive shapes.
+                    // Details: two per row.
                     HorizontalLayout {
-                        spacing: 10px;
-                        StatTile {
-                            title: "Feels like"; value: root.feels-like; shape: 0;
-                            fill: root.theme.primary-container; ink: root.theme.on-primary-container;
+                        spacing: 12px;
+                        WindCard { title: root.labels.wind; theme: root.theme; details: root.details; }
+                        SunCard { title: root.labels.sun; theme: root.theme; details: root.details; labels: root.labels; }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        DetailCard {
+                            title: root.labels.feels-like; theme: root.theme;
+                            ValueNote {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                value: root.details.feels-like; note: root.details.feels-note; theme: root.theme;
+                            }
                         }
-                        StatTile {
-                            title: "Humidity"; value: root.humidity; shape: 1;
-                            fill: root.theme.secondary-container; ink: root.theme.on-secondary-container;
+                        DetailCard {
+                            title: root.labels.humidity; theme: root.theme;
+                            VerticalLayout {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                spacing: 8px;
+                                ValueNote { value: root.details.humidity; note: root.details.dew-point; theme: root.theme; }
+                                Gauge { value: root.details.humidity-fraction; theme: root.theme; }
+                            }
                         }
-                        StatTile {
-                            title: "Wind"; value: root.wind; shape: 2;
-                            fill: root.theme.tertiary-container; ink: root.theme.on-tertiary-container;
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        DetailCard {
+                            title: root.labels.uv-index; theme: root.theme;
+                            VerticalLayout {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                spacing: 10px;
+                                ValueNote { value: root.details.uv; note: root.details.uv-level; theme: root.theme; }
+                                Gauge { value: root.details.uv-position; uv-scale: true; known: root.details.uv-known; theme: root.theme; }
+                            }
+                        }
+                        DetailCard {
+                            title: root.labels.pressure; theme: root.theme;
+                            ValueNote {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                value-size: 24px;
+                                value: root.details.pressure; note: root.details.pressure-note; theme: root.theme;
+                            }
                         }
                     }
 
-                    TonalButton { text: "Refresh"; theme: root.theme; clicked => { root.refresh(); } }
-
-                    // Which weather model the forecast comes from; tap to change.
+                    // Footer: where the data comes from, and when it was updated.
                     Rectangle {
-                        height: 44px;
-                        border-radius: 22px;
-                        background: data-touch.pressed ? root.theme.surface-container : transparent;
-                        HorizontalLayout {
-                            alignment: center;
-                            spacing: 4px;
-                            Text { text: "Data: " + root.source-name + " · Open-Meteo"; color: root.theme.on-surface-variant; font-size: 13px; vertical-alignment: center; }
-                            Text { text: "›"; color: root.theme.primary; font-size: 18px; font-weight: 600; vertical-alignment: center; }
+                        border-radius: 28px;
+                        background: root.theme.surface-container;
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 0px;
+                            // Data source: opens the list of models.
+                            Rectangle {
+                                height: 60px;
+                                border-radius: 20px;
+                                background: source-touch.pressed ? root.theme.surface-container-high : transparent;
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 12px; }
+                                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 16px; font-weight: 500; }
+                                    }
+                                    Text { text: "›"; color: root.theme.primary; font-size: 24px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
+                                }
+                                source-touch := TouchArea { clicked => { root.source-open = true; } }
+                            }
+                            Rectangle { height: 1px; background: root.theme.outline-variant; }
+                            // When it was updated, and refresh.
+                            HorizontalLayout {
+                                padding: 12px;
+                                padding-right: 4px;
+                                spacing: 8px;
+                                Text {
+                                    text: root.updated;
+                                    color: root.theme.on-surface-variant; font-size: 13px;
+                                    vertical-alignment: center; overflow: elide;
+                                }
+                                TonalButton {
+                                    width: 132px; height: 44px;
+                                    text: root.labels.refresh; theme: root.theme;
+                                    clicked => { root.refresh(); }
+                                }
+                            }
                         }
-                        data-touch := TouchArea { clicked => { root.source-open = true; } }
                     }
                 }
             }
@@ -848,6 +1089,7 @@ export component MainWindow inherits Window {
         search-status: root.search-status;
         can-locate: root.can-locate;
         theme: root.theme;
+        labels: root.labels;
         locate => { root.locate(); }
         close => { root.picker-open = false; root.search(""); }
         search(text) => { root.search(text); }
@@ -861,6 +1103,7 @@ export component MainWindow inherits Window {
         height: root.height;
         sources: root.sources;
         theme: root.theme;
+        labels: root.labels;
         close => { root.source-open = false; }
         select(i) => { root.select-source(i); root.source-open = false; }
     }

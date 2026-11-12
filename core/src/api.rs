@@ -30,7 +30,7 @@ pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forec
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\
          ?latitude={}&longitude={}\
-         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m\
+         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,uv_index\
          &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day\
          &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset\
          &timezone=auto&forecast_days={}&models={}",
@@ -144,6 +144,10 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
             humidity: c.relative_humidity_2m,
             wind_speed: c.wind_speed_10m,
             wind_direction: c.wind_direction_10m,
+            wind_gusts: c.wind_gusts_10m,
+            dew_point: c.dew_point_2m,
+            pressure: c.pressure_msl,
+            uv_index: c.uv_index,
         },
         today_min: today.min,
         today_max: today.max,
@@ -172,6 +176,14 @@ struct RawCurrent {
     wind_speed_10m: f64,
     #[serde(default)]
     wind_direction_10m: f64,
+    #[serde(default)]
+    wind_gusts_10m: Option<f64>,
+    #[serde(default)]
+    dew_point_2m: Option<f64>,
+    #[serde(default)]
+    pressure_msl: Option<f64>,
+    #[serde(default)]
+    uv_index: Option<f64>,
 }
 
 /// The value at `i`, if present and not null.

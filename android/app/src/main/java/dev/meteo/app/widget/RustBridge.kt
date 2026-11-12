@@ -8,8 +8,9 @@ object RustBridge {
         System.loadLibrary("meteo_widget")
     }
 
-    /** The widget's content for the selected city, as JSON (meteo_core::WidgetState). */
-    external fun state(dataDir: String): String
+    /** The widget's content for the selected city, as JSON (meteo_core::WidgetState),
+     *  in `language` ("fr", "en", …). */
+    external fun state(dataDir: String, language: String): String
 
     /** Downloads the selected city's forecast into the cache. Blocking. */
     external fun refresh(dataDir: String): Boolean

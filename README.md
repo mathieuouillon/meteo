@@ -128,13 +128,51 @@ To see a given weather whatever the forecast says:
 METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, drizzle, rain, snow, storm
 ```
 
-## Accent colour
+## Look
 
-Buttons and selections use the system accent; the sky colours stay tied to the
-weather. On Android 12+ that's the Material You colour taken from the wallpaper
-(`system_accent1_200` / `_500`, read through JNI). On older Android, and in the
-desktop preview, the app's own blue is used. See [app/src/accent.rs](app/src/accent.rs).
-The colours are read when the app starts.
+Material 3 Expressive over a nature scene:
+
+- **Landscape** ([core/src/landscape.rs](core/src/landscape.rs)): layered mountains, hills
+  and a pine treeline drawn as paths, with each city getting its own skyline. They're
+  coloured for the time of day (night, dawn, day, dusk, from sunrise and sunset) and the
+  weather: overcast greys the scene, snow whitens it, fog hazes the far ridges. The sun
+  moves along its arc, and the moon shows at night. Clouds pass behind the mountains,
+  and rain and snow fall in front of them.
+- **Colours** ([app/src/theme.rs](app/src/theme.rs)): Material 3 roles taken from Material
+  You's tonal palettes (from the wallpaper, Android 12+, read through JNI), in light or
+  dark with the system. Without them, a built-in blue scheme is used.
+- **Layout:** the current weather over the sky, then a Material sheet with the 7-day
+  card, the details and a footer.
+
+To preview a weather or time of day: `METEO_WEATHER=snow METEO_TIME=dusk cargo run -p meteo`
+on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and
+`adb shell setprop debug.meteo.time dusk`, then restart the app.
+
+## Details
+
+Six tiles, each with a value and a short explanation:
+
+- **Wind:** speed, where it comes from, gusts, and a compass arrow pointing where it blows.
+- **Sun:** sunrise and sunset, the sun on its arc, and hours of daylight.
+- **Feels like:** with why it differs, for example wind chill.
+- **Humidity:** with the dew point and a gauge.
+- **UV index:** its level and a coloured scale.
+- **Pressure:** in hPa, with low (unsettled) or high (settled).
+
+A source that lacks a value shows "Not available with this source"; Météo-France, for
+example, has no UV index.
+
+The footer shows the data source (tap it to change) and when the forecast was updated,
+with a Refresh button.
+
+## Languages
+
+English and French, following the phone's language, including a per-app language set in
+Android's settings. Every text comes from one place, `Lang` in
+[core/src/i18n.rs](core/src/i18n.rs). That covers conditions, weekdays, details, messages,
+source descriptions and the UI's fixed labels, which reach Slint as one `Labels` struct.
+City search returns place names in the same language, and the widget follows it too.
+On the desktop: `METEO_LANG=fr cargo run -p meteo`.
 
 ## App icon
 

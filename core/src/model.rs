@@ -93,6 +93,16 @@ pub struct Current {
     /// caches written before it was fetched.
     #[serde(default)]
     pub wind_direction: f64,
+    /// Strongest gusts, km/h; dew point, °C; sea-level pressure, hPa; UV
+    /// index. Absent in old caches or when the model has none.
+    #[serde(default)]
+    pub wind_gusts: Option<f64>,
+    #[serde(default)]
+    pub dew_point: Option<f64>,
+    #[serde(default)]
+    pub pressure: Option<f64>,
+    #[serde(default)]
+    pub uv_index: Option<f64>,
     pub condition: Condition,
     pub is_day: bool,
 }

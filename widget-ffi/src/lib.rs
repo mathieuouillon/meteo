@@ -14,14 +14,20 @@ fn data_dir(env: &mut JNIEnv, dir: &JString) -> Option<PathBuf> {
     env.get_string(dir).ok().map(|s| PathBuf::from(String::from(s)))
 }
 
-/// `external fun state(dataDir: String): String` — the widget's content as JSON.
+/// `external fun state(dataDir: String, language: String): String` — the
+/// widget's content as JSON, in that language ("fr", "en", …).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_state<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     dir: JString<'l>,
+    language: JString<'l>,
 ) -> jstring {
-    let state = data_dir(&mut env, &dir).map(|d| meteo_core::widget_state(&d, meteo_core::unix_now()));
+    let lang = env
+        .get_string(&language)
+        .map(|s| meteo_core::Lang::from_code(&String::from(s)))
+        .unwrap_or_default();
+    let state = data_dir(&mut env, &dir).map(|d| meteo_core::widget_state(&d, meteo_core::unix_now(), lang));
     let json = state
         .and_then(|s| serde_json::to_string(&s).ok())
         .unwrap_or_else(|| r#"{"needs_refresh":true,"view":null}"#.into());

@@ -9,6 +9,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Lang;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {
@@ -58,35 +60,37 @@ impl Source {
         }
     }
 
-    pub fn name(self) -> &'static str {
+    pub fn name(self, lang: Lang) -> &'static str {
+        let fr = lang == Lang::Fr;
         match self {
-            Source::BestMatch => "Best match",
+            Source::BestMatch => if fr { "Meilleur choix" } else { "Best match" },
             Source::MeteoFrance => "Météo-France",
             Source::Ecmwf => "ECMWF",
-            Source::Dwd => "DWD (Germany)",
-            Source::Noaa => "NOAA (USA)",
-            Source::UkMetOffice => "UK Met Office",
-            Source::MetNorway => "MET Norway",
-            Source::Knmi => "KNMI (Netherlands)",
-            Source::Dmi => "DMI (Denmark)",
-            Source::Canada => "Environment Canada",
-            Source::Jma => "JMA (Japan)",
+            Source::Dwd => if fr { "DWD (Allemagne)" } else { "DWD (Germany)" },
+            Source::Noaa => if fr { "NOAA (États-Unis)" } else { "NOAA (USA)" },
+            Source::UkMetOffice => if fr { "Met Office (Royaume-Uni)" } else { "UK Met Office" },
+            Source::MetNorway => if fr { "MET Norvège" } else { "MET Norway" },
+            Source::Knmi => if fr { "KNMI (Pays-Bas)" } else { "KNMI (Netherlands)" },
+            Source::Dmi => if fr { "DMI (Danemark)" } else { "DMI (Denmark)" },
+            Source::Canada => if fr { "Environnement Canada" } else { "Environment Canada" },
+            Source::Jma => if fr { "JMA (Japon)" } else { "JMA (Japan)" },
         }
     }
 
-    pub fn description(self) -> &'static str {
+    pub fn description(self, lang: Lang) -> &'static str {
+        let fr = lang == Lang::Fr;
         match self {
-            Source::BestMatch => "Open-Meteo combines the best models for the place",
-            Source::MeteoFrance => "AROME & ARPEGE, very detailed over France · about 4 days, no rain %",
-            Source::Ecmwf => "IFS, the European global model",
-            Source::Dwd => "ICON, detailed over Central Europe",
-            Source::Noaa => "GFS & HRRR, global, detailed over the US",
-            Source::UkMetOffice => "UKV & global, detailed over the UK",
-            Source::MetNorway => "MET Nordic, detailed over Scandinavia",
-            Source::Knmi => "HARMONIE, detailed over the Netherlands",
-            Source::Dmi => "HARMONIE, detailed over Denmark & Northern Europe",
-            Source::Canada => "GEM, detailed over Canada",
-            Source::Jma => "MSM & GSM, detailed over Japan · no rain %",
+            Source::BestMatch => if fr { "Open-Meteo combine les meilleurs modèles pour le lieu" } else { "Open-Meteo combines the best models for the place" },
+            Source::MeteoFrance => if fr { "AROME et ARPEGE, très détaillés sur la France · environ 4 jours, sans % de pluie" } else { "AROME & ARPEGE, very detailed over France · about 4 days, no rain %" },
+            Source::Ecmwf => if fr { "IFS, le modèle global européen" } else { "IFS, the European global model" },
+            Source::Dwd => if fr { "ICON, détaillé sur l’Europe centrale" } else { "ICON, detailed over Central Europe" },
+            Source::Noaa => if fr { "GFS et HRRR, global, détaillé sur les États-Unis" } else { "GFS & HRRR, global, detailed over the US" },
+            Source::UkMetOffice => if fr { "UKV et global, détaillé sur le Royaume-Uni" } else { "UKV & global, detailed over the UK" },
+            Source::MetNorway => if fr { "MET Nordic, détaillé sur la Scandinavie" } else { "MET Nordic, detailed over Scandinavia" },
+            Source::Knmi => if fr { "HARMONIE, détaillé sur les Pays-Bas" } else { "HARMONIE, detailed over the Netherlands" },
+            Source::Dmi => if fr { "HARMONIE, détaillé sur le Danemark et l’Europe du Nord" } else { "HARMONIE, detailed over Denmark & Northern Europe" },
+            Source::Canada => if fr { "GEM, détaillé sur le Canada" } else { "GEM, detailed over Canada" },
+            Source::Jma => if fr { "MSM et GSM, détaillé sur le Japon · sans % de pluie" } else { "MSM & GSM, detailed over Japan · no rain %" },
         }
     }
 }

@@ -9,7 +9,8 @@ use crate::api::{Error, fetch_forecast};
 use crate::cache::{self, unix_now};
 use crate::places::Places;
 use crate::source::Settings;
-use crate::view::{MainScreen, updated_ago};
+use crate::i18n::Lang;
+use crate::view::MainScreen;
 
 /// Hours shown in the wide widget.
 const WIDGET_HOURS: usize = 5;
@@ -49,7 +50,7 @@ pub struct WidgetHour {
 }
 
 /// The widget's content for the selected city, from the files in `dir`.
-pub fn widget_state(dir: &Path, unix_now: i64) -> WidgetState {
+pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
     let places = Places::load(dir);
     let city = places.selected();
     let source = Settings::load(dir).source;
@@ -57,7 +58,7 @@ pub fn widget_state(dir: &Path, unix_now: i64) -> WidgetState {
         return WidgetState { needs_refresh: true, view: None };
     };
     let age = unix_now - cached.fetched_at;
-    let s = MainScreen::from_forecast(&cached.forecast);
+    let s = MainScreen::from_forecast(&cached.forecast, lang);
     WidgetState {
         needs_refresh: age > MAX_AGE_SECS,
         view: Some(WidgetView {
@@ -67,7 +68,7 @@ pub fn widget_state(dir: &Path, unix_now: i64) -> WidgetState {
             temperature: s.temperature,
             condition: s.condition,
             high_low: s.high_low,
-            updated: updated_ago(age),
+            updated: lang.updated_ago(age),
             sky_top: s.sky_top,
             sky_bottom: s.sky_bottom,
             hours: s
@@ -119,13 +120,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         // Nothing downloaded yet.
-        let empty = widget_state(&dir, FETCHED_AT);
+        let empty = widget_state(&dir, FETCHED_AT, Lang::En);
         assert_eq!(empty, WidgetState { needs_refresh: true, view: None });
 
         let forecast = parse_forecast("Paris", SAMPLE.as_bytes()).unwrap();
         cache::save(&dir, &Location::paris(), crate::source::Source::BestMatch, &forecast, FETCHED_AT).unwrap();
 
-        let fresh = widget_state(&dir, FETCHED_AT + 60);
+        let fresh = widget_state(&dir, FETCHED_AT + 60, Lang::En);
         assert!(!fresh.needs_refresh);
         let v = fresh.view.unwrap();
         assert_eq!((v.city.as_str(), v.temperature.as_str()), ("Paris", "11°"));
@@ -134,7 +135,7 @@ mod tests {
         assert_eq!(v.hours[0].label, "Now");
 
         // An hour later: still shown, but due for a refresh, and moved on.
-        let later = widget_state(&dir, FETCHED_AT + 3600);
+        let later = widget_state(&dir, FETCHED_AT + 3600, Lang::En);
         assert!(later.needs_refresh);
         assert_eq!(later.view.unwrap().hours[1].label, "16h");
 

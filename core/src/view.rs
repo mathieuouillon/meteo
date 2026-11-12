@@ -5,6 +5,8 @@
 use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart};
+use crate::date::weekday_index;
+use crate::i18n::Lang;
 use crate::model::{Day, Forecast};
 use crate::landscape::{Landscape, Phase, landscape, seed_for};
 use crate::scene::SceneSpec;
@@ -23,9 +25,6 @@ pub struct MainScreen {
     pub condition: String,
     pub icon: String,
     pub high_low: String,
-    pub feels_like: String,
-    pub humidity: String,
-    pub wind: String,
     pub sky_top: u32,
     pub sky_bottom: u32,
     pub sky_top_css: String,
@@ -33,6 +32,7 @@ pub struct MainScreen {
     /// The next hours from now (used by the widgets).
     pub hours: Vec<HourView>,
     pub days: Vec<DayView>,
+    pub details: DetailsView,
     /// What the animated background shows.
     pub scene: SceneSpec,
     /// The nature scene behind everything.
@@ -47,16 +47,61 @@ pub struct HourView {
     pub icon: String,
 }
 
+/// The details tiles: each value with a short explanation, plus what the
+/// compass and the sun's arc need.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DetailsView {
+    pub feels_like: String,
+    pub feels_note: String,
+    pub humidity: String,
+    /// 0–1, for the humidity gauge.
+    pub humidity_fraction: f64,
+    pub dew_point: String,
+    /// "20", with the unit apart so the number can be big.
+    pub wind_speed: String,
+    pub wind_unit: String,
+    /// "Gusts 45 km/h"; empty if unknown.
+    pub wind_gusts: String,
+    /// "From the SW".
+    pub wind_from: String,
+    /// Where the wind blows *to*, in degrees clockwise from north.
+    pub wind_arrow: f64,
+    /// That arrow, drawn in a 64×64 compass box (centre 32,32).
+    pub wind_arrow_path: String,
+    /// "07:42"; empty if unknown.
+    pub sunrise: String,
+    pub sunset: String,
+    pub daylight: String,
+    /// The sun's position along its arc, 0 (sunrise) – 1 (sunset), clamped.
+    pub sun_progress: f64,
+    pub sun_up: bool,
+    /// The sun's dot on its arc, in the 100×56 box the arc is drawn in
+    /// (`SUN_ARC_PATH`).
+    pub sun_x: f64,
+    pub sun_y: f64,
+    /// "3"; "--" if unknown.
+    pub uv: String,
+    pub uv_level: String,
+    /// Where the UV marker sits on its scale, 0–1 (0 to 11+).
+    pub uv_position: f64,
+    /// False when the source has no UV index.
+    pub uv_known: bool,
+    /// "1013 hPa"; "--" if unknown.
+    pub pressure: String,
+    pub pressure_note: String,
+}
+
 impl MainScreen {
-    pub fn from_forecast(f: &Forecast) -> Self {
+    pub fn from_forecast(f: &Forecast, lang: Lang) -> Self {
         let c = &f.current;
         let sky = c.condition.sky(c.is_day);
         let hours = f
             .hours
             .iter()
             .take(HOURS_SHOWN)
-            .map(|h| HourView {
-                label: h.label.clone(),
+            .enumerate()
+            .map(|(i, h)| HourView {
+                label: if i == 0 { lang.now().into() } else { h.label.clone() },
                 temperature: temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
             })
@@ -66,27 +111,83 @@ impl MainScreen {
         let today = f.days.first();
         let (rise, set) = (today.and_then(|d| d.sunrise.as_deref()), today.and_then(|d| d.sunset.as_deref()));
         let phase = Phase::at(&c.time, rise, set, c.is_day);
-        let land = landscape(c.condition, phase, sun_progress(&c.time, rise, set), seed_for(&f.location));
+        let progress = sun_progress(&c.time, rise, set);
+        let land = landscape(c.condition, phase, progress, seed_for(&f.location));
 
         Self {
             city: f.location.clone(),
             temperature: temp(c.temperature),
-            condition: c.condition.label().into(),
+            condition: lang.condition(c.condition).into(),
             icon: c.condition.icon(c.is_day).into(),
-            high_low: format!("Day {} · Night {}", temp(f.today_max), temp(f.today_min)),
-            feels_like: temp(c.apparent_temperature),
-            humidity: format!("{:.0}%", c.humidity),
-            wind: format!("{:.0} km/h", c.wind_speed),
+            high_low: lang.day_night(&temp(f.today_max), &temp(f.today_min)),
             sky_top: sky.top,
             sky_bottom: sky.bottom,
             sky_top_css: sky.top_css(),
             sky_bottom_css: sky.bottom_css(),
             hours,
-            days: DayView::list(&f.days, now.as_deref()),
+            days: DayView::list(&f.days, now.as_deref(), lang),
+            details: DetailsView::new(f, rise, set, progress, lang),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
             landscape: land,
         }
     }
+}
+
+impl DetailsView {
+    fn new(f: &Forecast, rise: Option<&str>, set: Option<&str>, progress: f64, lang: Lang) -> Self {
+        let c = &f.current;
+        let clock = |t: Option<&str>| t.and_then(|t| t.get(11..16)).unwrap_or("").to_string();
+        let minutes = |t: &str| -> Option<i64> { Some(t.get(11..13)?.parse::<i64>().ok()? * 60 + t.get(14..16)?.parse::<i64>().ok()?) };
+        let daylight = match (rise.and_then(minutes), set.and_then(minutes)) {
+            (Some(r), Some(s)) if s > r => lang.daylight(s - r),
+            _ => String::new(),
+        };
+        Self {
+            feels_like: temp(c.apparent_temperature),
+            feels_note: lang.feels_note(c.temperature, c.apparent_temperature).into(),
+            humidity: format!("{:.0}%", c.humidity),
+            humidity_fraction: (c.humidity / 100.0).clamp(0.0, 1.0),
+            dew_point: c.dew_point.map(|d| lang.dew_point(&temp(d))).unwrap_or_default(),
+            wind_speed: format!("{:.0}", c.wind_speed),
+            wind_unit: "km/h".into(),
+            wind_gusts: c.wind_gusts.map(|g| lang.gusts(&format!("{g:.0} km/h"))).unwrap_or_default(),
+            wind_from: lang.wind_from(c.wind_direction),
+            wind_arrow: (c.wind_direction + 180.0).rem_euclid(360.0),
+            wind_arrow_path: arrow_path((c.wind_direction + 180.0).rem_euclid(360.0)),
+            sunrise: clock(rise),
+            sunset: clock(set),
+            daylight,
+            sun_progress: progress.clamp(0.0, 1.0),
+            sun_up: (0.0..=1.0).contains(&progress),
+            sun_x: SUN_ARC_CENTER.0 - SUN_ARC_RADIUS * (std::f64::consts::PI * progress.clamp(0.0, 1.0)).cos(),
+            sun_y: SUN_ARC_CENTER.1 - SUN_ARC_RADIUS * (std::f64::consts::PI * progress.clamp(0.0, 1.0)).sin(),
+            uv: c.uv_index.map_or("--".into(), |u| format!("{:.0}", u.round())),
+            uv_level: c.uv_index.map_or_else(|| lang.not_available().to_string(), |u| lang.uv_level(u).to_string()),
+            uv_known: c.uv_index.is_some(),
+            uv_position: c.uv_index.map_or(0.0, |u| (u / 11.0).clamp(0.0, 1.0)),
+            pressure: c.pressure.map_or("--".into(), |p| format!("{p:.0} hPa")),
+            pressure_note: c.pressure.map_or_else(|| lang.not_available().to_string(), |p| lang.pressure_level(p).to_string()),
+        }
+    }
+}
+
+/// The sun's half-circle arc, drawn in a 100×56 box.
+pub const SUN_ARC_PATH: &str = "M 8 50 A 42 42 0 0 1 92 50";
+const SUN_ARC_CENTER: (f64, f64) = (50.0, 50.0);
+const SUN_ARC_RADIUS: f64 = 42.0;
+
+/// A compass arrow pointing `degrees` clockwise from north, in a 64×64 box.
+fn arrow_path(degrees: f64) -> String {
+    let (sin, cos) = degrees.to_radians().sin_cos();
+    // Pointing north (up): tip, right barb, notch, left barb.
+    let points = [(0.0, -20.0), (8.0, 12.0), (0.0, 6.0), (-8.0, 12.0)];
+    let mut path = String::new();
+    for (i, (dx, dy)) in points.iter().enumerate() {
+        // Clockwise rotation in screen coordinates (y down).
+        let (x, y) = (32.0 + dx * cos - dy * sin, 32.0 + dx * sin + dy * cos);
+        path += &format!("{} {x:.1} {y:.1} ", if i == 0 { "M" } else { "L" });
+    }
+    path + "Z"
 }
 
 /// How far the sun is between sunrise (0) and sunset (1); 0.5 if unknown.
@@ -127,6 +228,7 @@ pub struct DayView {
 pub struct DayHourView {
     /// "15h", or "Now" for the current hour.
     pub label: String,
+    pub is_now: bool,
     pub temperature: String,
     pub icon: String,
     /// Chance of rain, e.g. "40%"; empty when unlikely.
@@ -148,7 +250,7 @@ const MORNING: usize = 6;
 
 impl DayView {
     /// `now`: the current hour's time ("2026-11-12T15:00"), marked "Now".
-    fn list(days: &[Day], now: Option<&str>) -> Vec<Self> {
+    fn list(days: &[Day], now: Option<&str>, lang: Lang) -> Vec<Self> {
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
         let range = (hi - lo).max(1.0);
@@ -157,7 +259,8 @@ impl DayView {
             .flat_map(|d| d.hours.iter().map(|h| h.precipitation))
             .fold(RAIN_SCALE_MIN_MM, f64::max);
         days.iter()
-            .map(|d| {
+            .enumerate()
+            .map(|(day_index, d)| {
                 let chart = temperature_chart(&d.hours, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
                 let hours = d
@@ -166,7 +269,8 @@ impl DayView {
                     .zip(&chart.points)
                     .enumerate()
                     .map(|(i, (h, p))| DayHourView {
-                        label: if Some(i) == now_index { "Now".into() } else { h.label.clone() },
+                        label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
+                        is_now: Some(i) == now_index,
                         temperature: temp(h.temperature),
                         icon: h.condition.icon(h.is_day).into(),
                         precipitation: rain_chance(h.precipitation_probability),
@@ -178,7 +282,11 @@ impl DayView {
                     .collect();
                 Self {
                     first_hour: now_index.unwrap_or(MORNING.min(d.hours.len().saturating_sub(1))),
-                    label: d.label.clone(),
+                    label: if day_index == 0 {
+                        lang.today().into()
+                    } else {
+                        weekday_index(&d.date).map_or_else(|| d.label.clone(), |w| lang.weekday(w).into())
+                    },
                     icon: d.condition.icon(true).into(),
                     precipitation: rain_chance(d.precipitation_probability),
                     min: temp(d.min),
@@ -191,18 +299,6 @@ impl DayView {
                 }
             })
             .collect()
-    }
-}
-
-/// "Updated 2 h ago", for a forecast downloaded `age_secs` seconds ago.
-pub fn updated_ago(age_secs: i64) -> String {
-    let age = age_secs.max(0);
-    match age {
-        0..60 => "Updated just now".into(),
-        60..3600 => format!("Updated {} min ago", age / 60),
-        3600..86_400 => format!("Updated {} h ago", age / 3600),
-        86_400..172_800 => "Updated yesterday".into(),
-        _ => format!("Updated {} days ago", age / 86_400),
     }
 }
 
@@ -269,6 +365,7 @@ mod tests {
         let rows = DayView::list(
             &[day("2026-11-12", 5.0, 10.0, 80.0), day("2026-11-13", 0.0, 20.0, 5.0)],
             Some("2026-11-12T01:00"),
+            Lang::En,
         );
         // Temperature bars on the week's range.
         assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
@@ -287,9 +384,20 @@ mod tests {
         assert!(rows[0].hours[1].y < rows[0].hours[0].y);
         // "Now" in today's chart, which opens there; other days open in the morning.
         assert_eq!(rows[0].hours[1].label, "Now");
+        assert!(rows[0].hours[1].is_now && !rows[0].hours[0].is_now);
         assert_eq!(rows[1].hours[1].label, "01h");
+        assert_eq!(rows[1].label, "Fri", "2026-11-13");
         assert_eq!(rows[0].first_hour, 1);
         assert_eq!(rows[1].first_hour, 2, "06h, clamped to the hours available");
+    }
+
+    #[test]
+    fn arrow_points_where_the_wind_goes() {
+        // East: the tip (first point) is right of the centre.
+        let east = arrow_path(90.0);
+        let tip: Vec<f64> = east.split_whitespace().skip(1).take(2).map(|v| v.parse().unwrap()).collect();
+        assert_eq!(tip, vec![52.0, 32.0]);
+        assert!(arrow_path(0.0).starts_with("M 32.0 12.0"));
     }
 
     #[test]
@@ -307,13 +415,4 @@ mod tests {
         assert_eq!(temp(-2.6), "-3°");
     }
 
-    #[test]
-    fn describes_cache_age() {
-        assert_eq!(updated_ago(-5), "Updated just now");
-        assert_eq!(updated_ago(59), "Updated just now");
-        assert_eq!(updated_ago(150), "Updated 2 min ago");
-        assert_eq!(updated_ago(3 * 3600 + 59), "Updated 3 h ago");
-        assert_eq!(updated_ago(30 * 3600), "Updated yesterday");
-        assert_eq!(updated_ago(3 * 86_400), "Updated 3 days ago");
-    }
 }

@@ -274,3 +274,19 @@ pub fn system_colors(app: &AndroidApp) -> Option<SystemColors> {
     })
     .ok()
 }
+
+/// The app's language, e.g. "fr" (from its configuration, so a per-app
+/// language chosen in Android's settings counts too).
+pub fn language(app: &AndroidApp) -> Option<String> {
+    with_activity(app, |env, activity| {
+        let resources = env.call_method(activity, "getResources", "()Landroid/content/res/Resources;", &[])?.l()?;
+        let config = env
+            .call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?
+            .l()?;
+        let locales = env.call_method(&config, "getLocales", "()Landroid/os/LocaleList;", &[])?.l()?;
+        let locale = env.call_method(&locales, "get", "(I)Ljava/util/Locale;", &[JValue::Int(0)])?.l()?;
+        let lang = env.call_method(&locale, "getLanguage", "()Ljava/lang/String;", &[])?.l()?;
+        Ok(env.get_string(&JString::from(lang))?.into())
+    })
+    .ok()
+}

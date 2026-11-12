@@ -97,15 +97,16 @@ class MeteoWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val dir = context.filesDir.absolutePath
+        val language = context.resources.configuration.locales[0].language
         provideContent {
             val revision = currentState<Preferences>()[REVISION] ?: 0L
             // Reload from the cache whenever the receiver bumps the revision.
-            var state by remember(revision) { mutableStateOf(parseWidgetState(RustBridge.state(dir))) }
+            var state by remember(revision) { mutableStateOf(parseWidgetState(RustBridge.state(dir, language))) }
             // Show the cache at once, then download if it's old or missing.
             LaunchedEffect(revision) {
                 if (state.needsRefresh) {
                     val ok = withContext(Dispatchers.IO) { RustBridge.refresh(dir) }
-                    if (ok) state = withContext(Dispatchers.IO) { parseWidgetState(RustBridge.state(dir)) }
+                    if (ok) state = withContext(Dispatchers.IO) { parseWidgetState(RustBridge.state(dir, language)) }
                 }
             }
             Content(state.view)
@@ -138,7 +139,8 @@ private fun Content(view: WidgetView?) {
             .padding(14.dp),
     ) {
         if (view == null) {
-            Text("Météo\nLoading…", style = style(15.sp))
+            val loading = if (context.resources.configuration.locales[0].language == "fr") "Chargement…" else "Loading…"
+            Text("Météo\n$loading", style = style(15.sp))
             return@Box
         }
         Row(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.Vertical.CenterVertically) {

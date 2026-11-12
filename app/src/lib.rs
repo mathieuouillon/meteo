@@ -6,8 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use meteo_core::{
-    Location, MainScreen, Places, Settings, Source, cache, fetch_forecast, search_cities, unix_now,
-    updated_ago,
+    Lang, Location, MainScreen, Places, Settings, Source, cache, fetch_forecast, search_cities, unix_now,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
@@ -38,6 +37,21 @@ fn data_dir() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     // Desktop development preview (`cargo run -p meteo`).
     Some(home.join(".cache/meteo"))
+}
+
+/// The language of the UI, detected at startup.
+static LANG: OnceLock<Lang> = OnceLock::new();
+
+fn lang() -> Lang {
+    *LANG.get_or_init(|| {
+        #[cfg(target_os = "android")]
+        if let Some(code) = ANDROID_APP.get().and_then(android::language) {
+            return Lang::from_code(&code);
+        }
+        // Desktop preview: METEO_LANG=fr, or the usual LANG.
+        let code = std::env::var("METEO_LANG").or_else(|_| std::env::var("LANG")).unwrap_or_default();
+        Lang::from_code(&code)
+    })
 }
 
 /// No forecast on screen yet.
@@ -84,6 +98,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     APP.with(|a| a.set(app.clone()).ok());
     animation::start(&ui);
     ui.set_theme(ui_theme(&theme::system()));
+    ui.set_labels(ui_labels(&lang().labels()));
     ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
@@ -170,14 +185,14 @@ impl App {
         let items: Vec<CityItem> = Source::ALL
             .iter()
             .map(|&s| CityItem {
-                name: s.name().into(),
-                detail: s.description().into(),
+                name: s.name(lang()).into(),
+                detail: s.description(lang()).into(),
                 selected: s == current,
                 device: false,
             })
             .collect();
         ui.set_sources(ModelRc::from(Rc::new(VecModel::from(items))));
-        ui.set_source_name(current.name().into());
+        ui.set_source_name(current.name(lang()).into());
     }
 
     /// Shows the selected city: its cached forecast at once if there is one,
@@ -190,8 +205,8 @@ impl App {
         ui.set_open_day(0); // Today open, also after switching city
         match self.dir.as_deref().and_then(|d| cache::load(d, &city, source, unix_now())) {
             Some(cached) => {
-                apply(&ui, &MainScreen::from_forecast(&cached.forecast));
-                ui.set_status(updated_ago(unix_now() - cached.fetched_at).into());
+                apply(&ui, &MainScreen::from_forecast(&cached.forecast, lang()));
+                ui.set_updated(lang().updated_ago(unix_now() - cached.fetched_at).into());
                 self.shown_at.store(cached.fetched_at, Ordering::Relaxed);
             }
             None => show_loading(&ui, &city),
@@ -243,13 +258,14 @@ impl App {
                 }
                 match result {
                     Ok(forecast) => {
-                        apply(&ui, &MainScreen::from_forecast(&forecast));
+                        apply(&ui, &MainScreen::from_forecast(&forecast, lang()));
+                        ui.set_updated(lang().updated_ago(0).into());
                         ui.set_status(SharedString::new());
                         shown_at.store(fetched_at, Ordering::Relaxed);
                     }
                     Err(e) => match shown_at.load(Ordering::Relaxed) {
-                        NOTHING_SHOWN => ui.set_error(format!("Couldn't load the forecast: {e}").into()),
-                        t => ui.set_status(format!("Offline · {}", updated_ago(unix_now() - t).to_lowercase()).into()),
+                        NOTHING_SHOWN => ui.set_error(lang().load_failed(&e.to_string()).into()),
+                        t => ui.set_status(lang().offline(unix_now() - t).into()),
                     },
                 }
             });
@@ -261,7 +277,7 @@ impl App {
     fn locate(&self, quiet: bool) {
         let Some(ui) = self.ui.upgrade() else { return };
         if !quiet {
-            ui.set_search_status("Finding your location…".into());
+            ui.set_search_status(lang().finding_location().into());
         }
         let weak = self.ui.clone();
         let finish = move |found: Result<Location, String>| {
@@ -298,23 +314,23 @@ impl App {
             ui.set_search_status(SharedString::new());
             return;
         }
-        ui.set_search_status("Searching…".into());
+        ui.set_search_status(lang().searching().into());
         let (weak, search_gen, results) = (self.ui.clone(), self.search_gen.clone(), self.results.clone());
         std::thread::spawn(move || {
             std::thread::sleep(SEARCH_DELAY);
             if search_gen.load(Ordering::Relaxed) != generation {
                 return; // another key was pressed
             }
-            let found = block_on(search_cities(&text));
+            let found = block_on(search_cities(&text, lang()));
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
                 if search_gen.load(Ordering::Relaxed) != generation {
                     return;
                 }
                 let (status, places) = match found {
-                    Ok(p) if p.is_empty() => ("No matching city".to_string(), p),
+                    Ok(p) if p.is_empty() => (lang().no_city().to_string(), p),
                     Ok(p) => (String::new(), p),
-                    Err(e) => (format!("Search failed: {e}"), Vec::new()),
+                    Err(e) => (lang().search_failed(&e.to_string()), Vec::new()),
                 };
                 let items: Vec<CityItem> = places.iter().map(|c| city_item(c, false)).collect();
                 ui.set_results(ModelRc::from(Rc::new(VecModel::from(items))));
@@ -329,25 +345,25 @@ impl App {
 #[cfg(target_os = "android")]
 fn device_location(quiet: bool) -> Result<Location, String> {
     use crate::android as loc;
-    let app = ANDROID_APP.get().ok_or("Location isn't available")?;
+    let app = ANDROID_APP.get().ok_or(lang().location_unavailable())?;
     if !loc::has_permission(app) {
         if quiet {
             return Err(String::new());
         }
         loc::request_permission(app);
         if !loc::wait_for_permission(app, Duration::from_secs(60)) {
-            return Err("Location permission wasn't granted".into());
+            return Err(lang().permission_denied().into());
         }
     }
     let (lat, lon) = loc::current_position(app, Duration::from_secs(15))
-        .ok_or("Couldn't find your location. Is location turned on?")?;
-    let (name, detail) = loc::place_name(app, lat, lon).unwrap_or_else(|| ("My location".into(), String::new()));
+        .ok_or(lang().no_fix())?;
+    let (name, detail) = loc::place_name(app, lat, lon).unwrap_or_else(|| (lang().my_location().into(), String::new()));
     Ok(Location::new(name, detail, lat, lon))
 }
 
 #[cfg(not(target_os = "android"))]
 fn device_location(_quiet: bool) -> Result<Location, String> {
-    Err("Location isn't available on this platform yet".into())
+    Err(lang().location_unavailable().into())
 }
 
 /// Whether to offer "Use my location".
@@ -379,12 +395,11 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     ui.set_status(SharedString::new());
     ui.set_city(city.name.as_str().into());
     ui.set_temperature("--°".into());
-    ui.set_condition("Loading…".into());
+    ui.set_condition(lang().loading().into());
     ui.set_weather_icon(SharedString::new());
     ui.set_high_low(SharedString::new());
-    for set in [MainWindow::set_feels_like, MainWindow::set_humidity, MainWindow::set_wind] {
-        set(ui, "--".into());
-    }
+    ui.set_details(Details::default());
+    ui.set_updated(SharedString::new());
     ui.set_days(ModelRc::default());
 }
 
@@ -396,9 +411,7 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
     ui.set_condition(s.condition.as_str().into());
     ui.set_weather_icon(s.icon.as_str().into());
     ui.set_high_low(s.high_low.as_str().into());
-    ui.set_feels_like(s.feels_like.as_str().into());
-    ui.set_humidity(s.humidity.as_str().into());
-    ui.set_wind(s.wind.as_str().into());
+    ui.set_details(ui_details(&s.details));
     // Desktop preview overrides (METEO_WEATHER / METEO_TIME), see animation.rs.
     let forced = match (animation::forced_condition(), animation::forced_phase()) {
         (None, None) => None,
@@ -451,6 +464,7 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
                         precipitation: h.precipitation.as_str().into(),
                         rain: h.rain.as_str().into(),
                         rain_height: h.rain_height as f32,
+                        is_now: h.is_now,
                         x: h.x as f32,
                         y: h.y as f32,
                     })
@@ -459,6 +473,55 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
         })
         .collect();
     ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
+}
+
+fn ui_details(d: &meteo_core::DetailsView) -> Details {
+    Details {
+        feels_like: d.feels_like.as_str().into(),
+        feels_note: d.feels_note.as_str().into(),
+        humidity: d.humidity.as_str().into(),
+        humidity_fraction: d.humidity_fraction as f32,
+        dew_point: d.dew_point.as_str().into(),
+        wind_speed: d.wind_speed.as_str().into(),
+        wind_unit: d.wind_unit.as_str().into(),
+        wind_gusts: d.wind_gusts.as_str().into(),
+        wind_from: d.wind_from.as_str().into(),
+        wind_arrow_path: d.wind_arrow_path.as_str().into(),
+        sunrise: d.sunrise.as_str().into(),
+        sunset: d.sunset.as_str().into(),
+        daylight: d.daylight.as_str().into(),
+        sun_up: d.sun_up,
+        sun_x: d.sun_x as f32,
+        sun_y: d.sun_y as f32,
+        uv: d.uv.as_str().into(),
+        uv_level: d.uv_level.as_str().into(),
+        uv_position: d.uv_position as f32,
+        uv_known: d.uv_known,
+        pressure: d.pressure.as_str().into(),
+        pressure_note: d.pressure_note.as_str().into(),
+    }
+}
+
+fn ui_labels(l: &meteo_core::Labels) -> Labels {
+    Labels {
+        forecast: l.forecast.into(),
+        details: l.details.into(),
+        feels_like: l.feels_like.into(),
+        humidity: l.humidity.into(),
+        wind: l.wind.into(),
+        sun: l.sun.into(),
+        sunrise: l.sunrise.into(),
+        sunset: l.sunset.into(),
+        uv_index: l.uv_index.into(),
+        pressure: l.pressure.into(),
+        refresh: l.refresh.into(),
+        data_source: l.data_source.into(),
+        data_source_help: l.data_source_help.into(),
+        search: l.search.into(),
+        done: l.done.into(),
+        use_location: l.use_location.into(),
+        saved_cities: l.saved_cities.into(),
+    }
 }
 
 fn ui_theme(t: &theme::Scheme) -> Theme {
