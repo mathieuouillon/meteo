@@ -81,6 +81,8 @@ export component MainWindow inherits Window {
     in property <float> chart-width: 1;
     in property <float> chart-height: 150;
     in property <string> error;
+    // "Updated 2 h ago" when showing a cached forecast; empty when fresh.
+    in property <string> status;
     callback refresh();
 
     // Animated copies, so condition changes fade smoothly.
@@ -109,6 +111,9 @@ export component MainWindow inherits Window {
             Text { text: root.temperature; color: white; font-size: 96px; font-weight: 200; horizontal-alignment: center; }
             Text { text: root.condition; color: white; font-size: 22px; horizontal-alignment: center; }
             Text { text: root.high-low; color: #ffffffcc; font-size: 16px; horizontal-alignment: center; }
+            if root.status != "": Text {
+                text: root.status; color: #ffffffb3; font-size: 13px; horizontal-alignment: center;
+            }
             if root.error != "": Text {
                 text: root.error; color: #ffd0d0; font-size: 13px;
                 horizontal-alignment: center; wrap: word-wrap;

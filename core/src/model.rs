@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::condition::Condition;
 
 /// A place to fetch weather for.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Location {
     pub name: String,
     pub latitude: f64,
@@ -21,19 +21,54 @@ impl Location {
 }
 
 /// Everything the main screen shows.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Forecast {
     pub location: String,
+    /// Offset of the location's local time from UTC, so a cached forecast
+    /// can be moved forward to "now" without a time-zone database.
+    pub utc_offset_seconds: i64,
     pub current: Current,
     pub today_min: f64,
     pub today_max: f64,
-    /// The next 24 hours, starting with the current hour.
+    /// Upcoming hours (48 kept), starting with the current hour. Screens
+    /// show the first 24; the extra ones keep a cached forecast useful.
     pub hours: Vec<Hour>,
     /// Today and the following days (7 in total).
     pub days: Vec<Day>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+impl Forecast {
+    /// Drops hours and days that are already over at `unix_now`, and
+    /// relabels the first ones "Now" and "Today". Used when showing a
+    /// cached forecast. The "current" conditions are left as they were.
+    pub fn advance_to(&mut self, unix_now: i64) {
+        let now = crate::date::local_iso_minute(unix_now, self.utc_offset_seconds);
+        let (this_hour, today) = (&now[..13], &now[..10]);
+
+        self.hours.retain(|h| h.time.get(..13).is_some_and(|t| t >= this_hour));
+        for (i, h) in self.hours.iter_mut().enumerate() {
+            h.label = if i == 0 {
+                "Now".into()
+            } else {
+                format!("{}h", h.time.get(11..13).unwrap_or("?"))
+            };
+        }
+
+        self.days.retain(|d| d.date.as_str() >= today);
+        for (i, d) in self.days.iter_mut().enumerate() {
+            d.label = if i == 0 {
+                "Today".into()
+            } else {
+                crate::date::weekday_short(&d.date).unwrap_or("?").into()
+            };
+        }
+        if let Some(d) = self.days.first() {
+            (self.today_min, self.today_max) = (d.min, d.max);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Current {
     /// Local time, e.g. "2026-11-12T14:15".
     pub time: String,
@@ -45,7 +80,7 @@ pub struct Current {
     pub is_day: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Hour {
     /// Local time, e.g. "2026-11-12T15:00".
     pub time: String,
@@ -58,7 +93,7 @@ pub struct Hour {
     pub is_day: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Day {
     /// Local date, e.g. "2026-11-12".
     pub date: String,

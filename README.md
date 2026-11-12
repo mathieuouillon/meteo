@@ -46,6 +46,24 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
+## Offline cache
+
+After each successful download, `core` saves the forecast as JSON
+(`meteo_core::cache`). On startup the app shows the cached forecast at once, then
+refreshes it. A cached forecast is moved forward to the current time first: past
+hours and days are dropped and the first ones relabelled "Now" and "Today" (48 hours
+are kept so there is still a full day to show). If a refresh fails, the cached
+forecast stays on screen with "Offline · updated 3 h ago".
+
+| Platform | Cache file |
+|----------|------------|
+| macOS    | `~/Library/Application Support/dev.meteo.app/forecast.json` |
+| Android  | the app's internal files directory (`files/forecast.json`) |
+
+The home-screen widgets will read the same file. On macOS a WidgetKit extension
+can't read another app's Application Support folder, so the cache will move to a
+shared App Group container then.
+
 ## Notes
 
 - **Renderer:** the app uses Slint's Skia renderer. The default FemtoVG renderer

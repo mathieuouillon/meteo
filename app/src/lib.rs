@@ -1,29 +1,76 @@
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, OnceLock};
 
-use meteo_core::{Location, MainScreen, fetch_forecast};
+use meteo_core::{Location, MainScreen, cache, fetch_forecast, unix_now, updated_ago};
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
 
 slint::include_modules!();
 
-/// Builds the window, starts the first fetch and runs the event loop.
+/// Set on Android from the activity's internal data path.
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Where the last forecast is cached.
+fn cache_dir() -> Option<PathBuf> {
+    if let Some(dir) = DATA_DIR.get() {
+        return Some(dir.clone());
+    }
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    if cfg!(target_os = "macos") {
+        Some(home.join("Library/Application Support/dev.meteo.app"))
+    } else {
+        Some(home.join(".cache/meteo"))
+    }
+}
+
+/// No forecast on screen yet.
+const NOTHING_SHOWN: i64 = i64::MIN;
+
+/// Builds the window, shows the cached forecast if any, starts a refresh and
+/// runs the event loop.
 pub fn run() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
+    let dir = cache_dir();
+
+    // When the forecast on screen was downloaded, so a failed refresh can say
+    // how old it is instead of replacing it with an error.
+    let shown_at = Arc::new(AtomicI64::new(NOTHING_SHOWN));
+
+    if let Some(cached) = dir.as_deref().and_then(|d| cache::load(d, unix_now())) {
+        apply(&ui, &MainScreen::from_forecast(&cached.forecast));
+        ui.set_status(updated_ago(unix_now() - cached.fetched_at).into());
+        shown_at.store(cached.fetched_at, Ordering::Relaxed);
+    }
 
     let weak = ui.as_weak();
     let load = move || {
-        let weak = weak.clone();
-        // Network work happens off the UI thread; results are posted back.
+        let (weak, dir, shown_at) = (weak.clone(), dir.clone(), shown_at.clone());
+        // Network and disk work happen off the UI thread; results are posted back.
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
             let result = rt.block_on(fetch_forecast(&Location::paris()));
+            let fetched_at = unix_now();
+            if let (Ok(forecast), Some(dir)) = (&result, &dir) {
+                if let Err(e) = cache::save(dir, forecast, fetched_at) {
+                    eprintln!("couldn't save the forecast cache: {e}");
+                }
+            }
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
                 match result {
-                    Ok(forecast) => apply(&ui, &MainScreen::from_forecast(&forecast)),
-                    Err(e) => ui.set_error(format!("Couldn't load the forecast: {e}").into()),
+                    Ok(forecast) => {
+                        apply(&ui, &MainScreen::from_forecast(&forecast));
+                        ui.set_status(SharedString::new());
+                        shown_at.store(fetched_at, Ordering::Relaxed);
+                    }
+                    Err(e) => match shown_at.load(Ordering::Relaxed) {
+                        NOTHING_SHOWN => ui.set_error(format!("Couldn't load the forecast: {e}").into()),
+                        t => ui.set_status(format!("Offline · {}", updated_ago(unix_now() - t).to_lowercase()).into()),
+                    },
                 }
             });
         });
@@ -88,6 +135,9 @@ fn rgb(c: u32) -> Color {
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: slint::android::AndroidApp) {
+    if let Some(dir) = app.internal_data_path() {
+        let _ = DATA_DIR.set(dir);
+    }
     slint::android::init(app).expect("Slint Android backend");
     run().expect("Slint event loop");
 }

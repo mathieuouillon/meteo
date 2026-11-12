@@ -6,7 +6,9 @@ use crate::condition::Condition;
 use crate::date::weekday_short;
 use crate::model::{Current, Day, Forecast, Hour, Location};
 
-const HOURS_SHOWN: usize = 24;
+/// Hours kept from each response. Screens show 24; the rest lets a cached
+/// forecast still fill the chart a day later.
+const HOURS_KEPT: usize = 48;
 const DAYS_SHOWN: usize = 7;
 
 #[derive(Debug, thiserror::Error)]
@@ -69,7 +71,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
 
     let h = &raw.hourly;
     let hours = (start..h.time.len())
-        .take(HOURS_SHOWN)
+        .take(HOURS_KEPT)
         .map(|i| Hour {
             label: if i == start {
                 "Now".into()
@@ -103,6 +105,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
 
     Ok(Forecast {
         location: location_name.to_owned(),
+        utc_offset_seconds: raw.utc_offset_seconds,
         current: Current {
             condition: Condition::from_wmo(c.weather_code),
             is_day: c.is_day == 1,
@@ -121,6 +124,8 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
 
 #[derive(Deserialize)]
 struct RawResponse {
+    #[serde(default)]
+    utc_offset_seconds: i64,
     current: RawCurrent,
     hourly: RawHourly,
     daily: RawDaily,
@@ -194,6 +199,6 @@ mod tests {
     #[ignore = "hits the network"]
     async fn fetches_live_forecast() {
         let f = fetch_forecast(&Location::paris()).await.unwrap();
-        assert_eq!(f.hours.len(), HOURS_SHOWN);
+        assert_eq!(f.hours.len(), HOURS_KEPT);
     }
 }

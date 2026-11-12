@@ -10,6 +10,8 @@ use crate::model::{Day, Forecast};
 /// Horizontal space per hour in the hourly chart, in logical pixels.
 pub const HOUR_STEP: f64 = 60.0;
 pub const CHART_HEIGHT: f64 = 150.0;
+/// Hours shown in the hourly chart.
+pub const HOURS_SHOWN: usize = 24;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MainScreen {
@@ -46,9 +48,9 @@ impl MainScreen {
     pub fn from_forecast(f: &Forecast) -> Self {
         let c = &f.current;
         let sky = c.condition.sky(c.is_day);
-        let chart = temperature_chart(&f.hours, HOUR_STEP, CHART_HEIGHT, 36.0, 14.0);
-        let hours = f
-            .hours
+        let shown = &f.hours[..f.hours.len().min(HOURS_SHOWN)];
+        let chart = temperature_chart(shown, HOUR_STEP, CHART_HEIGHT, 36.0, 14.0);
+        let hours = shown
             .iter()
             .zip(&chart.points)
             .map(|(h, p)| HourView {
@@ -115,6 +117,18 @@ impl DayView {
     }
 }
 
+/// "Updated 2 h ago", for a forecast downloaded `age_secs` seconds ago.
+pub fn updated_ago(age_secs: i64) -> String {
+    let age = age_secs.max(0);
+    match age {
+        0..60 => "Updated just now".into(),
+        60..3600 => format!("Updated {} min ago", age / 60),
+        3600..86_400 => format!("Updated {} h ago", age / 3600),
+        86_400..172_800 => "Updated yesterday".into(),
+        _ => format!("Updated {} days ago", age / 86_400),
+    }
+}
+
 /// "40%" when rain is worth mentioning, otherwise empty.
 fn rain_chance(p: f64) -> String {
     if p >= 20.0 { format!("{p:.0}%") } else { String::new() }
@@ -157,5 +171,15 @@ mod tests {
         assert_eq!(temp(11.4), "11°");
         assert_eq!(temp(-0.3), "0°");
         assert_eq!(temp(-2.6), "-3°");
+    }
+
+    #[test]
+    fn describes_cache_age() {
+        assert_eq!(updated_ago(-5), "Updated just now");
+        assert_eq!(updated_ago(59), "Updated just now");
+        assert_eq!(updated_ago(150), "Updated 2 min ago");
+        assert_eq!(updated_ago(3 * 3600 + 59), "Updated 3 h ago");
+        assert_eq!(updated_ago(30 * 3600), "Updated yesterday");
+        assert_eq!(updated_ago(3 * 86_400), "Updated 3 days ago");
     }
 }

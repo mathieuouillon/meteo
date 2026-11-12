@@ -14,6 +14,28 @@ pub fn weekday_short(iso_date: &str) -> Option<&'static str> {
     Some(WEEKDAYS[weekday as usize])
 }
 
+/// Local time as "YYYY-MM-DDTHH:MM" (Open-Meteo's format) for a Unix
+/// timestamp and a UTC offset in seconds.
+pub fn local_iso_minute(unix_secs: i64, utc_offset_seconds: i64) -> String {
+    let t = unix_secs + utc_offset_seconds;
+    let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}", secs / 3600, secs % 3600 / 60)
+}
+
+/// Inverse of [`days_from_civil`] (Howard Hinnant's `civil_from_days`).
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
 /// Days since 1970-01-01 in the proleptic Gregorian calendar
 /// (Howard Hinnant's `days_from_civil`).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -38,5 +60,16 @@ mod tests {
         assert_eq!(weekday_short("2027-01-01"), Some("Fri"));
         assert_eq!(weekday_short("2026-13-01"), None);
         assert_eq!(weekday_short("garbage"), None);
+    }
+
+    #[test]
+    fn formats_local_time() {
+        assert_eq!(local_iso_minute(0, 0), "1970-01-01T00:00");
+        // 2026-11-12 13:15 UTC, in Paris (UTC+1) and New York (UTC-5).
+        assert_eq!(local_iso_minute(1_794_489_300, 3600), "2026-11-12T14:15");
+        assert_eq!(local_iso_minute(1_794_489_300, -18_000), "2026-11-12T08:15");
+        // Leap day, and crossing midnight backwards.
+        assert_eq!(local_iso_minute(951_782_400, 0), "2000-02-29T00:00");
+        assert_eq!(local_iso_minute(951_782_400, -60), "2000-02-28T23:59");
     }
 }
