@@ -3,6 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>         <string>dev.meteo.app.widget</string>
+    <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key>  <string>en</string>
+    <key>CFBundleSupportedPlatforms</key> <array><string>MacOSX</string></array>
     <key>CFBundleName</key>               <string>MeteoWidget</string>
     <key>CFBundleDisplayName</key>        <string>Météo</string>
     <key>CFBundleExecutable</key>         <string>MeteoWidget</string>

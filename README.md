@@ -136,12 +136,19 @@ A WidgetKit widget in small and medium sizes, the same content as the Android
 widget. The medium size adds the next 5 hours. Clicking it opens the app.
 
 ```bash
-scripts/bundle-macos.sh      # builds Météo.app with the widget inside
-open target/Météo.app        # run it once so macOS lists the widget
+scripts/bundle-macos.sh --install   # builds Météo.app, copies it to ~/Applications
+open ~/Applications/Météo.app       # run it once so macOS lists the widget
 ```
 
 Then right-click the desktop, choose **Edit Widgets…**, search for "Météo" and drag it
 out. It also works in Notification Center.
+
+**The widget needs a developer certificate.** macOS refuses to start a widget extension
+signed ad hoc (chronod logs `RBSServiceErrorDomain Code=1 "Client not authorized"`), so
+it never shows in the gallery. A free Apple ID is enough: Xcode › Settings › Accounts ›
+add your Apple ID › Manage Certificates › **+** › Apple Development. The bundle script
+then signs with that certificate automatically (or set `MACOS_SIGN_IDENTITY`). Without
+one the app still works, only the widget doesn't.
 
 - [macos/MeteoWidget](macos/MeteoWidget) holds the Swift code. It only does layout: its
   content comes from the Rust core through a small C API (`meteo_widget.h`, built from
@@ -152,7 +159,7 @@ out. It also works in Notification Center.
 - Data: widget extensions must be sandboxed. Without a development team there is no
   App Group to share a container, so the extension's entitlements allow just the app's
   data folder (`~/Library/Application Support/dev.meteo.app/`, read and write).
-  Everything is signed ad hoc.
+  Signing is described above.
 - To check the layout without placing the widget,
   `scripts/bundle-macos.sh --snapshot <dir>` renders both sizes with real data to PNG.
 

@@ -8,17 +8,26 @@
 #   scripts/bundle-macos.sh                     # release build
 #   scripts/bundle-macos.sh --debug             # debug build (faster to compile)
 #   scripts/bundle-macos.sh --snapshot <dir>    # also render the widget to PNGs
+#   scripts/bundle-macos.sh --install           # also copy to ~/Applications and register
 #   open target/Météo.app
+#
+# Signing: macOS only runs widget extensions signed with a developer
+# certificate. A free Apple ID gives one (Xcode › Settings › Accounts ›
+# Manage Certificates › + › Apple Development); it's picked up automatically.
+# Without one the app is signed ad hoc and works, but the widget doesn't.
+# MACOS_SIGN_IDENTITY overrides the choice.
 set -eu
 cd "$(dirname "$0")/.."
 
 profile=release
 cargo_flags=--release
 snapshot_dir=
+install=
 while [ $# -gt 0 ]; do
     case "$1" in
         --debug) profile=debug; cargo_flags= ;;
         --snapshot) snapshot_dir="$2"; shift ;;
+        --install) install=1 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
     shift
@@ -30,6 +39,12 @@ done
 host=$(rustc -vV | sed -n 's/^host: //p')
 export "CFLAGS_$(echo "$host" | tr - _)=-mmacosx-version-min=14.0"
 cargo build -p meteo -p meteo-widget-ffi $cargo_flags
+
+identity="${MACOS_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*) \([0-9A-F]\{40\}\) "Apple Development.*/\1/p' | head -n 1)}"
+identity="${identity:--}"
+if [ "$identity" = "-" ]; then
+    echo "note: no Apple Development certificate found; signing ad hoc (the widget won't load)" >&2
+fi
 
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
 app="target/Météo.app"
@@ -44,6 +59,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>          <string>dev.meteo.app</string>
+    <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
+    <key>CFBundleSupportedPlatforms</key>  <array><string>MacOSX</string></array>
     <key>CFBundleName</key>                <string>Météo</string>
     <key>CFBundleDisplayName</key>         <string>Météo</string>
     <key>CFBundleExecutable</key>          <string>meteo</string>
@@ -76,9 +93,18 @@ xcrun swiftc $swift_flags -application-extension \
     "$widget_src/MeteoWidget.swift" "$widget_src/WidgetViews.swift" $rust_libs \
     -o "$appex/Contents/MacOS/MeteoWidget"
 sed "s/VERSION/$version/" "$widget_src/Info.plist" > "$appex/Contents/Info.plist"
-codesign --force --sign - --entitlements "$widget_src/MeteoWidget.entitlements" "$appex"
+codesign --force --sign "$identity" --entitlements "$widget_src/MeteoWidget.entitlements" "$appex"
 
-codesign --force --sign - "$app"
+codesign --force --sign "$identity" "$app"
+
+if [ -n "$install" ]; then
+    lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    mkdir -p "$HOME/Applications"
+    rm -rf "$HOME/Applications/Météo.app"
+    cp -R "$app" "$HOME/Applications/"
+    "$lsregister" -f "$HOME/Applications/Météo.app"
+    echo "Installed $HOME/Applications/Météo.app"
+fi
 
 if [ -n "$snapshot_dir" ]; then
     mkdir -p "$snapshot_dir"
