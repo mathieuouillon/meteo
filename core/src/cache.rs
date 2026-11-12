@@ -99,7 +99,7 @@ mod tests {
         save(&dir, &paris(), &forecast, FETCHED_AT).unwrap();
 
         // Another city has no cache yet.
-        let lyon = Location { name: "Lyon".into(), detail: String::new(), latitude: 45.75, longitude: 4.85 };
+        let lyon = Location::new("Lyon", "", 45.75, 4.85);
         assert!(load(&dir, &lyon, FETCHED_AT).is_none());
 
         // Read back immediately: unchanged.

@@ -21,6 +21,8 @@ export struct CityItem {
     name: string,
     detail: string,
     selected: bool,
+    /// The device's own position.
+    device: bool,
 }
 
 /// One city in the picker: name, region/country, and optional actions.
@@ -40,7 +42,10 @@ component CityRow inherits Rectangle {
         VerticalLayout {
             alignment: center;
             spacing: 2px;
-            Text { text: root.city.name; color: white; font-size: 18px; font-weight: root.city.selected ? 600 : 400; overflow: elide; }
+            Text {
+                text: (root.city.device ? "📍 " : "") + root.city.name;
+                color: white; font-size: 18px; font-weight: root.city.selected ? 600 : 400; overflow: elide;
+            }
             if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; overflow: elide; }
         }
         if root.city.selected: Text { text: "✓"; color: white; font-size: 18px; vertical-alignment: center; }
@@ -65,7 +70,9 @@ component CityPicker inherits Rectangle {
     in property <[CityItem]> cities;
     in property <[CityItem]> results;
     in property <string> search-status;
+    in property <bool> can-locate;
     callback close();
+    callback locate();
     callback search(string);
     callback add-city(int);
     callback select-city(int);
@@ -124,6 +131,14 @@ component CityPicker inherits Rectangle {
                 width: parent.width;
                 alignment: start;
                 spacing: 2px;
+                if input.text == "" && root.can-locate: Rectangle {
+                    height: 52px;
+                    border-radius: 14px;
+                    background: locate-touch.pressed ? #ffffff33 : #ffffff1a;
+                    Text { text: "📍  Use my location"; color: white; font-size: 17px; }
+                    locate-touch := TouchArea { clicked => { root.locate(); } }
+                }
+                if input.text == "" && root.can-locate: Rectangle { height: 10px; }
                 if input.text == "": Text {
                     text: "SAVED CITIES"; color: #ffffffb3; font-size: 12px; font-weight: 600;
                 }
@@ -218,7 +233,9 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
+    in property <bool> can-locate;
     callback refresh();
+    callback locate();
     callback search(string);
     callback add-city(int);
     callback select-city(int);
@@ -395,6 +412,8 @@ export component MainWindow inherits Window {
         cities: root.cities;
         results: root.results;
         search-status: root.search-status;
+        can-locate: root.can-locate;
+        locate => { root.locate(); }
         close => { root.picker-open = false; root.search(""); }
         search(text) => { root.search(text); }
         add-city(i) => { root.add-city(i); self.close(); }

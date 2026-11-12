@@ -46,9 +46,28 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
+## Cities and location
+
+Tap the city name to open the city picker:
+
+- **Search** uses Open-Meteo's geocoding API (`meteo_core::search_cities`). Tap a
+  result to save and show it.
+- **Saved cities** (`meteo_core::Places`) are stored in `places.json` next to the
+  cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
+- **Use my location** (Android only for now) asks for location permission, finds the
+  device's position, and names it with Android's `Geocoder`. It becomes a "📍" entry at
+  the top of the list, refreshed each time the app opens. This is all JNI from Rust
+  ([app/src/location_android.rs](app/src/location_android.rs)). A NativeActivity gets
+  no Java callbacks, so the code polls the permission state, and it starts location
+  updates sent to a `PendingIntent` (so the provider produces a fix) while it polls
+  `getLastKnownLocation`.
+
+On macOS, location needs a proper `.app` bundle with a usage description
+(`NSLocationWhenInUseUsageDescription`), so it isn't wired up yet.
+
 ## Offline cache
 
-After each successful download, `core` saves the forecast as JSON
+After each successful download, `core` saves the forecast as JSON, one file per city
 (`meteo_core::cache`). On startup the app shows the cached forecast at once, then
 refreshes it. A cached forecast is moved forward to the current time first: past
 hours and days are dropped and the first ones relabelled "Now" and "Today" (48 hours
@@ -57,8 +76,8 @@ forecast stays on screen with "Offline · updated 3 h ago".
 
 | Platform | Cache file |
 |----------|------------|
-| macOS    | `~/Library/Application Support/dev.meteo.app/forecast.json` |
-| Android  | the app's internal files directory (`files/forecast.json`) |
+| macOS    | `~/Library/Application Support/dev.meteo.app/forecast-<lat>_<lon>.json` |
+| Android  | the app's internal files directory (`files/forecast-<lat>_<lon>.json`) |
 
 The home-screen widgets will read the same file. On macOS a WidgetKit extension
 can't read another app's Application Support folder, so the cache will move to a

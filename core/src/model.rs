@@ -11,16 +11,19 @@ pub struct Location {
     pub detail: String,
     pub latitude: f64,
     pub longitude: f64,
+    /// The device's own position ("📍"), refreshed when the app opens,
+    /// rather than a city the user searched for.
+    #[serde(default)]
+    pub is_device: bool,
 }
 
 impl Location {
+    pub fn new(name: impl Into<String>, detail: impl Into<String>, latitude: f64, longitude: f64) -> Self {
+        Self { name: name.into(), detail: detail.into(), latitude, longitude, is_device: false }
+    }
+
     pub fn paris() -> Self {
-        Self {
-            name: "Paris".into(),
-            detail: "Île-de-France, France".into(),
-            latitude: 48.8566,
-            longitude: 2.3522,
-        }
+        Self::new("Paris", "Île-de-France, France", 48.8566, 2.3522)
     }
 
     /// Identifies the place by its coordinates (about 1 km precision), for

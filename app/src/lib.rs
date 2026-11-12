@@ -12,6 +12,17 @@ use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
+#[cfg(target_os = "android")]
+mod location_android;
+
+#[cfg(target_os = "android")]
+static ANDROID_APP: OnceLock<slint::android::AndroidApp> = OnceLock::new();
+
+thread_local! {
+    /// The app state, for results posted back to the UI thread by workers.
+    static APP: std::cell::OnceCell<Rc<App>> = const { std::cell::OnceCell::new() };
+}
+
 /// Set on Android from the activity's internal data path.
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -67,8 +78,19 @@ pub fn run() -> Result<(), slint::PlatformError> {
         search_gen: Arc::default(),
         results: Arc::default(),
     });
+    APP.with(|a| a.set(app.clone()).ok());
+    ui.set_can_locate(cfg!(target_os = "android"));
     app.show_selected();
+    // Following the device: update the position quietly at startup if
+    // we're already allowed to.
+    if app.places.borrow().selected().is_device {
+        app.locate(true);
+    }
 
+    ui.on_locate({
+        let app = app.clone();
+        move || app.locate(false)
+    });
     ui.on_refresh({
         let app = app.clone();
         move || app.refresh()
@@ -183,6 +205,37 @@ impl App {
         });
     }
 
+    /// Finds the device's position and selects it as the "📍" city.
+    /// `quiet`: no status messages and no permission dialog (startup refresh).
+    fn locate(&self, quiet: bool) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        if !quiet {
+            ui.set_search_status("Finding your location…".into());
+        }
+        let weak = self.ui.clone();
+        std::thread::spawn(move || {
+            let found = device_location(quiet);
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(ui) = weak.upgrade() else { return };
+                match found {
+                    Ok(here) => {
+                        APP.with(|a| {
+                            if let Some(app) = a.get() {
+                                app.change_places(|p| p.set_device(here));
+                            }
+                        });
+                        if !quiet {
+                            ui.set_search_status(SharedString::new());
+                            ui.set_picker_open(false);
+                        }
+                    }
+                    Err(message) if !quiet => ui.set_search_status(message.into()),
+                    Err(_) => {}
+                }
+            });
+        });
+    }
+
     /// Searches for cities once the user stops typing for a moment.
     fn search(&self, text: String) {
         let generation = self.search_gen.fetch_add(1, Ordering::Relaxed) + 1;
@@ -219,6 +272,31 @@ impl App {
     }
 }
 
+/// The device's position and place name (blocking; call from a worker thread).
+#[cfg(target_os = "android")]
+fn device_location(quiet: bool) -> Result<Location, String> {
+    use location_android as loc;
+    let app = ANDROID_APP.get().ok_or("Location isn't available")?;
+    if !loc::has_permission(app) {
+        if quiet {
+            return Err(String::new());
+        }
+        loc::request_permission(app);
+        if !loc::wait_for_permission(app, Duration::from_secs(60)) {
+            return Err("Location permission wasn't granted".into());
+        }
+    }
+    let (lat, lon) = loc::current_position(app, Duration::from_secs(15))
+        .ok_or("Couldn't find your location. Is location turned on?")?;
+    let (name, detail) = loc::place_name(app, lat, lon).unwrap_or_else(|| ("My location".into(), String::new()));
+    Ok(Location::new(name, detail, lat, lon))
+}
+
+#[cfg(not(target_os = "android"))]
+fn device_location(_quiet: bool) -> Result<Location, String> {
+    Err("Location isn't available on this platform yet".into())
+}
+
 /// Runs a future on a small single-threaded runtime (we're on a worker thread).
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread()
@@ -233,6 +311,7 @@ fn city_item(c: &Location, selected: bool) -> CityItem {
         name: c.name.as_str().into(),
         detail: c.detail.as_str().into(),
         selected,
+        device: c.is_device,
     }
 }
 
@@ -311,6 +390,7 @@ fn android_main(app: slint::android::AndroidApp) {
     if let Some(dir) = app.internal_data_path() {
         let _ = DATA_DIR.set(dir);
     }
+    let _ = ANDROID_APP.set(app.clone());
     slint::android::init(app).expect("Slint Android backend");
     run().expect("Slint event loop");
 }

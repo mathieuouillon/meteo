@@ -72,6 +72,22 @@ impl Places {
         }
     }
 
+    /// Sets the device's position: replaces the previous one (so there is
+    /// only ever one "📍" entry), or adds it at the top, and selects it.
+    pub fn set_device(&mut self, mut here: Location) {
+        here.is_device = true;
+        match self.cities.iter().position(|c| c.is_device) {
+            Some(i) => {
+                self.cities[i] = here;
+                self.selected = i;
+            }
+            None => {
+                self.cities.insert(0, here);
+                self.selected = 0;
+            }
+        }
+    }
+
     /// Removes a city, keeping at least one. The selection follows the city
     /// that was selected, or moves to its neighbour if that one was removed.
     pub fn remove(&mut self, index: usize) {
@@ -90,7 +106,7 @@ mod tests {
     use super::*;
 
     fn city(name: &str, lat: f64) -> Location {
-        Location { name: name.into(), detail: String::new(), latitude: lat, longitude: 0.0 }
+        Location::new(name, "", lat, 0.0)
     }
 
     #[test]
@@ -114,6 +130,21 @@ mod tests {
         // The last city can't be removed.
         p.remove(0);
         assert_eq!(p.cities().len(), 1);
+    }
+
+    #[test]
+    fn device_position_is_a_single_entry_at_the_top() {
+        let mut p = Places::default();
+        p.set_device(city("Here", 10.0));
+        assert_eq!((p.selected_index(), p.cities().len()), (0, 2));
+        assert!(p.selected().is_device);
+
+        // Moving replaces the entry instead of adding another one.
+        p.select(1);
+        p.set_device(city("Elsewhere", 20.0));
+        assert_eq!(p.cities().len(), 2);
+        assert_eq!(p.selected().name, "Elsewhere");
+        assert_eq!(p.cities()[1].name, "Paris");
     }
 
     #[test]

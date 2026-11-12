@@ -34,16 +34,14 @@ pub fn parse_places(json: &[u8]) -> Result<Vec<Location>, Error> {
     Ok(raw
         .results
         .into_iter()
-        .map(|p| Location {
-            detail: [p.admin1, p.country]
+        .map(|p| {
+            let detail = [p.admin1, p.country]
                 .into_iter()
                 .flatten()
                 .filter(|s| !s.is_empty() && *s != p.name)
                 .collect::<Vec<_>>()
-                .join(", "),
-            name: p.name,
-            latitude: p.latitude,
-            longitude: p.longitude,
+                .join(", ");
+            Location::new(p.name, detail, p.latitude, p.longitude)
         })
         .collect())
 }
