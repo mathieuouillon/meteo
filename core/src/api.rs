@@ -80,23 +80,23 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
     // days end at the first gap.
     let h = &raw.hourly;
     let hour_ok = |i: usize| at(&h.temperature_2m, i).is_some() && at(&h.weather_code, i).is_some();
-    let hours: Vec<Hour> = (start..h.time.len())
+    let hour = |i: usize| Hour {
+        label: format!("{}h", h.time[i].get(11..13).unwrap_or("?")),
+        time: h.time[i].clone(),
+        temperature: at(&h.temperature_2m, i).unwrap_or_default(),
+        precipitation_probability: at(&h.precipitation_probability, i).unwrap_or(0.0),
+        precipitation: at(&h.precipitation, i).unwrap_or(0.0),
+        condition: Condition::from_wmo(at(&h.weather_code, i).unwrap_or(0)),
+        is_day: at(&h.is_day, i) == Some(1),
+    };
+    let mut hours: Vec<Hour> = (start..h.time.len())
         .take_while(|&i| hour_ok(i))
         .take(HOURS_KEPT)
-        .map(|i| Hour {
-            label: if i == start {
-                "Now".into()
-            } else {
-                format!("{}h", &h.time[i][11..13])
-            },
-            time: h.time[i].clone(),
-            temperature: at(&h.temperature_2m, i).unwrap_or_default(),
-            precipitation_probability: at(&h.precipitation_probability, i).unwrap_or(0.0),
-            precipitation: at(&h.precipitation, i).unwrap_or(0.0),
-            condition: Condition::from_wmo(at(&h.weather_code, i).unwrap_or(0)),
-            is_day: at(&h.is_day, i) == Some(1),
-        })
+        .map(hour)
         .collect();
+    if let Some(first) = hours.first_mut() {
+        first.label = "Now".into();
+    }
     if hours.is_empty() {
         return Err(Error::MissingData);
     }
@@ -106,13 +106,10 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         .map_while(|i| {
             let (min, max) = (at(&d.temperature_2m_min, i)?, at(&d.temperature_2m_max, i)?);
             let date = d.time[i].clone();
-            // Rain per hour of this day (local time), for the day's detail view.
-            let rain: Vec<f64> = h
-                .time
-                .iter()
-                .enumerate()
-                .filter(|(j, t)| t.starts_with(&date) && hour_ok(*j))
-                .map(|(j, _)| at(&h.precipitation, j).unwrap_or(0.0))
+            // Every hour of this day (local time), for the day's detail chart.
+            let day_hours: Vec<Hour> = (0..h.time.len())
+                .filter(|&j| h.time[j].starts_with(&date) && hour_ok(j))
+                .map(hour)
                 .collect();
             Some(Day {
                 label: if i == 0 {
@@ -123,9 +120,10 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                 min,
                 max,
                 precipitation_probability: at(&d.precipitation_probability_max, i).unwrap_or(0.0),
-                precipitation_sum: at(&d.precipitation_sum, i).unwrap_or_else(|| rain.iter().sum()),
+                precipitation_sum: at(&d.precipitation_sum, i)
+                    .unwrap_or_else(|| day_hours.iter().map(|h| h.precipitation).sum()),
                 condition: Condition::from_wmo(at(&d.weather_code, i).unwrap_or(0)),
-                rain,
+                hours: day_hours,
                 date,
             })
         })
@@ -266,10 +264,12 @@ mod tests {
         assert_eq!(f.hours[1].precipitation, 1.2);
         assert_eq!(f.hours[0].precipitation_probability, 0.0);
         assert_eq!(f.days.len(), 2, "ends at the first missing day");
-        assert_eq!(f.days[0].rain, vec![0.4, 1.2]);
+        let rain = |d: &Day| d.hours.iter().map(|h| h.precipitation).collect::<Vec<_>>();
+        assert_eq!(rain(&f.days[0]), vec![0.4, 1.2]);
+        assert_eq!(f.days[0].hours[1].label, "23h");
         assert_eq!(f.days[0].precipitation_sum, 3.1);
         // No daily total from the model: the sum of the hours.
-        assert_eq!(f.days[1].rain, vec![0.0]);
+        assert_eq!(rain(&f.days[1]), vec![0.0]);
         assert_eq!(f.days[1].precipitation_sum, 0.0);
     }
 

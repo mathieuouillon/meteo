@@ -8,10 +8,11 @@ use crate::chart::{ChartGeometry, temperature_chart};
 use crate::model::{Day, Forecast};
 use crate::scene::SceneSpec;
 
-/// Horizontal space per hour in the hourly chart, in logical pixels.
-pub const HOUR_STEP: f64 = 60.0;
-pub const CHART_HEIGHT: f64 = 150.0;
-/// Hours shown in the hourly chart.
+/// Horizontal space per hour in a day's detail chart, in logical pixels.
+pub const HOUR_STEP: f64 = 56.0;
+/// Height of the temperature curve in a day's detail chart.
+pub const CHART_HEIGHT: f64 = 110.0;
+/// Hours the widgets can show from now.
 pub const HOURS_SHOWN: usize = 24;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -28,46 +29,37 @@ pub struct MainScreen {
     pub sky_bottom: u32,
     pub sky_top_css: String,
     pub sky_bottom_css: String,
-    pub chart: ChartGeometry,
+    /// The next hours from now (used by the widgets).
     pub hours: Vec<HourView>,
     pub days: Vec<DayView>,
     /// What the animated background shows.
     pub scene: SceneSpec,
 }
 
+/// One of the next hours, for the widgets.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HourView {
     pub label: String,
     pub temperature: String,
     pub icon: String,
-    /// Empty when rain is unlikely, so the UI shows nothing.
-    pub precipitation: String,
-    /// Expected amount, e.g. "0.4 mm"; empty when dry.
-    pub rain: String,
-    /// Centre of this hour's point on the chart.
-    pub x: f64,
-    pub y: f64,
 }
 
 impl MainScreen {
     pub fn from_forecast(f: &Forecast) -> Self {
         let c = &f.current;
         let sky = c.condition.sky(c.is_day);
-        let shown = &f.hours[..f.hours.len().min(HOURS_SHOWN)];
-        let chart = temperature_chart(shown, HOUR_STEP, CHART_HEIGHT, 36.0, 14.0);
-        let hours = shown
+        let hours = f
+            .hours
             .iter()
-            .zip(&chart.points)
-            .map(|(h, p)| HourView {
+            .take(HOURS_SHOWN)
+            .map(|h| HourView {
                 label: h.label.clone(),
                 temperature: temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
-                precipitation: rain_chance(h.precipitation_probability),
-                rain: rain_amount(h.precipitation, true),
-                x: p.x,
-                y: p.y,
             })
             .collect();
+        // The current hour, "15" in "…T15:00", marks "Now" in today's chart.
+        let now = f.hours.first().map(|h| h.time.clone());
 
         Self {
             city: f.location.clone(),
@@ -82,15 +74,14 @@ impl MainScreen {
             sky_bottom: sky.bottom,
             sky_top_css: sky.top_css(),
             sky_bottom_css: sky.bottom_css(),
-            chart,
             hours,
-            days: DayView::list(&f.days, f.hours.first().and_then(|h| h.time.get(11..13)?.parse().ok())),
+            days: DayView::list(&f.days, now.as_deref()),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
         }
     }
 }
 
-/// One row of the 7-day list.
+/// One row of the 7-day list, and the hour-by-hour chart shown when it's opened.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DayView {
     pub label: String,
@@ -105,60 +96,80 @@ pub struct DayView {
     pub bar_end: f64,
     /// The day's total, e.g. "3.1 mm"; empty when dry.
     pub rain_total: String,
-    /// One bar per hour of the day, for the day's rain detail.
-    pub rain: Vec<RainBar>,
-    /// Hour the rain detail opens at: now for today, otherwise the first
-    /// wet hour, so the interesting part is in view.
+    /// The day's temperature curve (one point per hour).
+    pub chart: ChartGeometry,
+    pub hours: Vec<DayHourView>,
+    /// Hour the chart opens at: now for today, 06h for other days.
     pub first_hour: usize,
 }
 
-/// One hour in a day's rain chart.
+/// One hour of a day's chart.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct RainBar {
-    /// "00h" … "23h".
+pub struct DayHourView {
+    /// "15h", or "Now" for the current hour.
     pub label: String,
-    /// "1.2"; empty when dry.
-    pub amount: String,
-    /// Bar height, 0–1, on a scale shared by the whole week.
-    pub height: f64,
+    pub temperature: String,
+    pub icon: String,
+    /// Chance of rain, e.g. "40%"; empty when unlikely.
+    pub precipitation: String,
+    /// Expected amount, e.g. "1.2"; empty when dry.
+    pub rain: String,
+    /// Rain bar height, 0–1, on a scale shared by the whole week.
+    pub rain_height: f64,
+    /// This hour's point on the temperature curve.
+    pub x: f64,
+    pub y: f64,
 }
 
-/// Bars are scaled to the wettest hour of the week, but never so that a
-/// drizzle fills the chart.
+/// Rain bars are scaled to the wettest hour of the week, but never so that
+/// a drizzle fills the chart.
 const RAIN_SCALE_MIN_MM: f64 = 2.0;
+/// Where other days' charts open.
+const MORNING: usize = 6;
 
 impl DayView {
-    /// `now_hour`: the current hour of the day, used for today's detail.
-    fn list(days: &[Day], now_hour: Option<usize>) -> Vec<Self> {
+    /// `now`: the current hour's time ("2026-11-12T15:00"), marked "Now".
+    fn list(days: &[Day], now: Option<&str>) -> Vec<Self> {
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
         let range = (hi - lo).max(1.0);
-        let wettest = days.iter().flat_map(|d| d.rain.iter().copied()).fold(RAIN_SCALE_MIN_MM, f64::max);
+        let wettest = days
+            .iter()
+            .flat_map(|d| d.hours.iter().map(|h| h.precipitation))
+            .fold(RAIN_SCALE_MIN_MM, f64::max);
         days.iter()
-            .enumerate()
-            .map(|(i, d)| Self {
-                first_hour: match (i, now_hour) {
-                    (0, Some(now)) => now,
-                    _ => d.rain.iter().position(|&mm| mm >= 0.05).unwrap_or(0),
-                },
-                label: d.label.clone(),
-                icon: d.condition.icon(true).into(),
-                precipitation: rain_chance(d.precipitation_probability),
-                min: temp(d.min),
-                max: temp(d.max),
-                bar_start: (d.min - lo) / range,
-                bar_end: (d.max - lo) / range,
-                rain_total: rain_amount(d.precipitation_sum, true),
-                rain: d
-                    .rain
+            .map(|d| {
+                let chart = temperature_chart(&d.hours, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
+                let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
+                let hours = d
+                    .hours
                     .iter()
+                    .zip(&chart.points)
                     .enumerate()
-                    .map(|(hour, &mm)| RainBar {
-                        label: format!("{hour:02}h"),
-                        amount: rain_amount(mm, false),
-                        height: (mm / wettest).clamp(0.0, 1.0),
+                    .map(|(i, (h, p))| DayHourView {
+                        label: if Some(i) == now_index { "Now".into() } else { h.label.clone() },
+                        temperature: temp(h.temperature),
+                        icon: h.condition.icon(h.is_day).into(),
+                        precipitation: rain_chance(h.precipitation_probability),
+                        rain: rain_amount(h.precipitation, false),
+                        rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
+                        x: p.x,
+                        y: p.y,
                     })
-                    .collect(),
+                    .collect();
+                Self {
+                    first_hour: now_index.unwrap_or(MORNING.min(d.hours.len().saturating_sub(1))),
+                    label: d.label.clone(),
+                    icon: d.condition.icon(true).into(),
+                    precipitation: rain_chance(d.precipitation_probability),
+                    min: temp(d.min),
+                    max: temp(d.max),
+                    bar_start: (d.min - lo) / range,
+                    bar_end: (d.max - lo) / range,
+                    rain_total: rain_amount(d.precipitation_sum, true),
+                    chart,
+                    hours,
+                }
             })
             .collect()
     }
@@ -201,23 +212,44 @@ pub fn temp(t: f64) -> String {
 mod tests {
     use super::*;
     use crate::condition::Condition;
+    use crate::model::Hour;
 
-    fn day(min: f64, max: f64, rain: f64) -> Day {
+    fn hour(time: &str, temperature: f64, rain_mm: f64) -> Hour {
+        Hour {
+            label: format!("{}h", &time[11..13]),
+            time: time.into(),
+            temperature,
+            precipitation_probability: 0.0,
+            precipitation: rain_mm,
+            condition: Condition::Rain,
+            is_day: true,
+        }
+    }
+
+    fn day(date: &str, min: f64, max: f64, rain: f64) -> Day {
         Day {
-            date: "2026-11-12".into(),
+            date: date.into(),
             label: "Today".into(),
             min,
             max,
             precipitation_probability: rain,
             precipitation_sum: rain / 10.0,
-            rain: vec![0.0, rain / 20.0, 1.0],
+            hours: vec![
+                hour(&format!("{date}T00:00"), min, 0.0),
+                hour(&format!("{date}T01:00"), max, rain / 20.0),
+                hour(&format!("{date}T02:00"), min, 1.0),
+            ],
             condition: Condition::Rain,
         }
     }
 
     #[test]
-    fn day_bars_share_the_week_scale() {
-        let rows = DayView::list(&[day(5.0, 10.0, 80.0), day(0.0, 20.0, 5.0)], Some(14));
+    fn days_share_the_week_scales() {
+        let rows = DayView::list(
+            &[day("2026-11-12", 5.0, 10.0, 80.0), day("2026-11-13", 0.0, 20.0, 5.0)],
+            Some("2026-11-12T01:00"),
+        );
+        // Temperature bars on the week's range.
         assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
         assert_eq!((rows[1].bar_start, rows[1].bar_end), (0.0, 1.0));
         assert_eq!(rows[0].precipitation, "80%");
@@ -225,14 +257,18 @@ mod tests {
         assert_eq!(rows[0].max, "10°");
         // Rain: total, and hourly bars on the week's scale (wettest hour 4 mm).
         assert_eq!(rows[0].rain_total, "8.0 mm");
-        assert_eq!(rows[0].rain[1].amount, "4.0");
-        assert_eq!(rows[0].rain[1].height, 1.0);
-        assert_eq!(rows[0].rain[2].height, 0.25);
-        assert_eq!(rows[0].rain[0].amount, "");
-        assert_eq!(rows[1].rain[1].label, "01h");
-        // Today opens at the current hour, other days at their first wet hour.
-        assert_eq!(rows[0].first_hour, 14);
-        assert_eq!(rows[1].first_hour, 1);
+        assert_eq!(rows[0].hours[1].rain, "4.0");
+        assert_eq!(rows[0].hours[1].rain_height, 1.0);
+        assert_eq!(rows[0].hours[2].rain_height, 0.25);
+        assert_eq!(rows[0].hours[0].rain, "");
+        // The curve: one point per hour, the warmest hour highest.
+        assert_eq!(rows[0].chart.points.len(), 3);
+        assert!(rows[0].hours[1].y < rows[0].hours[0].y);
+        // "Now" in today's chart, which opens there; other days open in the morning.
+        assert_eq!(rows[0].hours[1].label, "Now");
+        assert_eq!(rows[1].hours[1].label, "01h");
+        assert_eq!(rows[0].first_hour, 1);
+        assert_eq!(rows[1].first_hour, 2, "06h, clamped to the hours available");
     }
 
     #[test]

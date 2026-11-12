@@ -26,5 +26,5 @@ pub use model::{Current, Day, Forecast, Hour, Location};
 pub use places::Places;
 pub use source::{Settings, Source};
 pub use scene::{CLOUD_HEIGHT, CLOUD_WIDTH, CloudView, FogView, Scene, SceneFrame, SceneSpec};
-pub use view::{CHART_HEIGHT, DayView, HOUR_STEP, HOURS_SHOWN, HourView, MainScreen, RainBar, rain_amount, temp, updated_ago};
+pub use view::{CHART_HEIGHT, DayHourView, DayView, HOUR_STEP, HOURS_SHOWN, HourView, MainScreen, rain_amount, temp, updated_ago};
 pub use widget::{WidgetHour, WidgetState, WidgetView, refresh_selected, widget_state};

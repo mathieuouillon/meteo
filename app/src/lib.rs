@@ -387,10 +387,7 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     for set in [MainWindow::set_feels_like, MainWindow::set_humidity, MainWindow::set_wind] {
         set(ui, "--".into());
     }
-    ui.set_hours(ModelRc::default());
     ui.set_days(ModelRc::default());
-    ui.set_line_path(SharedString::new());
-    ui.set_area_path(SharedString::new());
 }
 
 fn apply(ui: &MainWindow, s: &MainScreen) {
@@ -406,25 +403,6 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
     ui.set_wind(s.wind.as_str().into());
     ui.set_sky_top(rgb(s.sky_top));
     ui.set_sky_bottom(rgb(s.sky_bottom));
-    ui.set_chart_width(s.chart.width as f32);
-    ui.set_chart_height(s.chart.height as f32);
-    ui.set_line_path(s.chart.line.as_str().into());
-    ui.set_area_path(s.chart.area.as_str().into());
-
-    let hours: Vec<HourItem> = s
-        .hours
-        .iter()
-        .map(|h| HourItem {
-            label: h.label.as_str().into(),
-            temperature: h.temperature.as_str().into(),
-            icon: h.icon.as_str().into(),
-            precipitation: h.precipitation.as_str().into(),
-            x: h.x as f32,
-            y: h.y as f32,
-            rain: h.rain.as_str().into(),
-        })
-        .collect();
-    ui.set_hours(ModelRc::from(Rc::new(VecModel::from(hours))));
 
     let days: Vec<DayItem> = s
         .days
@@ -439,10 +417,23 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
             bar_end: d.bar_end as f32,
             rain_total: d.rain_total.as_str().into(),
             first_hour: d.first_hour as i32,
-            rain: ModelRc::from(Rc::new(VecModel::from(
-                d.rain
+            chart_width: d.chart.width as f32,
+            chart_height: d.chart.height as f32,
+            line_path: d.chart.line.as_str().into(),
+            area_path: d.chart.area.as_str().into(),
+            hours: ModelRc::from(Rc::new(VecModel::from(
+                d.hours
                     .iter()
-                    .map(|b| RainBar { label: b.label.as_str().into(), amount: b.amount.as_str().into(), height: b.height as f32 })
+                    .map(|h| DayHour {
+                        label: h.label.as_str().into(),
+                        temperature: h.temperature.as_str().into(),
+                        icon: h.icon.as_str().into(),
+                        precipitation: h.precipitation.as_str().into(),
+                        rain: h.rain.as_str().into(),
+                        rain_height: h.rain_height as f32,
+                        x: h.x as f32,
+                        y: h.y as f32,
+                    })
                     .collect::<Vec<_>>(),
             ))),
         })

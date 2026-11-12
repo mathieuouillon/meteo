@@ -126,9 +126,9 @@ pub struct Day {
     /// Total expected precipitation that day, in mm.
     #[serde(default)]
     pub precipitation_sum: f64,
-    /// Precipitation for each hour of the day from 00h, in mm (fewer than
-    /// 24 values where the model's range ends).
+    /// Every hour of the day from 00h (fewer where the model's range ends),
+    /// for the day's detail chart.
     #[serde(default)]
-    pub rain: Vec<f64>,
+    pub hours: Vec<Hour>,
     pub condition: Condition,
 }

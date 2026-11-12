@@ -71,16 +71,23 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
-## Rain amounts
+## Days hour by hour
 
-- The hourly chart shows the expected amount under each hour ("1.2 mm"), below the
-  chance of rain.
-- Each day in the 7-day list shows its total. Tap a day to open its rain hour by hour:
-  a bar chart for 00h–23h that scrolls sideways, with the amount above each wet hour.
-  Bars share one scale for the whole week (at least 2 mm), so a wet day looks wetter
-  than a drizzly one. Today opens at the current hour, other days at their first wet
-  hour.
-- Amounts are Open-Meteo's `precipitation`: rain, showers and snow as water, in mm.
+The main screen shows the current weather and the 7-day list. Tap a day to open it
+hour by hour, in a chart that scrolls sideways:
+
+- the temperature curve, with each hour's temperature
+- the weather icon and the chance of rain
+- the expected rain as a bar with its amount in mm. Bars share one scale for the whole
+  week (at least 2 mm), so a wet day looks wetter than a drizzly one.
+
+Today opens at the current hour, marked "Now"; other days open in the morning. Each
+day row also shows the day's total rain. Amounts are Open-Meteo's `precipitation`:
+rain, showers and snow as water, in mm.
+
+All of it is computed in `core` (`DayView` and `DayHourView` in
+[core/src/view.rs](core/src/view.rs), including the curve's geometry). The `DayChart`
+component in `main.slint` only draws it.
 
 ## Data source
 

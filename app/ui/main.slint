@@ -1,17 +1,13 @@
-export struct HourItem {
+/// One hour of a day's chart (see DayHourView in core/src/view.rs).
+export struct DayHour {
     label: string,
     temperature: string,
     icon: string,
     precipitation: string,
     rain: string,
+    rain-height: float,
     x: float,
     y: float,
-}
-
-export struct RainBar {
-    label: string,
-    amount: string,
-    height: float,
 }
 
 export struct DayItem {
@@ -23,8 +19,12 @@ export struct DayItem {
     bar-start: float,
     bar-end: float,
     rain-total: string,
-    rain: [RainBar],
     first-hour: int,
+    hours: [DayHour],
+    chart-width: float,
+    chart-height: float,
+    line-path: string,
+    area-path: string,
 }
 
 export struct CloudItem {
@@ -323,48 +323,104 @@ component DayRow inherits Rectangle {
 
 /// Rain for each hour of one day: a bar chart that scrolls sideways, with
 /// the amount (mm) above each wet hour. Bars share the week's scale.
-component DayRain inherits Rectangle {
+/// A day hour by hour, shown when its row is opened: the temperature curve,
+/// the weather, the chance of rain and the expected amount, scrolling
+/// sideways. Rain bars share the week's scale.
+component DayChart inherits Rectangle {
     in property <DayItem> day;
-    property <length> step: 38px;
-    property <length> bar-max: 64px;
-    height: 118px;
-    if root.day.rain-total == "": Text {
-        text: "No rain expected";
-        color: #ffffffb3;
-        font-size: 14px;
-    }
-    if root.day.rain-total != "": Flickable {
-        content-width: root.day.rain.length * root.step;
-        // Open with the hour before `first-hour` at the left edge.
-        content-x: -max(0, min(root.day.first-hour - 1, root.day.rain.length - floor(self.width / root.step))) * root.step;
+    property <length> step: 56px;
+    property <length> curve: root.day.chart-height * 1px;
+    // Rows below the curve.
+    property <length> icon-y: root.curve + 6px;
+    property <length> chance-y: root.curve + 36px;
+    property <length> rain-base: root.curve + 112px;
+    property <length> bar-max: 40px;
+    height: root.curve + 136px;
+
+    Flickable {
+        content-width: root.day.chart-width * 1px;
         content-height: self.height;
-        for bar[j] in root.day.rain: Rectangle {
-            x: j * root.step;
+        // Open with the hour before `first-hour` at the left edge.
+        content-x: -max(0, min(root.day.first-hour - 1, root.day.hours.length - floor(self.width / root.step))) * root.step;
+
+        // Area under the curve, then the curve.
+        Path {
+            x: 0; y: 0;
+            width: root.day.chart-width * 1px;
+            height: root.curve;
+            viewbox-width: root.day.chart-width;
+            viewbox-height: root.day.chart-height;
+            // Map the viewbox 1:1 (the default `contain` rescales a stroked path).
+            fit: fill;
+            commands: root.day.area-path == "" ? "M 0 0" : root.day.area-path;
+            fill: @linear-gradient(180deg, #ffffff40 0%, #ffffff00 100%);
+            stroke-width: 0px;
+        }
+        Path {
+            x: 0; y: 0;
+            width: root.day.chart-width * 1px;
+            height: root.curve;
+            viewbox-width: root.day.chart-width;
+            viewbox-height: root.day.chart-height;
+            fit: fill;
+            commands: root.day.line-path == "" ? "M 0 0" : root.day.line-path;
+            stroke: white;
+            stroke-width: 2.5px;
+        }
+
+        for h in root.day.hours: Rectangle {
+            x: h.x * 1px - root.step / 2;
+            y: 0;
             width: root.step;
-            property <length> h: bar.amount == "" ? 2px : max(3px, bar.height * root.bar-max);
-            // Amount above the bar.
+            height: parent.height;
+            property <length> bar: h.rain == "" ? 2px : max(3px, h.rain-height * root.bar-max);
             Text {
-                y: 84px - parent.h - 18px;
+                y: h.y * 1px - 24px;
                 width: parent.width;
-                text: bar.amount;
-                color: #cfe8ff;
-                font-size: 11px;
+                text: h.temperature;
+                color: white; font-size: 14px; font-weight: 600;
                 horizontal-alignment: center;
             }
             Rectangle {
                 x: (parent.width - self.width) / 2;
-                y: 84px - parent.h;
-                width: 16px;
-                height: parent.h;
-                border-radius: 4px;
-                background: bar.amount == "" ? #ffffff26 : @linear-gradient(180deg, #8fd0ff 0%, #4a9eea 100%);
+                y: h.y * 1px - 4px;
+                width: 8px; height: 8px; border-radius: 4px;
+                background: white;
             }
             Text {
-                y: 92px;
+                y: root.icon-y;
                 width: parent.width;
-                text: bar.label;
-                color: #ffffffb3;
-                font-size: 11px;
+                text: h.icon; font-size: 20px;
+                horizontal-alignment: center;
+            }
+            Text {
+                y: root.chance-y;
+                width: parent.width;
+                text: h.precipitation; color: #cfe8ff; font-size: 11px;
+                horizontal-alignment: center;
+            }
+            // Rain: the amount above a bar growing up from the baseline.
+            Text {
+                y: root.rain-base - parent.bar - 16px;
+                width: parent.width;
+                text: h.rain; color: #cfe8ff; font-size: 11px;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: root.rain-base - parent.bar;
+                width: 16px;
+                height: parent.bar;
+                border-radius: 4px;
+                background: h.rain == "" ? #ffffff26 : @linear-gradient(180deg, #8fd0ff 0%, #4a9eea 100%);
+            }
+            Text {
+                y: root.rain-base + 6px;
+                width: parent.width;
+                text: h.label;
+                color: h.label == "Now" ? white : #ffffffb3;
+                font-size: 12px;
+                font-weight: h.label == "Now" ? 700 : 400;
                 horizontal-alignment: center;
             }
         }
@@ -446,12 +502,7 @@ export component MainWindow inherits Window {
     in property <string> wind: "--";
     in property <color> sky-top: #2f80ed;
     in property <color> sky-bottom: #8ec5fc;
-    in property <[HourItem]> hours;
     in property <[DayItem]> days;
-    in property <string> line-path;
-    in property <string> area-path;
-    in property <float> chart-width: 1;
-    in property <float> chart-height: 150;
     in property <string> error;
     // "Updated 2 h ago" when showing a cached forecast; empty when fresh.
     in property <string> status;
@@ -459,7 +510,7 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
-    // Which day's hourly rain is open (-1: none).
+    // Which day's hour-by-hour chart is open (-1: none).
     in-out property <int> open-day: -1;
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
@@ -563,90 +614,6 @@ export component MainWindow inherits Window {
             }
         }
 
-        // ── Hourly curve ───────────────────────────────────────
-        Rectangle {
-            background: #ffffff26;
-            border-radius: 22px;
-            height: 292px;
-            VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
-                Text { text: "NEXT 24 HOURS"; color: #ffffffb3; font-size: 12px; font-weight: 600; }
-                Flickable {
-                    content-width: root.chart-width * 1px;
-                    content-height: self.height;
-                    // Area under the curve
-                    Path {
-                        x: 0; y: 0;
-                        width: root.chart-width * 1px;
-                        height: root.chart-height * 1px;
-                        viewbox-width: root.chart-width;
-                        viewbox-height: root.chart-height;
-                        // Map viewbox 1:1 (default `contain` rescales and centres when stroked).
-                        fit: fill;
-                        commands: root.area-path;
-                        fill: @linear-gradient(180deg, #ffffff59 0%, #ffffff00 100%);
-                        stroke-width: 0px;
-                    }
-                    // The curve itself
-                    Path {
-                        x: 0; y: 0;
-                        width: root.chart-width * 1px;
-                        height: root.chart-height * 1px;
-                        viewbox-width: root.chart-width;
-                        viewbox-height: root.chart-height;
-                        // Map viewbox 1:1 (default `contain` rescales and centres when stroked).
-                        fit: fill;
-                        commands: root.line-path;
-                        stroke: white;
-                        stroke-width: 3px;
-                    }
-                    for h in root.hours: Rectangle {
-                        x: h.x * 1px - 30px;
-                        y: 0;
-                        width: 60px;
-                        height: parent.height;
-                        Text {
-                            y: h.y * 1px - 28px;
-                            width: parent.width;
-                            text: h.temperature;
-                            color: white; font-size: 15px; font-weight: 600;
-                            horizontal-alignment: center;
-                        }
-                        Rectangle {
-                            x: 25px; y: h.y * 1px - 5px;
-                            width: 10px; height: 10px; border-radius: 5px;
-                            background: white;
-                        }
-                        Text {
-                            y: root.chart-height * 1px + 4px;
-                            width: parent.width;
-                            text: h.icon; font-size: 22px;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            y: root.chart-height * 1px + 32px;
-                            width: parent.width;
-                            text: h.precipitation; color: #cfe8ff; font-size: 12px;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            y: root.chart-height * 1px + 48px;
-                            width: parent.width;
-                            text: h.rain; color: #9fd3ff; font-size: 11px;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            y: root.chart-height * 1px + 66px;
-                            width: parent.width;
-                            text: h.label; color: #ffffffcc; font-size: 13px;
-                            horizontal-alignment: center;
-                        }
-                    }
-                }
-            }
-        }
-
         // ── 7-day forecast ─────────────────────────────────────
         Rectangle {
             background: #ffffff26;
@@ -662,7 +629,7 @@ export component MainWindow inherits Window {
                         open: root.open-day == i;
                         clicked => { root.open-day = root.open-day == i ? -1 : i; }
                     }
-                    if root.open-day == i: DayRain { day: d; }
+                    if root.open-day == i: DayChart { day: d; }
                 }
             }
         }
