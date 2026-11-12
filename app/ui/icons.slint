@@ -2,6 +2,8 @@
 // Line icons drawn in a 32×32 box, one consistent stroke. `kind` comes from
 // core (palette::icon_kind): clear-day, clear-night, partly-day,
 // partly-night, cloudy, fog, drizzle, rain, snow, storm.
+// The widget uses the same shapes as Android drawables: after changing an
+// icon, update scripts/gen-widget-icons.py and run it.
 
 /// One stroked/filled shape of an icon, in the icon's 32×32 box.
 component IconPath inherits Path {

@@ -52,7 +52,11 @@ started by `android.app.NativeActivity`) and `libmeteo_widget.so` (the widget's 
 ## Android widget
 
 A home-screen widget showing the selected city: icon, temperature, condition, high/low,
-and in its wide size the next 5 hours. Tapping it opens the app.
+and in its wide size the next 5 hours on a card. Tapping it opens the app. It uses the
+app's weather palette (background, text) and the same drawn icons. Glance can't draw
+Slint, so `scripts/gen-widget-icons.py` writes the icons as Android vector drawables
+(`res/drawable/wx_*`, a light and a dark variant each) from the same shapes as
+`app/ui/icons.slint`.
 
 - The layout is Kotlin Glance ([MeteoWidget.kt](android/app/src/main/java/dev/meteo/app/widget/MeteoWidget.kt)).
   Its content comes from Rust: `RustBridge.state()` returns `meteo_core::WidgetState` as

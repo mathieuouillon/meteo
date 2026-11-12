@@ -30,22 +30,30 @@ pub struct WidgetView {
     pub city: String,
     /// True for the "📍" device position.
     pub is_device: bool,
-    pub icon: String,
+    /// Which drawn icon to show ("rain", "clear-night", …; see palette::icon_kind).
+    pub icon_kind: String,
     pub temperature: String,
     pub condition: String,
     pub high_low: String,
+    /// "Feels like 9°".
+    pub feels_like: String,
     /// "Updated 5 min ago".
     pub updated: String,
-    /// Sky gradient, as 0xRRGGBB.
-    pub sky_top: u32,
-    pub sky_bottom: u32,
+    /// The weather palette (0xRRGGBB), as in the app.
+    pub dark: bool,
+    pub top: u32,
+    pub bottom: u32,
+    pub card: u32,
+    pub ink: u32,
+    pub ink_soft: u32,
+    pub accent: u32,
     pub hours: Vec<WidgetHour>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WidgetHour {
     pub label: String,
-    pub icon: String,
+    pub icon_kind: String,
     pub temperature: String,
 }
 
@@ -64,18 +72,24 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
         view: Some(WidgetView {
             city: s.city,
             is_device: city.is_device,
-            icon: s.icon,
+            icon_kind: s.icon_kind,
             temperature: s.temperature,
             condition: s.condition,
             high_low: s.high_low,
+            feels_like: s.feels_like,
             updated: lang.updated_ago(age),
-            sky_top: s.sky_top,
-            sky_bottom: s.sky_bottom,
+            dark: s.palette.dark,
+            top: s.palette.top,
+            bottom: s.palette.bottom,
+            card: s.palette.card,
+            ink: s.palette.ink,
+            ink_soft: s.palette.ink_soft,
+            accent: s.palette.accent,
             hours: s
                 .hours
                 .into_iter()
                 .take(WIDGET_HOURS)
-                .map(|h| WidgetHour { label: h.label, icon: h.icon, temperature: h.temperature })
+                .map(|h| WidgetHour { label: h.label, icon_kind: h.icon_kind, temperature: h.temperature })
                 .collect(),
         }),
     }

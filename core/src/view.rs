@@ -52,6 +52,7 @@ pub struct HourView {
     pub label: String,
     pub temperature: String,
     pub icon: String,
+    pub icon_kind: String,
 }
 
 /// The details tiles: each value with a short explanation, plus what the
@@ -111,6 +112,7 @@ impl MainScreen {
                 label: if i == 0 { lang.now().into() } else { h.label.clone() },
                 temperature: temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
+                icon_kind: icon_kind(h.condition, h.is_day).into(),
             })
             .collect();
         // The current hour, "15" in "…T15:00", marks "Now" in today's chart.

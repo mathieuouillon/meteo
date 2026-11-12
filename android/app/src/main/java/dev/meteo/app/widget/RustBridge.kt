@@ -16,18 +16,25 @@ object RustBridge {
     external fun refresh(dataDir: String): Boolean
 }
 
-data class WidgetHour(val label: String, val icon: String, val temperature: String)
+data class WidgetHour(val label: String, val iconKind: String, val temperature: String)
 
+/** The widget's content; colours are the app's weather palette (0xRRGGBB). */
 data class WidgetView(
     val city: String,
     val isDevice: Boolean,
-    val icon: String,
+    val iconKind: String,
     val temperature: String,
     val condition: String,
     val highLow: String,
+    val feelsLike: String,
     val updated: String,
-    val skyTop: Int,
-    val skyBottom: Int,
+    val dark: Boolean,
+    val top: Int,
+    val bottom: Int,
+    val card: Int,
+    val ink: Int,
+    val inkSoft: Int,
+    val accent: Int,
     val hours: List<WidgetHour>,
 )
 
@@ -36,21 +43,28 @@ data class WidgetState(val needsRefresh: Boolean, val view: WidgetView?)
 fun parseWidgetState(json: String): WidgetState {
     val o = JSONObject(json)
     val v = o.optJSONObject("view")
+    val opaque = { key: String -> v!!.getInt(key) or 0xFF000000.toInt() }
     val view = v?.let {
         val hours = it.getJSONArray("hours")
         WidgetView(
             city = it.getString("city"),
             isDevice = it.getBoolean("is_device"),
-            icon = it.getString("icon"),
+            iconKind = it.getString("icon_kind"),
             temperature = it.getString("temperature"),
             condition = it.getString("condition"),
             highLow = it.getString("high_low"),
+            feelsLike = it.getString("feels_like"),
             updated = it.getString("updated"),
-            skyTop = it.getInt("sky_top") or 0xFF000000.toInt(),
-            skyBottom = it.getInt("sky_bottom") or 0xFF000000.toInt(),
+            dark = it.getBoolean("dark"),
+            top = opaque("top"),
+            bottom = opaque("bottom"),
+            card = opaque("card"),
+            ink = opaque("ink"),
+            inkSoft = opaque("ink_soft"),
+            accent = opaque("accent"),
             hours = (0 until hours.length()).map { i ->
                 val h = hours.getJSONObject(i)
-                WidgetHour(h.getString("label"), h.getString("icon"), h.getString("temperature"))
+                WidgetHour(h.getString("label"), h.getString("icon_kind"), h.getString("temperature"))
             },
         )
     }

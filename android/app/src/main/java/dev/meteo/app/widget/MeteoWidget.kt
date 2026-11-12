@@ -24,6 +24,10 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import dev.meteo.app.R
+import androidx.glance.layout.fillMaxHeight
+import androidx.glance.layout.size
+import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
@@ -114,11 +118,22 @@ class MeteoWidget : GlanceAppWidget() {
     }
 }
 
-private val white = ColorProvider(Color.White)
-private val faded = ColorProvider(Color(0xCCFFFFFF))
+private fun style(size: TextUnit, color: Int, weight: FontWeight = FontWeight.Normal) =
+    TextStyle(color = ColorProvider(Color(color)), fontSize = size, fontWeight = weight)
 
-private fun style(size: TextUnit, weight: FontWeight = FontWeight.Normal, color: ColorProvider = white) =
-    TextStyle(color = color, fontSize = size, fontWeight = weight)
+/** The drawn weather icon (res/drawable/wx_*, from scripts/gen-widget-icons.py). */
+private fun weatherIcon(kind: String, dark: Boolean): Int = when (kind) {
+    "clear-day" -> if (dark) R.drawable.wx_clear_day_dark else R.drawable.wx_clear_day_light
+    "clear-night" -> if (dark) R.drawable.wx_clear_night_dark else R.drawable.wx_clear_night_light
+    "partly-day" -> if (dark) R.drawable.wx_partly_day_dark else R.drawable.wx_partly_day_light
+    "partly-night" -> if (dark) R.drawable.wx_partly_night_dark else R.drawable.wx_partly_night_light
+    "fog" -> if (dark) R.drawable.wx_fog_dark else R.drawable.wx_fog_light
+    "drizzle" -> if (dark) R.drawable.wx_drizzle_dark else R.drawable.wx_drizzle_light
+    "rain" -> if (dark) R.drawable.wx_rain_dark else R.drawable.wx_rain_light
+    "snow" -> if (dark) R.drawable.wx_snow_dark else R.drawable.wx_snow_light
+    "storm" -> if (dark) R.drawable.wx_storm_dark else R.drawable.wx_storm_light
+    else -> if (dark) R.drawable.wx_cloudy_dark else R.drawable.wx_cloudy_light
+}
 
 @Composable
 private fun Content(view: WidgetView?) {
@@ -127,8 +142,11 @@ private fun Content(view: WidgetView?) {
     val openApp = actionStartActivity(
         Intent().setComponent(ComponentName(context.packageName, "android.app.NativeActivity")),
     )
-    val top = view?.skyTop ?: 0xFF2F80ED.toInt()
-    val bottom = view?.skyBottom ?: 0xFF8EC5FC.toInt()
+    // Before the first download: the clear-day palette.
+    val top = view?.top ?: 0xFFF8E9D2.toInt()
+    val bottom = view?.bottom ?: 0xFFF2D3A6.toInt()
+    val ink = view?.ink ?: 0xFF3B2A12.toInt()
+    val inkSoft = view?.inkSoft ?: 0xFF7D6446.toInt()
 
     Box(
         modifier = GlanceModifier
@@ -140,33 +158,50 @@ private fun Content(view: WidgetView?) {
     ) {
         if (view == null) {
             val loading = if (context.resources.configuration.locales[0].language == "fr") "Chargement…" else "Loading…"
-            Text("Météo\n$loading", style = style(15.sp))
+            Column {
+                Text("Météo", style = style(15.sp, ink, FontWeight.Bold))
+                Text(loading, style = style(12.sp, inkSoft))
+            }
             return@Box
         }
+        val icon = { kind: String -> ImageProvider(weatherIcon(kind, view.dark)) }
         Row(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-            Column {
-                Text((if (view.isDevice) "📍 " else "") + view.city, style = style(15.sp, FontWeight.Bold), maxLines = 1)
+            // Now: city, icon and big temperature, condition, day/night.
+            Column(modifier = GlanceModifier.fillMaxHeight()) {
+                Text(
+                    (if (view.isDevice) "📍 " else "") + view.city,
+                    style = style(13.sp, ink, FontWeight.Bold), maxLines = 1,
+                )
+                Spacer(GlanceModifier.defaultWeight())
                 Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
-                    Text(view.icon, style = style(26.sp))
-                    Spacer(GlanceModifier.width(4.dp))
-                    Text(view.temperature, style = style(38.sp))
+                    Image(icon(view.iconKind), contentDescription = view.condition, modifier = GlanceModifier.size(36.dp))
+                    Spacer(GlanceModifier.width(6.dp))
+                    Text(view.temperature, style = style(38.sp, ink, FontWeight.Bold))
                 }
-                Text(view.condition, style = style(13.sp), maxLines = 1)
-                Text(view.highLow, style = style(12.sp, color = faded), maxLines = 1)
+                Text(view.condition, style = style(13.sp, ink, FontWeight.Medium), maxLines = 1)
+                Text(view.highLow, style = style(11.sp, inkSoft), maxLines = 1)
             }
+            // Wide: the next hours, on a card in the palette.
             if (wide) {
                 Spacer(GlanceModifier.width(12.dp))
-                Row(modifier = GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.End) {
+                Row(
+                    modifier = GlanceModifier
+                        .defaultWeight()
+                        .cornerRadius(18.dp)
+                        .background(ColorProvider(Color(view.card).copy(alpha = 0.7f)))
+                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
+                ) {
                     view.hours.forEach { h ->
                         Column(
-                            modifier = GlanceModifier.width(38.dp),
+                            modifier = GlanceModifier.defaultWeight(),
                             horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                         ) {
-                            Text(h.label, style = style(11.sp, color = faded))
-                            Spacer(GlanceModifier.height(2.dp))
-                            Text(h.icon, style = style(18.sp))
-                            Spacer(GlanceModifier.height(2.dp))
-                            Text(h.temperature, style = style(13.sp, FontWeight.Medium))
+                            Text(h.label, style = style(11.sp, inkSoft), maxLines = 1)
+                            Spacer(GlanceModifier.height(4.dp))
+                            Image(icon(h.iconKind), contentDescription = null, modifier = GlanceModifier.size(22.dp))
+                            Spacer(GlanceModifier.height(4.dp))
+                            Text(h.temperature, style = style(13.sp, ink, FontWeight.Bold), maxLines = 1)
                         }
                     }
                 }
