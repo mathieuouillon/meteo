@@ -1,0 +1,17 @@
+//! Shared weather logic used by every front-end (Slint, Tauri, widgets).
+//!
+//! Everything a UI needs is computed here: fetching and parsing Open-Meteo,
+//! mapping WMO weather codes to conditions and colours, and even the geometry
+//! of the hourly temperature curve, so each UI only has to draw it.
+
+mod api;
+mod chart;
+mod condition;
+mod model;
+mod view;
+
+pub use api::{Error, fetch_forecast, parse_forecast};
+pub use chart::{ChartGeometry, ChartPoint, temperature_chart};
+pub use condition::{Condition, Sky};
+pub use model::{Current, Forecast, Hour, Location};
+pub use view::{CHART_HEIGHT, HOUR_STEP, HourView, MainScreen, temp};

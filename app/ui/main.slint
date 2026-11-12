@@ -1,0 +1,169 @@
+export struct HourItem {
+    label: string,
+    temperature: string,
+    icon: string,
+    precipitation: string,
+    x: float,
+    y: float,
+}
+
+component Stat inherits Rectangle {
+    in property <string> title;
+    in property <string> value;
+    background: #ffffff26;
+    border-radius: 18px;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 4px;
+        Text { text: root.title; color: #ffffffb3; font-size: 13px; }
+        Text { text: root.value; color: white; font-size: 22px; font-weight: 600; }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Météo";
+    preferred-width: 400px;
+    preferred-height: 820px;
+
+    in property <string> city: "—";
+    in property <string> temperature: "--°";
+    in property <string> condition: "Loading…";
+    in property <string> weather-icon;
+    in property <string> high-low;
+    in property <string> feels-like: "--";
+    in property <string> humidity: "--";
+    in property <string> wind: "--";
+    in property <color> sky-top: #2f80ed;
+    in property <color> sky-bottom: #8ec5fc;
+    in property <[HourItem]> hours;
+    in property <string> line-path;
+    in property <string> area-path;
+    in property <float> chart-width: 1;
+    in property <float> chart-height: 150;
+    in property <string> error;
+    callback refresh();
+
+    // Animated copies, so condition changes fade smoothly.
+    property <color> top: root.sky-top;
+    property <color> bottom: root.sky-bottom;
+    animate top, bottom { duration: 800ms; easing: ease-in-out; }
+
+    background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
+
+    VerticalLayout {
+        padding: 24px;
+        padding-top: 48px;
+        spacing: 18px;
+
+        // ── Header ─────────────────────────────────────────────
+        VerticalLayout {
+            alignment: start;
+            spacing: 2px;
+            Text { text: root.city; color: white; font-size: 28px; font-weight: 600; horizontal-alignment: center; }
+            Text { text: root.weather-icon; font-size: 64px; horizontal-alignment: center; }
+            Text { text: root.temperature; color: white; font-size: 96px; font-weight: 200; horizontal-alignment: center; }
+            Text { text: root.condition; color: white; font-size: 22px; horizontal-alignment: center; }
+            Text { text: root.high-low; color: #ffffffcc; font-size: 16px; horizontal-alignment: center; }
+            if root.error != "": Text {
+                text: root.error; color: #ffd0d0; font-size: 13px;
+                horizontal-alignment: center; wrap: word-wrap;
+            }
+        }
+
+        // ── Hourly curve ───────────────────────────────────────
+        Rectangle {
+            background: #ffffff26;
+            border-radius: 22px;
+            height: 270px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                Text { text: "NEXT 24 HOURS"; color: #ffffffb3; font-size: 12px; font-weight: 600; }
+                Flickable {
+                    content-width: root.chart-width * 1px;
+                    content-height: self.height;
+                    // Area under the curve
+                    Path {
+                        x: 0; y: 0;
+                        width: root.chart-width * 1px;
+                        height: root.chart-height * 1px;
+                        viewbox-width: root.chart-width;
+                        viewbox-height: root.chart-height;
+                        // Map viewbox 1:1 (default `contain` rescales and centres when stroked).
+                        fit: fill;
+                        commands: root.area-path;
+                        fill: @linear-gradient(180deg, #ffffff59 0%, #ffffff00 100%);
+                        stroke-width: 0px;
+                    }
+                    // The curve itself
+                    Path {
+                        x: 0; y: 0;
+                        width: root.chart-width * 1px;
+                        height: root.chart-height * 1px;
+                        viewbox-width: root.chart-width;
+                        viewbox-height: root.chart-height;
+                        // Map viewbox 1:1 (default `contain` rescales and centres when stroked).
+                        fit: fill;
+                        commands: root.line-path;
+                        stroke: white;
+                        stroke-width: 3px;
+                    }
+                    for h in root.hours: Rectangle {
+                        x: h.x * 1px - 30px;
+                        y: 0;
+                        width: 60px;
+                        height: parent.height;
+                        Text {
+                            y: h.y * 1px - 28px;
+                            width: parent.width;
+                            text: h.temperature;
+                            color: white; font-size: 15px; font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+                        Rectangle {
+                            x: 25px; y: h.y * 1px - 5px;
+                            width: 10px; height: 10px; border-radius: 5px;
+                            background: white;
+                        }
+                        Text {
+                            y: root.chart-height * 1px + 4px;
+                            width: parent.width;
+                            text: h.icon; font-size: 22px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            y: root.chart-height * 1px + 34px;
+                            width: parent.width;
+                            text: h.precipitation; color: #cfe8ff; font-size: 12px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            y: root.chart-height * 1px + 52px;
+                            width: parent.width;
+                            text: h.label; color: #ffffffcc; font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Details ────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 12px;
+            Stat { title: "FEELS LIKE"; value: root.feels-like; }
+            Stat { title: "HUMIDITY"; value: root.humidity; }
+            Stat { title: "WIND"; value: root.wind; }
+        }
+
+        Rectangle {
+            height: 44px;
+            border-radius: 22px;
+            background: touch.pressed ? #ffffff40 : #ffffff26;
+            Text { text: "Refresh"; color: white; font-size: 16px; }
+            touch := TouchArea { clicked => { root.refresh(); } }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+    }
+}
