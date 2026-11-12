@@ -228,3 +228,21 @@ pub fn notify_widgets(app: &AndroidApp) {
         Ok(())
     });
 }
+
+/// The wallpaper-based Material You accent (Android 12+): a light tone for
+/// text and lines on the dark sky, and a stronger one for fills, as 0xRRGGBB.
+pub fn accent_colors(app: &AndroidApp) -> Option<(u32, u32)> {
+    with_activity(app, |env, activity| {
+        let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
+        if sdk < 31 {
+            return Ok(None); // no dynamic colours before Android 12
+        }
+        let mut tone = |name: &str| -> Result<u32> {
+            let id = env.get_static_field("android/R$color", name, "I")?.i()?;
+            Ok(env.call_method(activity, "getColor", "(I)I", &[JValue::Int(id)])?.i()? as u32 & 0xFF_FFFF)
+        };
+        Ok(Some((tone("system_accent1_200")?, tone("system_accent1_500")?)))
+    })
+    .ok()
+    .flatten()
+}

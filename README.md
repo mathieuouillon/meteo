@@ -102,6 +102,15 @@ To see a given weather whatever the forecast says:
 METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, drizzle, rain, snow, storm
 ```
 
+## Accent colour
+
+Buttons and selections use the system accent; the sky colours stay tied to the
+weather. On Android 12+ that's the Material You colour taken from the wallpaper
+(`system_accent1_200` / `_500`, read through JNI). On macOS it's the accent colour
+chosen in System Settings, lightened for the dark sky. Elsewhere, and on older
+Android, the app's own blue is used. See [app/src/accent.rs](app/src/accent.rs).
+The colours are read when the app starts.
+
 ## App icon
 
 A sun behind a cloud on the clear-day sky.

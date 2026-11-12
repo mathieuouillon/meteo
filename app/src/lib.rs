@@ -12,10 +12,11 @@ use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
+mod accent;
 mod animation;
 
 #[cfg(target_os = "android")]
-mod location_android;
+mod android;
 #[cfg(target_os = "macos")]
 mod location_macos;
 
@@ -84,6 +85,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
     });
     APP.with(|a| a.set(app.clone()).ok());
     animation::start(&ui);
+    let accent = accent::system();
+    ui.set_accent(rgb(accent.light));
+    ui.set_accent_strong(rgb(accent.strong));
     ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
@@ -191,7 +195,7 @@ impl App {
                 }
                 #[cfg(target_os = "android")]
                 if let Some(app) = ANDROID_APP.get() {
-                    location_android::notify_widgets(app);
+                    android::notify_widgets(app);
                 }
             }
             let _ = slint::invoke_from_event_loop(move || {
@@ -290,7 +294,7 @@ impl App {
 /// The device's position and place name (blocking; call from a worker thread).
 #[cfg(target_os = "android")]
 fn device_location(quiet: bool) -> Result<Location, String> {
-    use location_android as loc;
+    use crate::android as loc;
     let app = ANDROID_APP.get().ok_or("Location isn't available")?;
     if !loc::has_permission(app) {
         if quiet {

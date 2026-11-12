@@ -121,11 +121,13 @@ export struct CityItem {
 component CityRow inherits Rectangle {
     in property <CityItem> city;
     in property <bool> removable;
+    in property <color> accent;
+    in property <color> accent-strong;
     callback clicked();
     callback remove();
     height: 60px;
     border-radius: 14px;
-    background: touch.pressed ? #ffffff26 : (root.city.selected ? #ffffff1a : transparent);
+    background: touch.pressed ? #ffffff26 : (root.city.selected ? root.accent-strong.with-alpha(0.3) : transparent);
     touch := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         padding-left: 14px;
@@ -140,7 +142,7 @@ component CityRow inherits Rectangle {
             }
             if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; overflow: elide; }
         }
-        if root.city.selected: Text { text: "✓"; color: white; font-size: 18px; vertical-alignment: center; }
+        if root.city.selected: Text { text: "✓"; color: root.accent; font-size: 18px; vertical-alignment: center; }
         if root.removable: Rectangle {
             width: 44px;
             // Drawn rather than a "✕" glyph, which Android's font lacks.
@@ -163,6 +165,8 @@ component CityPicker inherits Rectangle {
     in property <[CityItem]> results;
     in property <string> search-status;
     in property <bool> can-locate;
+    in property <color> accent;
+    in property <color> accent-strong;
     callback close();
     callback locate();
     callback search(string);
@@ -185,6 +189,8 @@ component CityPicker inherits Rectangle {
                 height: 48px;
                 border-radius: 14px;
                 background: #ffffff1f;
+                border-width: 1.5px;
+                border-color: input.has-focus ? root.accent : transparent;
                 input := TextInput {
                     x: 16px;
                     width: parent.width - 32px;
@@ -192,6 +198,7 @@ component CityPicker inherits Rectangle {
                     color: white;
                     font-size: 17px;
                     single-line: true;
+                    selection-background-color: root.accent-strong;
                     edited => { root.search(self.text); }
                 }
                 if input.text == "": Text {
@@ -203,7 +210,7 @@ component CityPicker inherits Rectangle {
             }
             Rectangle {
                 width: 70px;
-                Text { text: "Done"; color: white; font-size: 17px; font-weight: 600; }
+                Text { text: "Done"; color: root.accent; font-size: 17px; font-weight: 600; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
@@ -226,7 +233,7 @@ component CityPicker inherits Rectangle {
                 if input.text == "" && root.can-locate: Rectangle {
                     height: 52px;
                     border-radius: 14px;
-                    background: locate-touch.pressed ? #ffffff33 : #ffffff1a;
+                    background: root.accent-strong.with-alpha(locate-touch.pressed ? 0.6 : 0.4);
                     Text { text: "📍  Use my location"; color: white; font-size: 17px; }
                     locate-touch := TouchArea { clicked => { root.locate(); } }
                 }
@@ -238,6 +245,8 @@ component CityPicker inherits Rectangle {
                     spacing: 2px;
                     for c[i] in root.cities: CityRow {
                         city: c;
+                        accent: root.accent;
+                        accent-strong: root.accent-strong;
                         removable: root.cities.length > 1;
                         clicked => { root.select-city(i); }
                         remove => { root.remove-city(i); }
@@ -247,6 +256,8 @@ component CityPicker inherits Rectangle {
                     spacing: 2px;
                     for c[i] in root.results: CityRow {
                         city: c;
+                        accent: root.accent;
+                        accent-strong: root.accent-strong;
                         clicked => { root.add-city(i); }
                     }
                 }
@@ -339,6 +350,9 @@ export component MainWindow inherits Window {
     in property <[CloudItem]> clouds;
     in property <[FogItem]> fog;
     in property <bool> can-locate;
+    // System accent (Material You on Android 12+, macOS accent colour); see accent.rs.
+    in property <color> accent: #9ecbff;
+    in property <color> accent-strong: #2f80ed;
     callback refresh();
     callback locate();
     callback search(string);
@@ -398,7 +412,7 @@ export component MainWindow inherits Window {
                         viewbox-width: 14; viewbox-height: 8;
                         fit: fill;
                         commands: "M 1 1 L 7 7 L 13 1";
-                        stroke: #ffffffb3;
+                        stroke: root.accent;
                         stroke-width: 2.5px;
                     }
                 }
@@ -520,8 +534,8 @@ export component MainWindow inherits Window {
         Rectangle {
             height: 44px;
             border-radius: 22px;
-            background: touch.pressed ? #ffffff40 : #ffffff26;
-            Text { text: "Refresh"; color: white; font-size: 16px; }
+            background: root.accent-strong.with-alpha(touch.pressed ? 0.7 : 0.45);
+            Text { text: "Refresh"; color: white; font-size: 16px; font-weight: 600; }
             touch := TouchArea { clicked => { root.refresh(); } }
         }
 
@@ -535,6 +549,8 @@ export component MainWindow inherits Window {
         results: root.results;
         search-status: root.search-status;
         can-locate: root.can-locate;
+        accent: root.accent;
+        accent-strong: root.accent-strong;
         locate => { root.locate(); }
         close => { root.picker-open = false; root.search(""); }
         search(text) => { root.search(text); }
