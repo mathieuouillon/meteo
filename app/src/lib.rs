@@ -1,18 +1,22 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
-use meteo_core::{Location, MainScreen, cache, fetch_forecast, unix_now, updated_ago};
-use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
+use meteo_core::{
+    Location, MainScreen, Places, cache, fetch_forecast, search_cities, unix_now, updated_ago,
+};
+use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
 /// Set on Android from the activity's internal data path.
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// Where the last forecast is cached.
-fn cache_dir() -> Option<PathBuf> {
+/// Where saved cities and cached forecasts live.
+fn data_dir() -> Option<PathBuf> {
     if let Some(dir) = DATA_DIR.get() {
         return Some(dir.clone());
     }
@@ -26,41 +30,144 @@ fn cache_dir() -> Option<PathBuf> {
 
 /// No forecast on screen yet.
 const NOTHING_SHOWN: i64 = i64::MIN;
+/// Wait this long after the last keystroke before searching.
+const SEARCH_DELAY: Duration = Duration::from_millis(300);
 
-/// Builds the window, shows the cached forecast if any, starts a refresh and
-/// runs the event loop.
+/// App state. Lives on the UI thread; the `Arc` parts are shared with the
+/// background threads that fetch forecasts and search for cities.
+struct App {
+    ui: Weak<MainWindow>,
+    dir: Option<PathBuf>,
+    places: RefCell<Places>,
+    /// When the forecast on screen was downloaded, so a failed refresh can
+    /// say how old it is instead of replacing it with an error.
+    shown_at: Arc<AtomicI64>,
+    /// Bumped by each fetch/search, so results that arrive late (after the
+    /// user switched city or kept typing) are dropped.
+    fetch_gen: Arc<AtomicU64>,
+    search_gen: Arc<AtomicU64>,
+    /// The last search results, as places `add_city` can save.
+    results: Arc<Mutex<Vec<Location>>>,
+}
+
+/// Builds the window, shows the selected city and runs the event loop.
 pub fn run() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
-    let dir = cache_dir();
+    let dir = data_dir();
+    if let Some(dir) = &dir {
+        // Single-city cache from before saved cities existed.
+        let _ = std::fs::remove_file(dir.join("forecast.json"));
+    }
+    let app = Rc::new(App {
+        ui: ui.as_weak(),
+        places: RefCell::new(dir.as_deref().map(Places::load).unwrap_or_default()),
+        dir,
+        shown_at: Arc::new(AtomicI64::new(NOTHING_SHOWN)),
+        fetch_gen: Arc::default(),
+        search_gen: Arc::default(),
+        results: Arc::default(),
+    });
+    app.show_selected();
 
-    // When the forecast on screen was downloaded, so a failed refresh can say
-    // how old it is instead of replacing it with an error.
-    let shown_at = Arc::new(AtomicI64::new(NOTHING_SHOWN));
+    ui.on_refresh({
+        let app = app.clone();
+        move || app.refresh()
+    });
+    ui.on_select_city({
+        let app = app.clone();
+        move |i| app.change_places(|p| p.select(i as usize))
+    });
+    ui.on_add_city({
+        let app = app.clone();
+        move |i| {
+            let city = app.results.lock().unwrap().get(i as usize).cloned();
+            if let Some(city) = city {
+                app.change_places(|p| p.add(city));
+            }
+        }
+    });
+    ui.on_remove_city({
+        let app = app.clone();
+        move |i| app.change_places(|p| p.remove(i as usize))
+    });
+    ui.on_search({
+        let app = app.clone();
+        move |text| app.search(text.to_string())
+    });
+    ui.run()
+}
 
-    if let Some(cached) = dir.as_deref().and_then(|d| cache::load(d, unix_now())) {
-        apply(&ui, &MainScreen::from_forecast(&cached.forecast));
-        ui.set_status(updated_ago(unix_now() - cached.fetched_at).into());
-        shown_at.store(cached.fetched_at, Ordering::Relaxed);
+impl App {
+    /// Applies a change to the saved cities, saves them, and switches the
+    /// screen if the selected city changed.
+    fn change_places(&self, change: impl FnOnce(&mut Places)) {
+        let before = self.places.borrow().selected().key();
+        change(&mut self.places.borrow_mut());
+        if let Some(dir) = &self.dir {
+            if let Err(e) = self.places.borrow().save(dir) {
+                eprintln!("couldn't save cities: {e}");
+            }
+        }
+        if self.places.borrow().selected().key() != before {
+            self.show_selected();
+        } else {
+            self.update_city_list();
+        }
     }
 
-    let weak = ui.as_weak();
-    let load = move || {
-        let (weak, dir, shown_at) = (weak.clone(), dir.clone(), shown_at.clone());
-        // Network and disk work happen off the UI thread; results are posted back.
+    /// Shows the selected city: its cached forecast at once if there is one,
+    /// then a fresh download.
+    fn show_selected(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let city = self.places.borrow().selected().clone();
+        self.shown_at.store(NOTHING_SHOWN, Ordering::Relaxed);
+        match self.dir.as_deref().and_then(|d| cache::load(d, &city, unix_now())) {
+            Some(cached) => {
+                apply(&ui, &MainScreen::from_forecast(&cached.forecast));
+                ui.set_status(updated_ago(unix_now() - cached.fetched_at).into());
+                self.shown_at.store(cached.fetched_at, Ordering::Relaxed);
+            }
+            None => show_loading(&ui, &city),
+        }
+        self.update_city_list();
+        self.refresh();
+    }
+
+    fn update_city_list(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let places = self.places.borrow();
+        let items: Vec<CityItem> = places
+            .cities()
+            .iter()
+            .enumerate()
+            .map(|(i, c)| city_item(c, i == places.selected_index()))
+            .collect();
+        ui.set_cities(ModelRc::from(Rc::new(VecModel::from(items))));
+    }
+
+    /// Downloads the selected city's forecast in the background.
+    fn refresh(&self) {
+        let city = self.places.borrow().selected().clone();
+        let generation = self.fetch_gen.fetch_add(1, Ordering::Relaxed) + 1;
+        let (weak, dir, shown_at, fetch_gen) = (
+            self.ui.clone(),
+            self.dir.clone(),
+            self.shown_at.clone(),
+            self.fetch_gen.clone(),
+        );
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("tokio runtime");
-            let result = rt.block_on(fetch_forecast(&Location::paris()));
+            let result = block_on(fetch_forecast(&city));
             let fetched_at = unix_now();
             if let (Ok(forecast), Some(dir)) = (&result, &dir) {
-                if let Err(e) = cache::save(dir, forecast, fetched_at) {
+                if let Err(e) = cache::save(dir, &city, forecast, fetched_at) {
                     eprintln!("couldn't save the forecast cache: {e}");
                 }
             }
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
+                if fetch_gen.load(Ordering::Relaxed) != generation {
+                    return; // the user switched city meanwhile
+                }
                 match result {
                     Ok(forecast) => {
                         apply(&ui, &MainScreen::from_forecast(&forecast));
@@ -74,11 +181,77 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 }
             });
         });
-    };
+    }
 
-    load();
-    ui.on_refresh(load);
-    ui.run()
+    /// Searches for cities once the user stops typing for a moment.
+    fn search(&self, text: String) {
+        let generation = self.search_gen.fetch_add(1, Ordering::Relaxed) + 1;
+        let Some(ui) = self.ui.upgrade() else { return };
+        if text.trim().chars().count() < 2 {
+            ui.set_results(ModelRc::default());
+            ui.set_search_status(SharedString::new());
+            return;
+        }
+        ui.set_search_status("Searching…".into());
+        let (weak, search_gen, results) = (self.ui.clone(), self.search_gen.clone(), self.results.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(SEARCH_DELAY);
+            if search_gen.load(Ordering::Relaxed) != generation {
+                return; // another key was pressed
+            }
+            let found = block_on(search_cities(&text));
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(ui) = weak.upgrade() else { return };
+                if search_gen.load(Ordering::Relaxed) != generation {
+                    return;
+                }
+                let (status, places) = match found {
+                    Ok(p) if p.is_empty() => ("No matching city".to_string(), p),
+                    Ok(p) => (String::new(), p),
+                    Err(e) => (format!("Search failed: {e}"), Vec::new()),
+                };
+                let items: Vec<CityItem> = places.iter().map(|c| city_item(c, false)).collect();
+                ui.set_results(ModelRc::from(Rc::new(VecModel::from(items))));
+                ui.set_search_status(status.into());
+                *results.lock().unwrap() = places;
+            });
+        });
+    }
+}
+
+/// Runs a future on a small single-threaded runtime (we're on a worker thread).
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(future)
+}
+
+fn city_item(c: &Location, selected: bool) -> CityItem {
+    CityItem {
+        name: c.name.as_str().into(),
+        detail: c.detail.as_str().into(),
+        selected,
+    }
+}
+
+/// A city with no cached forecast yet: its name and a loading state.
+fn show_loading(ui: &MainWindow, city: &Location) {
+    ui.set_error(SharedString::new());
+    ui.set_status(SharedString::new());
+    ui.set_city(city.name.as_str().into());
+    ui.set_temperature("--°".into());
+    ui.set_condition("Loading…".into());
+    ui.set_weather_icon(SharedString::new());
+    ui.set_high_low(SharedString::new());
+    for set in [MainWindow::set_feels_like, MainWindow::set_humidity, MainWindow::set_wind] {
+        set(ui, "--".into());
+    }
+    ui.set_hours(ModelRc::default());
+    ui.set_days(ModelRc::default());
+    ui.set_line_path(SharedString::new());
+    ui.set_area_path(SharedString::new());
 }
 
 fn apply(ui: &MainWindow, s: &MainScreen) {

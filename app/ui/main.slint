@@ -17,6 +17,137 @@ export struct DayItem {
     bar-end: float,
 }
 
+export struct CityItem {
+    name: string,
+    detail: string,
+    selected: bool,
+}
+
+/// One city in the picker: name, region/country, and optional actions.
+component CityRow inherits Rectangle {
+    in property <CityItem> city;
+    in property <bool> removable;
+    callback clicked();
+    callback remove();
+    height: 60px;
+    border-radius: 14px;
+    background: touch.pressed ? #ffffff26 : (root.city.selected ? #ffffff1a : transparent);
+    touch := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 6px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.city.name; color: white; font-size: 18px; font-weight: root.city.selected ? 600 : 400; overflow: elide; }
+            if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; overflow: elide; }
+        }
+        if root.city.selected: Text { text: "✓"; color: white; font-size: 18px; vertical-alignment: center; }
+        if root.removable: Rectangle {
+            width: 44px;
+            // Drawn rather than a "✕" glyph, which Android's font lacks.
+            Path {
+                width: 12px; height: 12px;
+                viewbox-width: 12; viewbox-height: 12;
+                fit: fill;
+                commands: "M 1 1 L 11 11 M 11 1 L 1 11";
+                stroke: remove-touch.pressed ? white : #ffffff80;
+                stroke-width: 2px;
+            }
+            remove-touch := TouchArea { clicked => { root.remove(); } }
+        }
+    }
+}
+
+/// Full-screen list of saved cities with a search box to add new ones.
+component CityPicker inherits Rectangle {
+    in property <[CityItem]> cities;
+    in property <[CityItem]> results;
+    in property <string> search-status;
+    callback close();
+    callback search(string);
+    callback add-city(int);
+    callback select-city(int);
+    callback remove-city(int);
+
+    background: @linear-gradient(180deg, #141b3a 0%, #0b1026 100%);
+    // Swallow taps so they don't reach the screen underneath.
+    TouchArea { }
+
+    VerticalLayout {
+        padding: 20px;
+        padding-top: 48px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                height: 48px;
+                border-radius: 14px;
+                background: #ffffff1f;
+                input := TextInput {
+                    x: 16px;
+                    width: parent.width - 32px;
+                    vertical-alignment: center;
+                    color: white;
+                    font-size: 17px;
+                    single-line: true;
+                    edited => { root.search(self.text); }
+                }
+                if input.text == "": Text {
+                    x: 16px;
+                    text: "Search for a city";
+                    color: #ffffff80;
+                    font-size: 17px;
+                }
+            }
+            Rectangle {
+                width: 70px;
+                Text { text: "Done"; color: white; font-size: 17px; font-weight: 600; }
+                TouchArea { clicked => { root.close(); } }
+            }
+        }
+
+        if root.search-status != "": Text {
+            text: root.search-status;
+            color: #ffffffb3;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                spacing: 2px;
+                if input.text == "": Text {
+                    text: "SAVED CITIES"; color: #ffffffb3; font-size: 12px; font-weight: 600;
+                }
+                if input.text == "": VerticalLayout {
+                    spacing: 2px;
+                    for c[i] in root.cities: CityRow {
+                        city: c;
+                        removable: root.cities.length > 1;
+                        clicked => { root.select-city(i); }
+                        remove => { root.remove-city(i); }
+                    }
+                }
+                if input.text != "": VerticalLayout {
+                    spacing: 2px;
+                    for c[i] in root.results: CityRow {
+                        city: c;
+                        clicked => { root.add-city(i); }
+                    }
+                }
+            }
+        }
+    }
+}
+
 component DayRow inherits HorizontalLayout {
     in property <DayItem> day;
     spacing: 8px;
@@ -83,7 +214,15 @@ export component MainWindow inherits Window {
     in property <string> error;
     // "Updated 2 h ago" when showing a cached forecast; empty when fresh.
     in property <string> status;
+    in property <[CityItem]> cities;
+    in property <[CityItem]> results;
+    in property <string> search-status;
+    in-out property <bool> picker-open;
     callback refresh();
+    callback search(string);
+    callback add-city(int);
+    callback select-city(int);
+    callback remove-city(int);
 
     // Animated copies, so condition changes fade smoothly.
     property <color> top: root.sky-top;
@@ -106,7 +245,27 @@ export component MainWindow inherits Window {
         VerticalLayout {
             alignment: start;
             spacing: 2px;
-            Text { text: root.city; color: white; font-size: 28px; font-weight: 600; horizontal-alignment: center; }
+            // Tap the city name to switch or add cities.
+            Rectangle {
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    Text { text: root.city; color: white; font-size: 28px; font-weight: 600; }
+                    // Chevron drawn as a path ("▾" is missing from Android's font).
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 14px; height: 8px;
+                        viewbox-width: 14; viewbox-height: 8;
+                        fit: fill;
+                        commands: "M 1 1 L 7 7 L 13 1";
+                        stroke: #ffffffb3;
+                        stroke-width: 2.5px;
+                    }
+                }
+                }
+                TouchArea { clicked => { root.picker-open = true; } }
+            }
             Text { text: root.weather-icon; font-size: 64px; horizontal-alignment: center; }
             Text { text: root.temperature; color: white; font-size: 96px; font-weight: 200; horizontal-alignment: center; }
             Text { text: root.condition; color: white; font-size: 22px; horizontal-alignment: center; }
@@ -228,5 +387,18 @@ export component MainWindow inherits Window {
         }
 
     }
+    }
+
+    if root.picker-open: CityPicker {
+        width: root.width;
+        height: root.height;
+        cities: root.cities;
+        results: root.results;
+        search-status: root.search-status;
+        close => { root.picker-open = false; root.search(""); }
+        search(text) => { root.search(text); }
+        add-city(i) => { root.add-city(i); self.close(); }
+        select-city(i) => { root.select-city(i); self.close(); }
+        remove-city(i) => { root.remove-city(i); }
     }
 }

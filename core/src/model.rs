@@ -6,6 +6,9 @@ use crate::condition::Condition;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Location {
     pub name: String,
+    /// Region and country, e.g. "Île-de-France, France" (may be empty).
+    #[serde(default)]
+    pub detail: String,
     pub latitude: f64,
     pub longitude: f64,
 }
@@ -14,9 +17,16 @@ impl Location {
     pub fn paris() -> Self {
         Self {
             name: "Paris".into(),
+            detail: "Île-de-France, France".into(),
             latitude: 48.8566,
             longitude: 2.3522,
         }
+    }
+
+    /// Identifies the place by its coordinates (about 1 km precision), for
+    /// cache file names and to spot duplicates.
+    pub fn key(&self) -> String {
+        format!("{:.2}_{:.2}", self.latitude, self.longitude)
     }
 }
 

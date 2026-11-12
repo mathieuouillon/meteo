@@ -37,7 +37,7 @@ pub async fn fetch_forecast(location: &Location) -> Result<Forecast, Error> {
 }
 
 /// One shared HTTP client (connection pool, TLS setup done once).
-fn client() -> Result<&'static reqwest::Client, Error> {
+pub(crate) fn client() -> Result<&'static reqwest::Client, Error> {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     if let Some(c) = CLIENT.get() {
         return Ok(c);

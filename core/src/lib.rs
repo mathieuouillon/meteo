@@ -9,12 +9,16 @@ pub mod cache;
 mod chart;
 mod condition;
 mod date;
+mod geocode;
 mod model;
+mod places;
 mod view;
 
 pub use api::{Error, fetch_forecast, parse_forecast};
 pub use cache::{CachedForecast, unix_now};
 pub use chart::{ChartGeometry, ChartPoint, temperature_chart};
 pub use condition::{Condition, Sky};
+pub use geocode::{parse_places, search_cities};
 pub use model::{Current, Day, Forecast, Hour, Location};
+pub use places::Places;
 pub use view::{CHART_HEIGHT, DayView, HOUR_STEP, HOURS_SHOWN, HourView, MainScreen, temp, updated_ago};
