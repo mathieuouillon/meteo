@@ -12,6 +12,8 @@ use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
+mod animation;
+
 #[cfg(target_os = "android")]
 mod location_android;
 #[cfg(target_os = "macos")]
@@ -81,6 +83,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         results: Arc::default(),
     });
     APP.with(|a| a.set(app.clone()).ok());
+    animation::start(&ui);
     ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
@@ -354,6 +357,7 @@ fn show_loading(ui: &MainWindow, city: &Location) {
 }
 
 fn apply(ui: &MainWindow, s: &MainScreen) {
+    animation::set_weather(s.scene);
     ui.set_error(SharedString::new());
     ui.set_city(s.city.as_str().into());
     ui.set_temperature(s.temperature.as_str().into());

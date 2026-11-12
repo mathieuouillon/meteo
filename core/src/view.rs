@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart};
 use crate::model::{Day, Forecast};
+use crate::scene::SceneSpec;
 
 /// Horizontal space per hour in the hourly chart, in logical pixels.
 pub const HOUR_STEP: f64 = 60.0;
@@ -30,6 +31,8 @@ pub struct MainScreen {
     pub chart: ChartGeometry,
     pub hours: Vec<HourView>,
     pub days: Vec<DayView>,
+    /// What the animated background shows.
+    pub scene: SceneSpec,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -79,6 +82,7 @@ impl MainScreen {
             chart,
             hours,
             days: DayView::list(&f.days),
+            scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
         }
     }
 }

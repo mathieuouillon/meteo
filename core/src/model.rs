@@ -89,6 +89,10 @@ pub struct Current {
     pub apparent_temperature: f64,
     pub humidity: f64,
     pub wind_speed: f64,
+    /// Where the wind comes from, in degrees (270 = from the west). Absent in
+    /// caches written before it was fetched.
+    #[serde(default)]
+    pub wind_direction: f64,
     pub condition: Condition,
     pub is_day: bool,
 }

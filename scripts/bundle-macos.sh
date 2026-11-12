@@ -23,6 +23,7 @@ app="target/Météo.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "target/$profile/meteo" "$app/Contents/MacOS/meteo"
+cp app/icons/Meteo.icns "$app/Contents/Resources/Meteo.icns"
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -34,6 +35,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>         <string>Météo</string>
     <key>CFBundleExecutable</key>          <string>meteo</string>
     <key>CFBundlePackageType</key>         <string>APPL</string>
+    <key>CFBundleIconFile</key>            <string>Meteo</string>
     <key>CFBundleShortVersionString</key>  <string>$version</string>
     <key>CFBundleVersion</key>             <string>$version</string>
     <key>LSMinimumSystemVersion</key>      <string>11.0</string>

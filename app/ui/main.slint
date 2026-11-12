@@ -17,6 +17,98 @@ export struct DayItem {
     bar-end: float,
 }
 
+export struct CloudItem {
+    x: float,
+    y: float,
+    scale: float,
+    opacity: float,
+    dark: bool,
+}
+
+export struct FogItem {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    opacity: float,
+}
+
+/// One particle layer: a path in window coordinates, drawn 1:1.
+component Particles inherits Path {
+    in property <string> d;
+    // No size set: like most elements outside a layout, it fills its parent.
+    viewbox-width: self.width / 1px;
+    viewbox-height: self.height / 1px;
+    fit: fill;
+    stroke-line-cap: round;
+    commands: root.d == "" ? "M 0 0" : root.d;
+}
+
+/// One soft round puff of a cloud: a blurred shadow of its own colour
+/// gives it fuzzy edges.
+component Puff inherits Rectangle {
+    in property <color> tint;
+    in property <float> k;
+    border-radius: self.height / 2;
+    background: @linear-gradient(180deg, root.tint 0%, root.tint.transparentize(30%) 100%);
+    drop-shadow-color: root.tint;
+    drop-shadow-blur: 14px * root.k;
+}
+
+/// A puffy cloud in a 180×80 box, scaled. The group opacity keeps the
+/// overlapping puffs from looking darker where they overlap.
+component Cloud inherits Rectangle {
+    in property <CloudItem> cloud;
+    x: root.cloud.x * 1px;
+    y: root.cloud.y * 1px;
+    width: 180px * root.cloud.scale;
+    height: 80px * root.cloud.scale;
+    opacity: root.cloud.opacity;
+    property <float> k: root.cloud.scale;
+    property <color> tint: root.cloud.dark ? #5b6474 : white;
+    Puff { tint: root.tint; k: root.k; x: 15px * k; y: 40px * k; width: 150px * k; height: 38px * k; }
+    Puff { tint: root.tint; k: root.k; x: 30px * k; y: 15px * k; width: 60px * k; height: self.width; }
+    Puff { tint: root.tint; k: root.k; x: 70px * k; y: 0px; width: 78px * k; height: self.width; }
+    Puff { tint: root.tint; k: root.k; x: 115px * k; y: 22px * k; width: 50px * k; height: self.width; }
+}
+
+/// The animated weather behind the content (driven from Rust, animation.rs).
+component Sky inherits Rectangle {
+    in property <string> rain-far;
+    in property <string> rain-near;
+    in property <string> splashes;
+    in property <string> snow-small;
+    in property <string> snow-large;
+    in property <string> stars-dim;
+    in property <string> stars-mid;
+    in property <string> stars-bright;
+    in property <string> bolt;
+    in property <float> flash;
+    in property <[CloudItem]> clouds;
+    in property <[FogItem]> fog;
+
+    Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
+    Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
+    Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
+    for c in root.clouds: Cloud { cloud: c; }
+    for f in root.fog: Rectangle {
+        x: f.x * 1px; y: f.y * 1px;
+        width: f.width * 1px; height: f.height * 1px;
+        border-radius: self.height / 2;
+        background: white;
+        opacity: f.opacity;
+    }
+    Particles { d: root.rain-far; stroke: #ffffff40; stroke-width: 1px; }
+    Particles { d: root.rain-near; stroke: #ffffff8c; stroke-width: 1.6px; }
+    Particles { d: root.splashes; stroke: #ffffffaa; stroke-width: 2.5px; }
+    Particles { d: root.snow-small; stroke: #ffffffb3; stroke-width: 4px; }
+    Particles { d: root.snow-large; stroke: #ffffffee; stroke-width: 7px; }
+    // Lightning: a soft glow under a bright core, then the whole sky lights up.
+    Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
+    Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
+    if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
+}
+
 export struct CityItem {
     name: string,
     detail: string,
@@ -233,6 +325,19 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
+    // Animated background (see animation.rs).
+    in property <string> rain-far;
+    in property <string> rain-near;
+    in property <string> splashes;
+    in property <string> snow-small;
+    in property <string> snow-large;
+    in property <string> stars-dim;
+    in property <string> stars-mid;
+    in property <string> stars-bright;
+    in property <string> bolt;
+    in property <float> flash;
+    in property <[CloudItem]> clouds;
+    in property <[FogItem]> fog;
     in property <bool> can-locate;
     callback refresh();
     callback locate();
@@ -248,7 +353,24 @@ export component MainWindow inherits Window {
 
     background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
 
-    // The whole screen scrolls vertically; the sky gradient stays fixed behind it.
+    Sky {
+        width: root.width;
+        height: root.height;
+        rain-far: root.rain-far;
+        rain-near: root.rain-near;
+        splashes: root.splashes;
+        snow-small: root.snow-small;
+        snow-large: root.snow-large;
+        stars-dim: root.stars-dim;
+        stars-mid: root.stars-mid;
+        stars-bright: root.stars-bright;
+        bolt: root.bolt;
+        flash: root.flash;
+        clouds: root.clouds;
+        fog: root.fog;
+    }
+
+    // The whole screen scrolls vertically; the sky stays fixed behind it.
     Flickable {
     content-width: self.width;
     content-height: content.preferred-height;

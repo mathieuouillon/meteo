@@ -79,6 +79,39 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
+## Animated weather
+
+Behind the forecast, the sky moves with the current weather: rain, snow, drifting
+clouds, fog, twinkling stars at night, and lightning in storms.
+
+- [core/src/scene.rs](core/src/scene.rs) is a small particle simulation. Raindrops
+  fall under gravity with air drag up to a terminal speed that depends on their size,
+  and are pushed sideways by the forecast's wind, direction included. Snowflakes
+  sway as they fall. Clouds drift with parallax (bigger ones are closer and move
+  faster). Lightning is a flash, a quick second flicker and a random pause.
+- Each particle layer reaches Slint as one path string per frame, so hundreds of
+  drops are drawn with a single element. The rest is
+  [app/src/animation.rs](app/src/animation.rs) (a timer) and the `Sky` component in
+  `main.slint`.
+- It runs at 60 fps when something falls and 30 fps for clouds, fog and stars. It
+  pauses behind the city picker and when the app is in the background.
+
+To see a given weather whatever the forecast says:
+
+```bash
+METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, drizzle, rain, snow, storm
+```
+
+## App icon
+
+A sun behind a cloud on the clear-day sky.
+
+- Android: an adaptive icon made of vector drawables
+  (`android/app/src/main/res/drawable/ic_launcher_*.xml`), with a monochrome layer so
+  Android 13+ can tint it with the wallpaper colours (themed icons).
+- macOS: `app/icons/Meteo.icns`, drawn from the same shapes by
+  `scripts/make-macos-icon.sh`. `scripts/bundle-macos.sh` adds it to `Météo.app`.
+
 ## Cities and location
 
 Tap the city name to open the city picker:

@@ -28,7 +28,7 @@ pub async fn fetch_forecast(location: &Location) -> Result<Forecast, Error> {
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\
          ?latitude={}&longitude={}\
-         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m\
+         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m\
          &hourly=temperature_2m,precipitation_probability,weather_code,is_day\
          &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max\
          &timezone=auto&forecast_days={}",
@@ -116,6 +116,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
             apparent_temperature: c.apparent_temperature,
             humidity: c.relative_humidity_2m,
             wind_speed: c.wind_speed_10m,
+            wind_direction: c.wind_direction_10m,
         },
         today_min: today.min,
         today_max: today.max,
@@ -142,6 +143,8 @@ struct RawCurrent {
     is_day: u8,
     weather_code: u8,
     wind_speed_10m: f64,
+    #[serde(default)]
+    wind_direction_10m: f64,
 }
 
 #[derive(Deserialize)]
