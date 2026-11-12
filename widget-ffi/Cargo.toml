@@ -1,14 +1,13 @@
 [package]
 name = "meteo-widget-ffi"
-description = "Functions the home-screen widgets call: JNI for Android, C for macOS (no UI code)."
+description = "JNI functions the Android home-screen widget calls (no UI code)."
 edition.workspace = true
 version.workspace = true
 publish = false
 
 [lib]
 name = "meteo_widget"
-# cdylib: libmeteo_widget.so for Android; staticlib: linked into the macOS widget.
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 meteo-core = { path = "../core" }

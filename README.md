@@ -1,6 +1,6 @@
 # Météo
 
-A weather app for Android and macOS, written in Rust with a [Slint](https://slint.dev) UI.
+A weather app for Android, written in Rust with a [Slint](https://slint.dev) UI.
 Forecasts come from [Open-Meteo](https://open-meteo.com) (free, no API key).
 
 ```
@@ -8,35 +8,25 @@ core/        meteo-core: Open-Meteo client, models, weather codes → icons/colo
              chart geometry, cache, saved cities, and the view models for the
              main screen and the widgets. No UI code.
 app/         meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
-widget-ffi/  Functions for the widgets (no UI code): JNI for Android (libmeteo_widget.so),
-             C for macOS (libmeteo_widget.a).
-macos/       The macOS WidgetKit extension (Swift).
+widget-ffi/  JNI functions for the Android widget (libmeteo_widget.so, no UI code).
 android/     Gradle project: packages the Rust libraries + the Kotlin Glance widget.
-scripts/     bundle-macos.sh builds Météo.app.
 docs/        screenshots.
 ```
 
 The UI only binds ready-to-display values from `MainScreen`; formatting and layout
-maths stay in `core` so a future home-screen widget (Kotlin / Swift) can reuse them.
+maths stay in `core` so the home-screen widget (Kotlin) can reuse them.
 
-## Run on macOS
+## Desktop preview
+
+For working on the UI without a phone, the same Slint app runs in a desktop window:
 
 ```bash
 cargo run -p meteo
+METEO_WEATHER=storm cargo run -p meteo   # force a weather for the animations
 ```
 
-### As a macOS app (needed for location)
-
-```bash
-scripts/bundle-macos.sh          # release build → target/Météo.app
-scripts/bundle-macos.sh --debug  # faster to compile
-open target/Météo.app
-```
-
-The script wraps the binary in an `.app` with an `Info.plist` (bundle id
-`dev.meteo.app`, the location usage text) and signs it ad hoc. macOS only asks for
-location permission for a bundled app, so "Use my location" is hidden under
-`cargo run`.
+It's a development tool, not a desktop app: "Use my location" and the widget are
+Android only, and it keeps its data in `~/.cache/meteo`.
 
 ## Run on Android
 
@@ -130,57 +120,21 @@ To see a given weather whatever the forecast says:
 METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, drizzle, rain, snow, storm
 ```
 
-## macOS widget
-
-A WidgetKit widget in small and medium sizes, the same content as the Android
-widget. The medium size adds the next 5 hours. Clicking it opens the app.
-
-```bash
-scripts/bundle-macos.sh --install   # builds Météo.app, copies it to ~/Applications
-open ~/Applications/Météo.app       # run it once so macOS lists the widget
-```
-
-Then right-click the desktop, choose **Edit Widgets…**, search for "Météo" and drag it
-out. It also works in Notification Center.
-
-**The widget needs a developer certificate.** macOS refuses to start a widget extension
-signed ad hoc (chronod logs `RBSServiceErrorDomain Code=1 "Client not authorized"`), so
-it never shows in the gallery. A free Apple ID is enough: Xcode › Settings › Accounts ›
-add your Apple ID › Manage Certificates › **+** › Apple Development. The bundle script
-then signs with that certificate automatically (or set `MACOS_SIGN_IDENTITY`). Without
-one the app still works, only the widget doesn't.
-
-- [macos/MeteoWidget](macos/MeteoWidget) holds the Swift code. It only does layout: its
-  content comes from the Rust core through a small C API (`meteo_widget.h`, built from
-  `widget-ffi` as a static library and linked into the extension).
-- Timeline: one entry now and one at the start of each of the next 6 hours, so "Now"
-  moves on without waking the widget. It reloads every 30 minutes and downloads a new
-  forecast itself when the cache is older than that.
-- Data: widget extensions must be sandboxed. Without a development team there is no
-  App Group to share a container, so the extension's entitlements allow just the app's
-  data folder (`~/Library/Application Support/dev.meteo.app/`, read and write).
-  Signing is described above.
-- To check the layout without placing the widget,
-  `scripts/bundle-macos.sh --snapshot <dir>` renders both sizes with real data to PNG.
-
 ## Accent colour
 
 Buttons and selections use the system accent; the sky colours stay tied to the
 weather. On Android 12+ that's the Material You colour taken from the wallpaper
-(`system_accent1_200` / `_500`, read through JNI). On macOS it's the accent colour
-chosen in System Settings, lightened for the dark sky. Elsewhere, and on older
-Android, the app's own blue is used. See [app/src/accent.rs](app/src/accent.rs).
+(`system_accent1_200` / `_500`, read through JNI). On older Android, and in the
+desktop preview, the app's own blue is used. See [app/src/accent.rs](app/src/accent.rs).
 The colours are read when the app starts.
 
 ## App icon
 
 A sun behind a cloud on the clear-day sky.
 
-- Android: an adaptive icon made of vector drawables
-  (`android/app/src/main/res/drawable/ic_launcher_*.xml`), with a monochrome layer so
-  Android 13+ can tint it with the wallpaper colours (themed icons).
-- macOS: `app/icons/Meteo.icns`, drawn from the same shapes by
-  `scripts/make-macos-icon.sh`. `scripts/bundle-macos.sh` adds it to `Météo.app`.
+It's an adaptive icon made of vector drawables
+(`android/app/src/main/res/drawable/ic_launcher_*.xml`), with a monochrome layer so
+Android 13+ can tint it with the wallpaper colours (themed icons).
 
 ## Cities and location
 
@@ -191,16 +145,12 @@ Tap the city name to open the city picker:
 - **Saved cities** (`meteo_core::Places`) are stored in `places.json` next to the
   cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
 - **Use my location** asks for location permission, finds the device's position,
-  and names it (Android's `Geocoder`, macOS's `CLGeocoder`). It becomes a "📍" entry at
+  and names it with Android's `Geocoder`. It becomes a "📍" entry at
   the top of the list, refreshed each time the app opens. This is all JNI from Rust
-  ([app/src/location_android.rs](app/src/location_android.rs)). A NativeActivity gets
+  ([app/src/android.rs](app/src/android.rs)). A NativeActivity gets
   no Java callbacks, so the code polls the permission state, and it starts location
   updates sent to a `PendingIntent` (so the provider produces a fix) while it polls
   `getLastKnownLocation`.
-
-On macOS, [app/src/location_macos.rs](app/src/location_macos.rs) uses CoreLocation via
-`objc2`, on the main thread, polling `CLLocationManager` with a Slint timer instead of
-a delegate class. It only works from `Météo.app` (see above).
 
 ## Offline cache
 
@@ -211,14 +161,9 @@ hours and days are dropped and the first ones relabelled "Now" and "Today" (48 h
 are kept so there is still a full day to show). If a refresh fails, the cached
 forecast stays on screen with "Offline · updated 3 h ago".
 
-| Platform | Cache file |
-|----------|------------|
-| macOS    | `~/Library/Application Support/dev.meteo.app/forecast-<lat>_<lon>.json` |
-| Android  | the app's internal files directory (`files/forecast-<lat>_<lon>.json`) |
-
-The home-screen widgets will read the same file. On macOS a WidgetKit extension
-can't read another app's Application Support folder, so the cache will move to a
-shared App Group container then.
+The files are in the app's internal files directory
+(`files/forecast-<lat>_<lon>.json`, plus the model name for sources other than Best
+match). The home-screen widget reads the same files.
 
 ## Notes
 

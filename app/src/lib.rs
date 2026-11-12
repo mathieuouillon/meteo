@@ -18,8 +18,6 @@ mod animation;
 
 #[cfg(target_os = "android")]
 mod android;
-#[cfg(target_os = "macos")]
-mod location_macos;
 
 #[cfg(target_os = "android")]
 static ANDROID_APP: OnceLock<slint::android::AndroidApp> = OnceLock::new();
@@ -38,11 +36,8 @@ fn data_dir() -> Option<PathBuf> {
         return Some(dir.clone());
     }
     let home = PathBuf::from(std::env::var_os("HOME")?);
-    if cfg!(target_os = "macos") {
-        Some(home.join("Library/Application Support/dev.meteo.app"))
-    } else {
-        Some(home.join(".cache/meteo"))
-    }
+    // Desktop development preview (`cargo run -p meteo`).
+    Some(home.join(".cache/meteo"))
 }
 
 /// No forecast on screen yet.
@@ -289,11 +284,7 @@ impl App {
                 Err(_) => {}
             }
         };
-        // macOS: CoreLocation calls back on the UI thread.
-        #[cfg(target_os = "macos")]
-        location_macos::locate(quiet, finish);
-        // Android: blocking JNI calls on a worker thread.
-        #[cfg(not(target_os = "macos"))]
+        // Blocking JNI calls on a worker thread.
         std::thread::spawn(move || {
             let found = device_location(quiet);
             let _ = slint::invoke_from_event_loop(move || finish(found));
@@ -356,17 +347,14 @@ fn device_location(quiet: bool) -> Result<Location, String> {
     Ok(Location::new(name, detail, lat, lon))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "macos")))]
+#[cfg(not(target_os = "android"))]
 fn device_location(_quiet: bool) -> Result<Location, String> {
     Err("Location isn't available on this platform yet".into())
 }
 
 /// Whether to offer "Use my location".
 fn can_locate() -> bool {
-    #[cfg(target_os = "macos")]
-    return location_macos::available();
-    #[cfg(not(target_os = "macos"))]
-    return cfg!(target_os = "android");
+    cfg!(target_os = "android")
 }
 
 /// Runs a future on a small single-threaded runtime (we're on a worker thread).
