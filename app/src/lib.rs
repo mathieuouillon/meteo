@@ -14,6 +14,8 @@ slint::include_modules!();
 
 #[cfg(target_os = "android")]
 mod location_android;
+#[cfg(target_os = "macos")]
+mod location_macos;
 
 #[cfg(target_os = "android")]
 static ANDROID_APP: OnceLock<slint::android::AndroidApp> = OnceLock::new();
@@ -79,7 +81,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         results: Arc::default(),
     });
     APP.with(|a| a.set(app.clone()).ok());
-    ui.set_can_locate(cfg!(target_os = "android"));
+    ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
     // we're already allowed to.
@@ -213,26 +215,32 @@ impl App {
             ui.set_search_status("Finding your location…".into());
         }
         let weak = self.ui.clone();
+        let finish = move |found: Result<Location, String>| {
+            let Some(ui) = weak.upgrade() else { return };
+            match found {
+                Ok(here) => {
+                    APP.with(|a| {
+                        if let Some(app) = a.get() {
+                            app.change_places(|p| p.set_device(here));
+                        }
+                    });
+                    if !quiet {
+                        ui.set_search_status(SharedString::new());
+                        ui.set_picker_open(false);
+                    }
+                }
+                Err(message) if !quiet => ui.set_search_status(message.into()),
+                Err(_) => {}
+            }
+        };
+        // macOS: CoreLocation calls back on the UI thread.
+        #[cfg(target_os = "macos")]
+        location_macos::locate(quiet, finish);
+        // Android: blocking JNI calls on a worker thread.
+        #[cfg(not(target_os = "macos"))]
         std::thread::spawn(move || {
             let found = device_location(quiet);
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(ui) = weak.upgrade() else { return };
-                match found {
-                    Ok(here) => {
-                        APP.with(|a| {
-                            if let Some(app) = a.get() {
-                                app.change_places(|p| p.set_device(here));
-                            }
-                        });
-                        if !quiet {
-                            ui.set_search_status(SharedString::new());
-                            ui.set_picker_open(false);
-                        }
-                    }
-                    Err(message) if !quiet => ui.set_search_status(message.into()),
-                    Err(_) => {}
-                }
-            });
+            let _ = slint::invoke_from_event_loop(move || finish(found));
         });
     }
 
@@ -292,9 +300,17 @@ fn device_location(quiet: bool) -> Result<Location, String> {
     Ok(Location::new(name, detail, lat, lon))
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "macos")))]
 fn device_location(_quiet: bool) -> Result<Location, String> {
     Err("Location isn't available on this platform yet".into())
+}
+
+/// Whether to offer "Use my location".
+fn can_locate() -> bool {
+    #[cfg(target_os = "macos")]
+    return location_macos::available();
+    #[cfg(not(target_os = "macos"))]
+    return cfg!(target_os = "android");
 }
 
 /// Runs a future on a small single-threaded runtime (we're on a worker thread).

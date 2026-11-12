@@ -8,6 +8,13 @@ meteo-core = { version = "0.1.0", path = "../core" }
 slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-skia"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "time"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# CoreLocation for "Use my location". Same objc2 versions winit already uses.
+objc2 = "0.6.5"
+objc2-foundation = "0.3.2"
+objc2-core-location = "0.3.2"
+block2 = "0.6.2"
+
 [target.'cfg(target_os = "android")'.dependencies]
 slint = { version = "1.18.1", features = ["backend-android-activity-06"] }
 # Same version as already used by the TLS stack; for LocationManager/Geocoder calls.

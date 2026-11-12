@@ -19,6 +19,19 @@ maths stay in `core` so a future home-screen widget (Kotlin / Swift) can reuse t
 cargo run -p meteo
 ```
 
+### As a macOS app (needed for location)
+
+```bash
+scripts/bundle-macos.sh          # release build → target/Météo.app
+scripts/bundle-macos.sh --debug  # faster to compile
+open target/Météo.app
+```
+
+The script wraps the binary in an `.app` with an `Info.plist` (bundle id
+`dev.meteo.app`, the location usage text) and signs it ad hoc. macOS only asks for
+location permission for a bundled app, so "Use my location" is hidden under
+`cargo run`.
+
 ## Run on Android
 
 One-time setup: Android SDK + NDK, the Rust target, and `cargo-apk`.
@@ -54,16 +67,17 @@ Tap the city name to open the city picker:
   result to save and show it.
 - **Saved cities** (`meteo_core::Places`) are stored in `places.json` next to the
   cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
-- **Use my location** (Android only for now) asks for location permission, finds the
-  device's position, and names it with Android's `Geocoder`. It becomes a "📍" entry at
+- **Use my location** asks for location permission, finds the device's position,
+  and names it (Android's `Geocoder`, macOS's `CLGeocoder`). It becomes a "📍" entry at
   the top of the list, refreshed each time the app opens. This is all JNI from Rust
   ([app/src/location_android.rs](app/src/location_android.rs)). A NativeActivity gets
   no Java callbacks, so the code polls the permission state, and it starts location
   updates sent to a `PendingIntent` (so the provider produces a fix) while it polls
   `getLastKnownLocation`.
 
-On macOS, location needs a proper `.app` bundle with a usage description
-(`NSLocationWhenInUseUsageDescription`), so it isn't wired up yet.
+On macOS, [app/src/location_macos.rs](app/src/location_macos.rs) uses CoreLocation via
+`objc2`, on the main thread, polling `CLLocationManager` with a Slint timer instead of
+a delegate class. It only works from `Météo.app` (see above).
 
 ## Offline cache
 
