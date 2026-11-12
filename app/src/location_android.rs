@@ -1,5 +1,5 @@
-//! The device's position on Android, through JNI calls into the platform's
-//! `LocationManager` and `Geocoder` (no Java/Kotlin code needed).
+//! Android platform calls through JNI (no Java/Kotlin code needed): the
+//! device's position (`LocationManager`, `Geocoder`) and widget refreshes.
 //!
 //! A NativeActivity can't receive callbacks (permission results, location
 //! listeners) without a Java class, so this polls instead: it polls
@@ -193,4 +193,38 @@ pub fn place_name(app: &AndroidApp, latitude: f64, longitude: f64) -> Option<(St
     })
     .ok()
     .flatten()
+}
+
+/// Asks the home-screen widget (if any is placed) to redraw from the cache.
+/// Called after the app saved a fresh forecast or switched city.
+pub fn notify_widgets(app: &AndroidApp) {
+    let _ = with_activity(app, |env, activity| {
+        let manager = env
+            .call_static_method(
+                "android/appwidget/AppWidgetManager",
+                "getInstance",
+                "(Landroid/content/Context;)Landroid/appwidget/AppWidgetManager;",
+                &[JValue::Object(activity)],
+            )?
+            .l()?;
+        let class = env.new_string("dev.meteo.app.widget.MeteoWidgetReceiver")?;
+        let component = env.new_object(
+            "android/content/ComponentName",
+            "(Landroid/content/Context;Ljava/lang/String;)V",
+            &[JValue::Object(activity), JValue::Object(&class)],
+        )?;
+        let ids = env
+            .call_method(&manager, "getAppWidgetIds", "(Landroid/content/ComponentName;)[I", &[JValue::Object(&component)])?
+            .l()?;
+        if env.get_array_length(&jni::objects::JIntArray::from(env.new_local_ref(&ids)?))? == 0 {
+            return Ok(()); // no widget on the home screen
+        }
+        let action = env.new_string("android.appwidget.action.APPWIDGET_UPDATE")?;
+        let intent = env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&action)])?;
+        env.call_method(&intent, "setComponent", "(Landroid/content/ComponentName;)Landroid/content/Intent;", &[JValue::Object(&component)])?;
+        let key = env.new_string("appWidgetIds")?;
+        env.call_method(&intent, "putExtra", "(Ljava/lang/String;[I)Landroid/content/Intent;", &[JValue::Object(&key), JValue::Object(&ids)])?;
+        env.call_method(activity, "sendBroadcast", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+        Ok(())
+    });
 }

@@ -4,10 +4,14 @@ A weather app for Android and macOS, written in Rust with a [Slint](https://slin
 Forecasts come from [Open-Meteo](https://open-meteo.com) (free, no API key).
 
 ```
-core/   meteo-core: Open-Meteo client, models, weather codes → icons/colours,
-        chart geometry, and the `MainScreen` view model. No UI code.
-app/    meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
-docs/   screenshots.
+core/        meteo-core: Open-Meteo client, models, weather codes → icons/colours,
+             chart geometry, cache, saved cities, and the view models for the
+             main screen and the widgets. No UI code.
+app/         meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
+widget-ffi/  JNI functions for the Android widget (libmeteo_widget.so, no UI code).
+android/     Gradle project: packages the Rust libraries + the Kotlin Glance widget.
+scripts/     bundle-macos.sh builds Météo.app.
+docs/        screenshots.
 ```
 
 The UI only binds ready-to-display values from `MainScreen`; formatting and layout
@@ -34,23 +38,39 @@ location permission for a bundled app, so "Use my location" is hidden under
 
 ## Run on Android
 
-One-time setup: Android SDK + NDK, the Rust target, and `cargo-apk`.
+One-time setup: the Android SDK with NDK `30.0.16248370`, JDK 17 or newer, the Rust
+target, and `cargo-ndk`.
 
 ```bash
 rustup target add aarch64-linux-android
-cargo install cargo-apk
+cargo install cargo-ndk
 ```
 
-Build, install and launch (emulator or device connected via `adb`):
+Build and install (emulator or device connected via `adb`):
 
 ```bash
-export ANDROID_HOME=~/Library/Android/sdk
-export ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/30.0.16248370
-cargo apk run -p meteo --lib
+cd android
+./gradlew installDebug
 ```
 
-`cargo apk run` keeps streaming the app's logcat after launch; press Ctrl-C to stop
-it (the app keeps running). Use `cargo apk build -p meteo --lib` to only build.
+Gradle's `cargoBuild` task runs `cargo ndk` first, building `libmeteo.so` (the Slint app,
+started by `android.app.NativeActivity`) and `libmeteo_widget.so` (the widget's bridge).
+`./gradlew assembleRelease` builds optimised Rust.
+
+## Android widget
+
+A home-screen widget showing the selected city: icon, temperature, condition, high/low,
+and in its wide size the next 5 hours. Tapping it opens the app.
+
+- The layout is Kotlin Glance ([MeteoWidget.kt](android/app/src/main/java/dev/meteo/app/widget/MeteoWidget.kt)).
+  Its content comes from Rust: `RustBridge.state()` returns `meteo_core::WidgetState` as
+  JSON, built from `places.json` and the city's cached forecast and moved forward to the
+  current hour.
+- If the cache is missing or older than 30 minutes, the widget calls `RustBridge.refresh()`,
+  which downloads the forecast in Rust while the app is closed. Android also wakes the
+  widget every 30 minutes.
+- After every download, the app tells the widget to redraw (`notify_widgets`, a JNI
+  broadcast), so switching city in the app updates the widget straight away.
 
 ## Tests
 

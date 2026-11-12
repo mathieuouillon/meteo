@@ -2954,6 +2954,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "meteo-widget-ffi"
+version = "0.1.0"
+dependencies = [
+ "jni 0.21.1",
+ "meteo-core",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

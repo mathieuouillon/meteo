@@ -186,6 +186,10 @@ impl App {
                 if let Err(e) = cache::save(dir, &city, forecast, fetched_at) {
                     eprintln!("couldn't save the forecast cache: {e}");
                 }
+                #[cfg(target_os = "android")]
+                if let Some(app) = ANDROID_APP.get() {
+                    location_android::notify_widgets(app);
+                }
             }
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };

@@ -19,6 +19,8 @@ pub enum Error {
     Parse(#[from] serde_json::Error),
     #[error("response has no data for the current hour")]
     MissingData,
+    #[error("couldn't save the forecast: {0}")]
+    Cache(#[from] std::io::Error),
 }
 
 /// Fetches the forecast for `location` from Open-Meteo (no API key needed).

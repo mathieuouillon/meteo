@@ -13,6 +13,7 @@ mod geocode;
 mod model;
 mod places;
 mod view;
+mod widget;
 
 pub use api::{Error, fetch_forecast, parse_forecast};
 pub use cache::{CachedForecast, unix_now};
@@ -22,3 +23,4 @@ pub use geocode::{parse_places, search_cities};
 pub use model::{Current, Day, Forecast, Hour, Location};
 pub use places::Places;
 pub use view::{CHART_HEIGHT, DayView, HOUR_STEP, HOURS_SHOWN, HourView, MainScreen, temp, updated_ago};
+pub use widget::{WidgetHour, WidgetState, WidgetView, refresh_selected, widget_state};

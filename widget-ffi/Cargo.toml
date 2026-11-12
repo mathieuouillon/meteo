@@ -1,0 +1,16 @@
+[package]
+name = "meteo-widget-ffi"
+description = "JNI functions the Android home-screen widget calls (no UI code)."
+edition.workspace = true
+version.workspace = true
+publish = false
+
+[lib]
+name = "meteo_widget"
+crate-type = ["cdylib"]
+
+[dependencies]
+meteo-core = { path = "../core" }
+jni = "0.21.1"
+serde_json = "1"
+tokio = { version = "1.54.1", features = ["rt", "net", "time"] }
