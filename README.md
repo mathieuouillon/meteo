@@ -79,6 +79,32 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
+## Rain amounts
+
+- The hourly chart shows the expected amount under each hour ("1.2 mm"), below the
+  chance of rain.
+- Each day in the 7-day list shows its total. Tap a day to open its rain hour by hour:
+  a bar chart for 00h–23h that scrolls sideways, with the amount above each wet hour.
+  Bars share one scale for the whole week (at least 2 mm), so a wet day looks wetter
+  than a drizzly one. Today opens at the current hour, other days at their first wet
+  hour.
+- Amounts are Open-Meteo's `precipitation`: rain, showers and snow as water, in mm.
+
+## Data source
+
+Tap "Data: … ›" at the bottom of the screen to pick the weather model.
+[core/src/source.rs](core/src/source.rs) lists them: Best match (Open-Meteo's default
+blend), Météo-France (AROME/ARPEGE), ECMWF, DWD ICON, NOAA GFS, UK Met Office,
+MET Norway, KNMI, DMI, Environment Canada and JMA. They all come through Open-Meteo,
+so there are still no API keys.
+
+- Regional models are more detailed near home but may cover fewer days (Météo-France:
+  about 4) or have no rain probability (Météo-France, JMA). Parsing stops at the first
+  missing hour or day instead of failing.
+- The choice is saved in `settings.json`, and the widget uses it too. Each source has
+  its own cache file (`forecast-<lat>_<lon>-<model>.json`), so switching back and
+  forth works offline.
+
 ## Animated weather
 
 Behind the forecast, the sky moves with the current weather: rain, snow, drifting

@@ -5,6 +5,7 @@ use serde::Deserialize;
 use crate::condition::Condition;
 use crate::date::weekday_short;
 use crate::model::{Current, Day, Forecast, Hour, Location};
+use crate::source::Source;
 
 /// Hours kept from each response. Screens show 24; the rest lets a cached
 /// forecast still fill the chart a day later.
@@ -23,16 +24,20 @@ pub enum Error {
     Cache(#[from] std::io::Error),
 }
 
-/// Fetches the forecast for `location` from Open-Meteo (no API key needed).
-pub async fn fetch_forecast(location: &Location) -> Result<Forecast, Error> {
+/// Fetches the forecast for `location` from Open-Meteo (no API key needed),
+/// using the weather model of `source`.
+pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forecast, Error> {
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\
          ?latitude={}&longitude={}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m\
-         &hourly=temperature_2m,precipitation_probability,weather_code,is_day\
-         &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max\
-         &timezone=auto&forecast_days={}",
-        location.latitude, location.longitude, DAYS_SHOWN
+         &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day\
+         &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max\
+         &timezone=auto&forecast_days={}&models={}",
+        location.latitude,
+        location.longitude,
+        DAYS_SHOWN,
+        source.model_id()
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
     parse_forecast(&location.name, &body)
@@ -71,8 +76,12 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         .position(|t| t.get(..13).is_some_and(|h| h >= current_hour))
         .ok_or(Error::MissingData)?;
 
+    // Some models stop before 7 days: their values turn to null. Hours and
+    // days end at the first gap.
     let h = &raw.hourly;
-    let hours = (start..h.time.len())
+    let hour_ok = |i: usize| at(&h.temperature_2m, i).is_some() && at(&h.weather_code, i).is_some();
+    let hours: Vec<Hour> = (start..h.time.len())
+        .take_while(|&i| hour_ok(i))
         .take(HOURS_KEPT)
         .map(|i| Hour {
             label: if i == start {
@@ -81,26 +90,44 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                 format!("{}h", &h.time[i][11..13])
             },
             time: h.time[i].clone(),
-            temperature: h.temperature_2m[i],
-            precipitation_probability: h.precipitation_probability[i].unwrap_or(0.0),
-            condition: Condition::from_wmo(h.weather_code[i]),
-            is_day: h.is_day[i] == 1,
+            temperature: at(&h.temperature_2m, i).unwrap_or_default(),
+            precipitation_probability: at(&h.precipitation_probability, i).unwrap_or(0.0),
+            precipitation: at(&h.precipitation, i).unwrap_or(0.0),
+            condition: Condition::from_wmo(at(&h.weather_code, i).unwrap_or(0)),
+            is_day: at(&h.is_day, i) == Some(1),
         })
         .collect();
+    if hours.is_empty() {
+        return Err(Error::MissingData);
+    }
 
     let d = &raw.daily;
     let days: Vec<Day> = (0..d.time.len().min(DAYS_SHOWN))
-        .map(|i| Day {
-            label: if i == 0 {
-                "Today".into()
-            } else {
-                weekday_short(&d.time[i]).unwrap_or("?").into()
-            },
-            date: d.time[i].clone(),
-            min: d.temperature_2m_min[i],
-            max: d.temperature_2m_max[i],
-            precipitation_probability: d.precipitation_probability_max[i].unwrap_or(0.0),
-            condition: Condition::from_wmo(d.weather_code[i]),
+        .map_while(|i| {
+            let (min, max) = (at(&d.temperature_2m_min, i)?, at(&d.temperature_2m_max, i)?);
+            let date = d.time[i].clone();
+            // Rain per hour of this day (local time), for the day's detail view.
+            let rain: Vec<f64> = h
+                .time
+                .iter()
+                .enumerate()
+                .filter(|(j, t)| t.starts_with(&date) && hour_ok(*j))
+                .map(|(j, _)| at(&h.precipitation, j).unwrap_or(0.0))
+                .collect();
+            Some(Day {
+                label: if i == 0 {
+                    "Today".into()
+                } else {
+                    weekday_short(&date).unwrap_or("?").into()
+                },
+                min,
+                max,
+                precipitation_probability: at(&d.precipitation_probability_max, i).unwrap_or(0.0),
+                precipitation_sum: at(&d.precipitation_sum, i).unwrap_or_else(|| rain.iter().sum()),
+                condition: Condition::from_wmo(at(&d.weather_code, i).unwrap_or(0)),
+                rain,
+                date,
+            })
         })
         .collect();
     let today = days.first().ok_or(Error::MissingData)?;
@@ -147,22 +174,39 @@ struct RawCurrent {
     wind_direction_10m: f64,
 }
 
+/// The value at `i`, if present and not null.
+fn at<T: Copy>(values: &[Option<T>], i: usize) -> Option<T> {
+    values.get(i).copied().flatten()
+}
+
 #[derive(Deserialize)]
 struct RawHourly {
     time: Vec<String>,
-    temperature_2m: Vec<f64>,
+    #[serde(default)]
+    temperature_2m: Vec<Option<f64>>,
+    #[serde(default)]
+    precipitation: Vec<Option<f64>>,
+    #[serde(default)]
     precipitation_probability: Vec<Option<f64>>,
-    weather_code: Vec<u8>,
-    is_day: Vec<u8>,
+    #[serde(default)]
+    weather_code: Vec<Option<u8>>,
+    #[serde(default)]
+    is_day: Vec<Option<u8>>,
 }
 
 #[derive(Deserialize)]
 struct RawDaily {
     time: Vec<String>,
-    weather_code: Vec<u8>,
+    #[serde(default)]
+    weather_code: Vec<Option<u8>>,
+    #[serde(default)]
+    precipitation_sum: Vec<Option<f64>>,
+    #[serde(default)]
     precipitation_probability_max: Vec<Option<f64>>,
-    temperature_2m_max: Vec<f64>,
-    temperature_2m_min: Vec<f64>,
+    #[serde(default)]
+    temperature_2m_max: Vec<Option<f64>>,
+    #[serde(default)]
+    temperature_2m_min: Vec<Option<f64>>,
 }
 
 #[cfg(test)]
@@ -200,10 +244,43 @@ mod tests {
         assert_eq!(f.days[1].precipitation_probability, 0.0);
     }
 
+    #[test]
+    fn stops_where_the_model_has_no_data_and_keeps_rain() {
+        let json = r#"{
+            "current": {"time": "2026-11-12T22:15", "temperature_2m": 8.0, "apparent_temperature": 6.0,
+                        "relative_humidity_2m": 90, "is_day": 0, "weather_code": 61, "wind_speed_10m": 10},
+            "hourly": {
+                "time": ["2026-11-12T22:00", "2026-11-12T23:00", "2026-11-13T00:00", "2026-11-13T01:00"],
+                "temperature_2m": [8.0, 7.5, 7.0, null],
+                "precipitation": [0.4, 1.2, null, null],
+                "precipitation_probability": [null, null, null, null],
+                "weather_code": [61, 63, 3, null],
+                "is_day": [0, 0, 0, null]
+            },
+            "daily": {"time": ["2026-11-12", "2026-11-13", "2026-11-14"], "weather_code": [61, 3, null],
+                      "temperature_2m_max": [12.0, 10.0, null], "temperature_2m_min": [6.0, 5.0, null],
+                      "precipitation_sum": [3.1, null, null], "precipitation_probability_max": [null, null, null]}
+        }"#;
+        let f = parse_forecast("Paris", json.as_bytes()).unwrap();
+        assert_eq!(f.hours.len(), 3, "ends at the first missing hour");
+        assert_eq!(f.hours[1].precipitation, 1.2);
+        assert_eq!(f.hours[0].precipitation_probability, 0.0);
+        assert_eq!(f.days.len(), 2, "ends at the first missing day");
+        assert_eq!(f.days[0].rain, vec![0.4, 1.2]);
+        assert_eq!(f.days[0].precipitation_sum, 3.1);
+        // No daily total from the model: the sum of the hours.
+        assert_eq!(f.days[1].rain, vec![0.0]);
+        assert_eq!(f.days[1].precipitation_sum, 0.0);
+    }
+
     #[tokio::test]
     #[ignore = "hits the network"]
     async fn fetches_live_forecast() {
-        let f = fetch_forecast(&Location::paris()).await.unwrap();
+        let f = fetch_forecast(&Location::paris(), Source::BestMatch).await.unwrap();
         assert_eq!(f.hours.len(), HOURS_KEPT);
+        assert_eq!(f.days.len(), DAYS_SHOWN);
+        // A shorter-range model still parses, with fewer days.
+        let mf = fetch_forecast(&Location::paris(), Source::MeteoFrance).await.unwrap();
+        assert!((3..=DAYS_SHOWN).contains(&mf.days.len()));
     }
 }

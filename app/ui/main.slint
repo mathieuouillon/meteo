@@ -3,8 +3,15 @@ export struct HourItem {
     temperature: string,
     icon: string,
     precipitation: string,
+    rain: string,
     x: float,
     y: float,
+}
+
+export struct RainBar {
+    label: string,
+    amount: string,
+    height: float,
 }
 
 export struct DayItem {
@@ -15,6 +22,9 @@ export struct DayItem {
     max: string,
     bar-start: float,
     bar-end: float,
+    rain-total: string,
+    rain: [RainBar],
+    first-hour: int,
 }
 
 export struct CloudItem {
@@ -125,13 +135,15 @@ component CityRow inherits Rectangle {
     in property <color> accent-strong;
     callback clicked();
     callback remove();
-    height: 60px;
+    min-height: 60px;
     border-radius: 14px;
     background: touch.pressed ? #ffffff26 : (root.city.selected ? root.accent-strong.with-alpha(0.3) : transparent);
     touch := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 6px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         spacing: 8px;
         VerticalLayout {
             alignment: center;
@@ -140,7 +152,7 @@ component CityRow inherits Rectangle {
                 text: (root.city.device ? "📍 " : "") + root.city.name;
                 color: white; font-size: 18px; font-weight: root.city.selected ? 600 : 400; overflow: elide;
             }
-            if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; overflow: elide; }
+            if root.city.detail != "": Text { text: root.city.detail; color: #ffffff99; font-size: 13px; wrap: word-wrap; }
         }
         if root.city.selected: Text { text: "✓"; color: root.accent; font-size: 18px; vertical-alignment: center; }
         if root.removable: Rectangle {
@@ -266,33 +278,97 @@ component CityPicker inherits Rectangle {
     }
 }
 
-component DayRow inherits HorizontalLayout {
+/// One day of the 7-day list; tap it to see the day's rain hour by hour.
+component DayRow inherits Rectangle {
     in property <DayItem> day;
-    spacing: 8px;
-    height: 44px;
-    Text { text: root.day.label; width: 56px; color: white; font-size: 17px; vertical-alignment: center; }
-    Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
-    Text { text: root.day.precipitation; width: 38px; color: #cfe8ff; font-size: 13px; vertical-alignment: center; }
-    Text { text: root.day.min; width: 36px; color: #ffffffb3; font-size: 17px; horizontal-alignment: right; vertical-alignment: center; }
-    // Min–max bar, positioned on the whole week's temperature scale.
-    Rectangle {
-        horizontal-stretch: 1;
+    in property <bool> open;
+    callback clicked();
+    height: 48px;
+    border-radius: 12px;
+    background: touch.pressed || root.open ? #ffffff14 : transparent;
+    touch := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        spacing: 8px;
+        Text { text: root.day.label; width: 52px; color: white; font-size: 17px; vertical-alignment: center; }
+        Text { text: root.day.icon; width: 30px; font-size: 22px; horizontal-alignment: center; vertical-alignment: center; }
+        // Chance of rain over the expected amount.
+        VerticalLayout {
+            width: 50px;
+            alignment: center;
+            if root.day.precipitation != "": Text { text: root.day.precipitation; color: #cfe8ff; font-size: 13px; }
+            if root.day.rain-total != "": Text { text: root.day.rain-total; color: #9fd3ff; font-size: 11px; }
+        }
+        Text { text: root.day.min; width: 32px; color: #ffffffb3; font-size: 17px; horizontal-alignment: right; vertical-alignment: center; }
+        // Min–max bar, positioned on the whole week's temperature scale.
         Rectangle {
-            y: (parent.height - self.height) / 2;
-            height: 6px;
-            border-radius: 3px;
-            background: #0000001f;
+            horizontal-stretch: 1;
             Rectangle {
-                x: parent.width * root.day.bar-start;
-                y: 0;
-                width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
-                height: parent.height;
+                y: (parent.height - self.height) / 2;
+                height: 6px;
                 border-radius: 3px;
-                background: @linear-gradient(90deg, #6ec1ff 0%, #ffb84d 100%);
+                background: #0000001f;
+                Rectangle {
+                    x: parent.width * root.day.bar-start;
+                    y: 0;
+                    width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
+                    height: parent.height;
+                    border-radius: 3px;
+                    background: @linear-gradient(90deg, #6ec1ff 0%, #ffb84d 100%);
+                }
+            }
+        }
+        Text { text: root.day.max; width: 34px; color: white; font-size: 17px; font-weight: 600; horizontal-alignment: right; vertical-alignment: center; }
+    }
+}
+
+/// Rain for each hour of one day: a bar chart that scrolls sideways, with
+/// the amount (mm) above each wet hour. Bars share the week's scale.
+component DayRain inherits Rectangle {
+    in property <DayItem> day;
+    property <length> step: 38px;
+    property <length> bar-max: 64px;
+    height: 118px;
+    if root.day.rain-total == "": Text {
+        text: "No rain expected";
+        color: #ffffffb3;
+        font-size: 14px;
+    }
+    if root.day.rain-total != "": Flickable {
+        content-width: root.day.rain.length * root.step;
+        // Open with the hour before `first-hour` at the left edge.
+        content-x: -max(0, min(root.day.first-hour - 1, root.day.rain.length - floor(self.width / root.step))) * root.step;
+        content-height: self.height;
+        for bar[j] in root.day.rain: Rectangle {
+            x: j * root.step;
+            width: root.step;
+            property <length> h: bar.amount == "" ? 2px : max(3px, bar.height * root.bar-max);
+            // Amount above the bar.
+            Text {
+                y: 84px - parent.h - 18px;
+                width: parent.width;
+                text: bar.amount;
+                color: #cfe8ff;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 84px - parent.h;
+                width: 16px;
+                height: parent.h;
+                border-radius: 4px;
+                background: bar.amount == "" ? #ffffff26 : @linear-gradient(180deg, #8fd0ff 0%, #4a9eea 100%);
+            }
+            Text {
+                y: 92px;
+                width: parent.width;
+                text: bar.label;
+                color: #ffffffb3;
+                font-size: 11px;
+                horizontal-alignment: center;
             }
         }
     }
-    Text { text: root.day.max; width: 36px; color: white; font-size: 17px; font-weight: 600; horizontal-alignment: right; vertical-alignment: center; }
 }
 
 component Stat inherits Rectangle {
@@ -305,6 +381,53 @@ component Stat inherits Rectangle {
         spacing: 4px;
         Text { text: root.title; color: #ffffffb3; font-size: 13px; }
         Text { text: root.value; color: white; font-size: 22px; font-weight: 600; }
+    }
+}
+
+/// Full-screen list of weather models to choose from.
+component SourcePicker inherits Rectangle {
+    in property <[CityItem]> sources;
+    in property <color> accent;
+    in property <color> accent-strong;
+    callback close();
+    callback select(int);
+    background: @linear-gradient(180deg, #141b3a 0%, #0b1026 100%);
+    TouchArea { }
+    VerticalLayout {
+        padding: 20px;
+        padding-top: 48px;
+        spacing: 12px;
+        HorizontalLayout {
+            Text { text: "Data source"; color: white; font-size: 22px; font-weight: 600; vertical-alignment: center; }
+            Rectangle {
+                width: 70px;
+                height: 44px;
+                Text { text: "Done"; color: root.accent; font-size: 17px; font-weight: 600; }
+                TouchArea { clicked => { root.close(); } }
+            }
+        }
+        Text {
+            text: "Forecasts come from Open-Meteo, which runs the models of national weather services. Detailed regional models are best near home; some cover fewer days.";
+            color: #ffffffb3;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                spacing: 2px;
+                for s[i] in root.sources: CityRow {
+                    city: s;
+                    accent: root.accent;
+                    accent-strong: root.accent-strong;
+                    clicked => { root.select(i); }
+                }
+            }
+        }
     }
 }
 
@@ -336,6 +459,12 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
+    // Which day's hourly rain is open (-1: none).
+    in-out property <int> open-day: -1;
+    in property <string> source-name: "Best match";
+    in property <[CityItem]> sources;
+    in-out property <bool> source-open;
+    callback select-source(int);
     // Animated background (see animation.rs).
     in property <string> rain-far;
     in property <string> rain-near;
@@ -392,6 +521,8 @@ export component MainWindow inherits Window {
         width: parent.width;
         padding: 24px;
         padding-top: 48px;
+        // Room above Android's gesture bar.
+        padding-bottom: 40px;
         spacing: 18px;
 
         // ── Header ─────────────────────────────────────────────
@@ -436,7 +567,7 @@ export component MainWindow inherits Window {
         Rectangle {
             background: #ffffff26;
             border-radius: 22px;
-            height: 270px;
+            height: 292px;
             VerticalLayout {
                 padding: 16px;
                 spacing: 8px;
@@ -494,13 +625,19 @@ export component MainWindow inherits Window {
                             horizontal-alignment: center;
                         }
                         Text {
-                            y: root.chart-height * 1px + 34px;
+                            y: root.chart-height * 1px + 32px;
                             width: parent.width;
                             text: h.precipitation; color: #cfe8ff; font-size: 12px;
                             horizontal-alignment: center;
                         }
                         Text {
-                            y: root.chart-height * 1px + 52px;
+                            y: root.chart-height * 1px + 48px;
+                            width: parent.width;
+                            text: h.rain; color: #9fd3ff; font-size: 11px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            y: root.chart-height * 1px + 66px;
                             width: parent.width;
                             text: h.label; color: #ffffffcc; font-size: 13px;
                             horizontal-alignment: center;
@@ -519,7 +656,14 @@ export component MainWindow inherits Window {
                 padding-bottom: 8px;
                 spacing: 0px;
                 Text { text: "7-DAY FORECAST"; color: #ffffffb3; font-size: 12px; font-weight: 600; }
-                for d in root.days: DayRow { day: d; }
+                for d[i] in root.days: VerticalLayout {
+                    DayRow {
+                        day: d;
+                        open: root.open-day == i;
+                        clicked => { root.open-day = root.open-day == i ? -1 : i; }
+                    }
+                    if root.open-day == i: DayRain { day: d; }
+                }
             }
         }
 
@@ -537,6 +681,18 @@ export component MainWindow inherits Window {
             background: root.accent-strong.with-alpha(touch.pressed ? 0.7 : 0.45);
             Text { text: "Refresh"; color: white; font-size: 16px; font-weight: 600; }
             touch := TouchArea { clicked => { root.refresh(); } }
+        }
+
+        // Which weather model the forecast comes from; tap to change.
+        Rectangle {
+            height: 32px;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 4px;
+                Text { text: "Data: " + root.source-name + " · Open-Meteo"; color: #ffffffb3; font-size: 13px; vertical-alignment: center; }
+                Text { text: "›"; color: root.accent; font-size: 16px; vertical-alignment: center; }
+            }
+            TouchArea { clicked => { root.source-open = true; } }
         }
 
     }
@@ -557,5 +713,15 @@ export component MainWindow inherits Window {
         add-city(i) => { root.add-city(i); self.close(); }
         select-city(i) => { root.select-city(i); self.close(); }
         remove-city(i) => { root.remove-city(i); }
+    }
+
+    if root.source-open: SourcePicker {
+        width: root.width;
+        height: root.height;
+        sources: root.sources;
+        accent: root.accent;
+        accent-strong: root.accent-strong;
+        close => { root.source-open = false; }
+        select(i) => { root.select-source(i); root.source-open = false; }
     }
 }

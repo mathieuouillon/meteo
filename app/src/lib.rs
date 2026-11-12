@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use meteo_core::{
-    Location, MainScreen, Places, cache, fetch_forecast, search_cities, unix_now, updated_ago,
+    Location, MainScreen, Places, Settings, Source, cache, fetch_forecast, search_cities, unix_now,
+    updated_ago,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
@@ -55,6 +56,7 @@ struct App {
     ui: Weak<MainWindow>,
     dir: Option<PathBuf>,
     places: RefCell<Places>,
+    settings: RefCell<Settings>,
     /// When the forecast on screen was downloaded, so a failed refresh can
     /// say how old it is instead of replacing it with an error.
     shown_at: Arc<AtomicI64>,
@@ -77,6 +79,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let app = Rc::new(App {
         ui: ui.as_weak(),
         places: RefCell::new(dir.as_deref().map(Places::load).unwrap_or_default()),
+        settings: RefCell::new(dir.as_deref().map(Settings::load).unwrap_or_default()),
         dir,
         shown_at: Arc::new(AtomicI64::new(NOTHING_SHOWN)),
         fetch_gen: Arc::default(),
@@ -121,6 +124,14 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let app = app.clone();
         move |i| app.change_places(|p| p.remove(i as usize))
     });
+    ui.on_select_source({
+        let app = app.clone();
+        move |i| {
+            if let Some(&source) = Source::ALL.get(i as usize) {
+                app.set_source(source);
+            }
+        }
+    });
     ui.on_search({
         let app = app.clone();
         move |text| app.search(text.to_string())
@@ -146,13 +157,45 @@ impl App {
         }
     }
 
+    /// Switches the weather model, saves the choice and reloads the forecast.
+    fn set_source(&self, source: Source) {
+        if self.settings.borrow().source == source {
+            return;
+        }
+        self.settings.borrow_mut().source = source;
+        if let Some(dir) = &self.dir {
+            if let Err(e) = self.settings.borrow().save(dir) {
+                eprintln!("couldn't save settings: {e}");
+            }
+        }
+        self.show_selected();
+    }
+
+    fn update_source_list(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let current = self.settings.borrow().source;
+        let items: Vec<CityItem> = Source::ALL
+            .iter()
+            .map(|&s| CityItem {
+                name: s.name().into(),
+                detail: s.description().into(),
+                selected: s == current,
+                device: false,
+            })
+            .collect();
+        ui.set_sources(ModelRc::from(Rc::new(VecModel::from(items))));
+        ui.set_source_name(current.name().into());
+    }
+
     /// Shows the selected city: its cached forecast at once if there is one,
     /// then a fresh download.
     fn show_selected(&self) {
         let Some(ui) = self.ui.upgrade() else { return };
         let city = self.places.borrow().selected().clone();
+        let source = self.settings.borrow().source;
         self.shown_at.store(NOTHING_SHOWN, Ordering::Relaxed);
-        match self.dir.as_deref().and_then(|d| cache::load(d, &city, unix_now())) {
+        ui.set_open_day(-1);
+        match self.dir.as_deref().and_then(|d| cache::load(d, &city, source, unix_now())) {
             Some(cached) => {
                 apply(&ui, &MainScreen::from_forecast(&cached.forecast));
                 ui.set_status(updated_ago(unix_now() - cached.fetched_at).into());
@@ -161,6 +204,7 @@ impl App {
             None => show_loading(&ui, &city),
         }
         self.update_city_list();
+        self.update_source_list();
         self.refresh();
     }
 
@@ -179,6 +223,7 @@ impl App {
     /// Downloads the selected city's forecast in the background.
     fn refresh(&self) {
         let city = self.places.borrow().selected().clone();
+        let source = self.settings.borrow().source;
         let generation = self.fetch_gen.fetch_add(1, Ordering::Relaxed) + 1;
         let (weak, dir, shown_at, fetch_gen) = (
             self.ui.clone(),
@@ -187,10 +232,10 @@ impl App {
             self.fetch_gen.clone(),
         );
         std::thread::spawn(move || {
-            let result = block_on(fetch_forecast(&city));
+            let result = block_on(fetch_forecast(&city, source));
             let fetched_at = unix_now();
             if let (Ok(forecast), Some(dir)) = (&result, &dir) {
-                if let Err(e) = cache::save(dir, &city, forecast, fetched_at) {
+                if let Err(e) = cache::save(dir, &city, source, forecast, fetched_at) {
                     eprintln!("couldn't save the forecast cache: {e}");
                 }
                 #[cfg(target_os = "android")]
@@ -388,6 +433,7 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
             precipitation: h.precipitation.as_str().into(),
             x: h.x as f32,
             y: h.y as f32,
+            rain: h.rain.as_str().into(),
         })
         .collect();
     ui.set_hours(ModelRc::from(Rc::new(VecModel::from(hours))));
@@ -403,6 +449,14 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
             max: d.max.as_str().into(),
             bar_start: d.bar_start as f32,
             bar_end: d.bar_end as f32,
+            rain_total: d.rain_total.as_str().into(),
+            first_hour: d.first_hour as i32,
+            rain: ModelRc::from(Rc::new(VecModel::from(
+                d.rain
+                    .iter()
+                    .map(|b| RainBar { label: b.label.as_str().into(), amount: b.amount.as_str().into(), height: b.height as f32 })
+                    .collect::<Vec<_>>(),
+            ))),
         })
         .collect();
     ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));

@@ -42,6 +42,8 @@ pub struct HourView {
     pub icon: String,
     /// Empty when rain is unlikely, so the UI shows nothing.
     pub precipitation: String,
+    /// Expected amount, e.g. "0.4 mm"; empty when dry.
+    pub rain: String,
     /// Centre of this hour's point on the chart.
     pub x: f64,
     pub y: f64,
@@ -61,6 +63,7 @@ impl MainScreen {
                 temperature: temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
                 precipitation: rain_chance(h.precipitation_probability),
+                rain: rain_amount(h.precipitation, true),
                 x: p.x,
                 y: p.y,
             })
@@ -81,7 +84,7 @@ impl MainScreen {
             sky_bottom_css: sky.bottom_css(),
             chart,
             hours,
-            days: DayView::list(&f.days),
+            days: DayView::list(&f.days, f.hours.first().and_then(|h| h.time.get(11..13)?.parse().ok())),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
         }
     }
@@ -100,15 +103,44 @@ pub struct DayView {
     /// the whole week's temperature range, so all rows share one scale.
     pub bar_start: f64,
     pub bar_end: f64,
+    /// The day's total, e.g. "3.1 mm"; empty when dry.
+    pub rain_total: String,
+    /// One bar per hour of the day, for the day's rain detail.
+    pub rain: Vec<RainBar>,
+    /// Hour the rain detail opens at: now for today, otherwise the first
+    /// wet hour, so the interesting part is in view.
+    pub first_hour: usize,
 }
 
+/// One hour in a day's rain chart.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RainBar {
+    /// "00h" … "23h".
+    pub label: String,
+    /// "1.2"; empty when dry.
+    pub amount: String,
+    /// Bar height, 0–1, on a scale shared by the whole week.
+    pub height: f64,
+}
+
+/// Bars are scaled to the wettest hour of the week, but never so that a
+/// drizzle fills the chart.
+const RAIN_SCALE_MIN_MM: f64 = 2.0;
+
 impl DayView {
-    fn list(days: &[Day]) -> Vec<Self> {
+    /// `now_hour`: the current hour of the day, used for today's detail.
+    fn list(days: &[Day], now_hour: Option<usize>) -> Vec<Self> {
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
         let range = (hi - lo).max(1.0);
+        let wettest = days.iter().flat_map(|d| d.rain.iter().copied()).fold(RAIN_SCALE_MIN_MM, f64::max);
         days.iter()
-            .map(|d| Self {
+            .enumerate()
+            .map(|(i, d)| Self {
+                first_hour: match (i, now_hour) {
+                    (0, Some(now)) => now,
+                    _ => d.rain.iter().position(|&mm| mm >= 0.05).unwrap_or(0),
+                },
                 label: d.label.clone(),
                 icon: d.condition.icon(true).into(),
                 precipitation: rain_chance(d.precipitation_probability),
@@ -116,6 +148,17 @@ impl DayView {
                 max: temp(d.max),
                 bar_start: (d.min - lo) / range,
                 bar_end: (d.max - lo) / range,
+                rain_total: rain_amount(d.precipitation_sum, true),
+                rain: d
+                    .rain
+                    .iter()
+                    .enumerate()
+                    .map(|(hour, &mm)| RainBar {
+                        label: format!("{hour:02}h"),
+                        amount: rain_amount(mm, false),
+                        height: (mm / wettest).clamp(0.0, 1.0),
+                    })
+                    .collect(),
             })
             .collect()
     }
@@ -131,6 +174,16 @@ pub fn updated_ago(age_secs: i64) -> String {
         86_400..172_800 => "Updated yesterday".into(),
         _ => format!("Updated {} days ago", age / 86_400),
     }
+}
+
+/// "0.4 mm" / "2.5 mm" / "12 mm" (without " mm" if `unit` is false);
+/// empty below 0.05 mm, which rounds to nothing.
+pub fn rain_amount(mm: f64, unit: bool) -> String {
+    if mm < 0.05 {
+        return String::new();
+    }
+    let n = if mm < 10.0 { format!("{mm:.1}") } else { format!("{mm:.0}") };
+    if unit { format!("{n} mm") } else { n }
 }
 
 /// "40%" when rain is worth mentioning, otherwise empty.
@@ -156,18 +209,38 @@ mod tests {
             min,
             max,
             precipitation_probability: rain,
+            precipitation_sum: rain / 10.0,
+            rain: vec![0.0, rain / 20.0, 1.0],
             condition: Condition::Rain,
         }
     }
 
     #[test]
     fn day_bars_share_the_week_scale() {
-        let rows = DayView::list(&[day(5.0, 10.0, 80.0), day(0.0, 20.0, 5.0)]);
+        let rows = DayView::list(&[day(5.0, 10.0, 80.0), day(0.0, 20.0, 5.0)], Some(14));
         assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
         assert_eq!((rows[1].bar_start, rows[1].bar_end), (0.0, 1.0));
         assert_eq!(rows[0].precipitation, "80%");
         assert_eq!(rows[1].precipitation, "");
         assert_eq!(rows[0].max, "10°");
+        // Rain: total, and hourly bars on the week's scale (wettest hour 4 mm).
+        assert_eq!(rows[0].rain_total, "8.0 mm");
+        assert_eq!(rows[0].rain[1].amount, "4.0");
+        assert_eq!(rows[0].rain[1].height, 1.0);
+        assert_eq!(rows[0].rain[2].height, 0.25);
+        assert_eq!(rows[0].rain[0].amount, "");
+        assert_eq!(rows[1].rain[1].label, "01h");
+        // Today opens at the current hour, other days at their first wet hour.
+        assert_eq!(rows[0].first_hour, 14);
+        assert_eq!(rows[1].first_hour, 1);
+    }
+
+    #[test]
+    fn formats_rain_amounts() {
+        assert_eq!(rain_amount(0.0, true), "");
+        assert_eq!(rain_amount(0.04, true), "");
+        assert_eq!(rain_amount(0.36, true), "0.4 mm");
+        assert_eq!(rain_amount(12.4, false), "12");
     }
 
     #[test]

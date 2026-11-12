@@ -107,6 +107,7 @@ mod tests {
             label: String::new(),
             temperature: t,
             precipitation_probability: 0.0,
+            precipitation: 0.0,
             condition: Condition::Clear,
             is_day: true,
         }

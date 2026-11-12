@@ -104,8 +104,11 @@ pub struct Hour {
     /// Short label for the UI, e.g. "15h" (or "Now" for the first hour).
     pub label: String,
     pub temperature: f64,
-    /// 0–100 %.
+    /// 0–100 % (0 when the model doesn't provide it).
     pub precipitation_probability: f64,
+    /// Expected rain/snow (water equivalent) during this hour, in mm.
+    #[serde(default)]
+    pub precipitation: f64,
     pub condition: Condition,
     pub is_day: bool,
 }
@@ -120,5 +123,12 @@ pub struct Day {
     pub max: f64,
     /// Highest hourly chance of precipitation that day, 0–100 %.
     pub precipitation_probability: f64,
+    /// Total expected precipitation that day, in mm.
+    #[serde(default)]
+    pub precipitation_sum: f64,
+    /// Precipitation for each hour of the day from 00h, in mm (fewer than
+    /// 24 values where the model's range ends).
+    #[serde(default)]
+    pub rain: Vec<f64>,
     pub condition: Condition,
 }

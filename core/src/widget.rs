@@ -8,6 +8,7 @@ use serde::Serialize;
 use crate::api::{Error, fetch_forecast};
 use crate::cache::{self, unix_now};
 use crate::places::Places;
+use crate::source::Settings;
 use crate::view::{MainScreen, updated_ago};
 
 /// Hours shown in the wide widget.
@@ -51,7 +52,8 @@ pub struct WidgetHour {
 pub fn widget_state(dir: &Path, unix_now: i64) -> WidgetState {
     let places = Places::load(dir);
     let city = places.selected();
-    let Some(cached) = cache::load(dir, city, unix_now) else {
+    let source = Settings::load(dir).source;
+    let Some(cached) = cache::load(dir, city, source, unix_now) else {
         return WidgetState { needs_refresh: true, view: None };
     };
     let age = unix_now - cached.fetched_at;
@@ -82,8 +84,9 @@ pub fn widget_state(dir: &Path, unix_now: i64) -> WidgetState {
 /// refresh while the app is closed).
 pub async fn refresh_selected(dir: &Path) -> Result<(), Error> {
     let city = Places::load(dir).selected().clone();
-    let forecast = fetch_forecast(&city).await?;
-    cache::save(dir, &city, &forecast, unix_now()).map_err(Error::Cache)
+    let source = Settings::load(dir).source;
+    let forecast = fetch_forecast(&city, source).await?;
+    cache::save(dir, &city, source, &forecast, unix_now()).map_err(Error::Cache)
 }
 
 #[cfg(test)]
@@ -120,7 +123,7 @@ mod tests {
         assert_eq!(empty, WidgetState { needs_refresh: true, view: None });
 
         let forecast = parse_forecast("Paris", SAMPLE.as_bytes()).unwrap();
-        cache::save(&dir, &Location::paris(), &forecast, FETCHED_AT).unwrap();
+        cache::save(&dir, &Location::paris(), crate::source::Source::BestMatch, &forecast, FETCHED_AT).unwrap();
 
         let fresh = widget_state(&dir, FETCHED_AT + 60);
         assert!(!fresh.needs_refresh);

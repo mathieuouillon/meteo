@@ -8,10 +8,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Forecast, Location};
+use crate::source::Source;
 
-/// One file per city, so switching cities works offline too.
-fn file_name(location: &Location) -> String {
-    format!("forecast-{}.json", location.key())
+/// One file per city and source, so switching either works offline too.
+/// (The default source keeps the plain name used before sources existed.)
+fn file_name(location: &Location, source: Source) -> String {
+    match source {
+        Source::BestMatch => format!("forecast-{}.json", location.key()),
+        other => format!("forecast-{}-{}.json", location.key(), other.model_id()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,12 +34,12 @@ pub fn unix_now() -> i64 {
 }
 
 /// Saves the forecast for `location` in `dir` (created if needed).
-pub fn save(dir: &Path, location: &Location, forecast: &Forecast, fetched_at: i64) -> io::Result<()> {
+pub fn save(dir: &Path, location: &Location, source: Source, forecast: &Forecast, fetched_at: i64) -> io::Result<()> {
     let json = serde_json::to_vec(&CachedForecast {
         fetched_at,
         forecast: forecast.clone(),
     })?;
-    write_atomic(dir, &file_name(location), &json)
+    write_atomic(dir, &file_name(location, source), &json)
 }
 
 /// Writes a temporary file and renames it, so a reader (another thread, or
@@ -49,8 +54,8 @@ pub(crate) fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<(
 /// Loads the cached forecast for `location` from `dir`, moved forward to `unix_now`.
 /// Returns `None` if there is no cache, it can't be read (e.g. written by an
 /// older version), or it is so old that no upcoming hours are left.
-pub fn load(dir: &Path, location: &Location, unix_now: i64) -> Option<CachedForecast> {
-    let bytes = std::fs::read(dir.join(file_name(location))).ok()?;
+pub fn load(dir: &Path, location: &Location, source: Source, unix_now: i64) -> Option<CachedForecast> {
+    let bytes = std::fs::read(dir.join(file_name(location, source))).ok()?;
     let mut cached: CachedForecast = serde_json::from_slice(&bytes).ok()?;
     cached.forecast.advance_to(unix_now);
     let usable = !cached.forecast.hours.is_empty() && !cached.forecast.days.is_empty();
@@ -96,33 +101,36 @@ mod tests {
     fn round_trips_and_advances_to_now() {
         let dir = temp_dir("roundtrip");
         let forecast = parse_forecast("Paris", SAMPLE.as_bytes()).unwrap();
-        save(&dir, &paris(), &forecast, FETCHED_AT).unwrap();
+        save(&dir, &paris(), Source::BestMatch, &forecast, FETCHED_AT).unwrap();
 
         // Another city has no cache yet.
         let lyon = Location::new("Lyon", "", 45.75, 4.85);
-        assert!(load(&dir, &lyon, FETCHED_AT).is_none());
+        assert!(load(&dir, &lyon, Source::BestMatch, FETCHED_AT).is_none());
+
+        // Another source has its own cache.
+        assert!(load(&dir, &paris(), Source::MeteoFrance, FETCHED_AT).is_none());
 
         // Read back immediately: unchanged.
-        let fresh = load(&dir, &paris(), FETCHED_AT).unwrap();
+        let fresh = load(&dir, &paris(), Source::BestMatch, FETCHED_AT).unwrap();
         assert_eq!(fresh.forecast, forecast);
         assert_eq!(fresh.fetched_at, FETCHED_AT);
 
         // Two hours later: 14h and 15h are gone, 16h is "Now".
-        let later = load(&dir, &paris(), FETCHED_AT + 2 * HOUR).unwrap().forecast;
+        let later = load(&dir, &paris(), Source::BestMatch, FETCHED_AT + 2 * HOUR).unwrap().forecast;
         assert_eq!(later.hours.len(), 2);
         assert_eq!(later.hours[0].label, "Now");
         assert_eq!(later.hours[1].label, "00h");
         assert_eq!(later.days[0].label, "Today");
 
         // Past midnight local time: Friday becomes "Today".
-        let tomorrow = load(&dir, &paris(), FETCHED_AT + 10 * HOUR).unwrap().forecast;
+        let tomorrow = load(&dir, &paris(), Source::BestMatch, FETCHED_AT + 10 * HOUR).unwrap().forecast;
         assert_eq!(tomorrow.days.len(), 2);
         assert_eq!(tomorrow.days[0].label, "Today");
         assert_eq!(tomorrow.days[1].label, "Sat");
         assert_eq!((tomorrow.today_min, tomorrow.today_max), (6.5, 14.0));
 
         // Once every hour is over, the cache is not worth showing.
-        assert!(load(&dir, &paris(), FETCHED_AT + 11 * HOUR).is_none());
+        assert!(load(&dir, &paris(), Source::BestMatch, FETCHED_AT + 11 * HOUR).is_none());
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -130,10 +138,10 @@ mod tests {
     #[test]
     fn missing_or_corrupt_cache_is_none() {
         let dir = temp_dir("corrupt");
-        assert!(load(&dir, &paris(), FETCHED_AT).is_none());
+        assert!(load(&dir, &paris(), Source::BestMatch, FETCHED_AT).is_none());
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(file_name(&paris())), b"{not json").unwrap();
-        assert!(load(&dir, &paris(), FETCHED_AT).is_none());
+        std::fs::write(dir.join(file_name(&paris(), Source::BestMatch)), b"{not json").unwrap();
+        assert!(load(&dir, &paris(), Source::BestMatch, FETCHED_AT).is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
