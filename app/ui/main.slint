@@ -373,6 +373,8 @@ component DayRow inherits Rectangle {
     in property <bool> open;
     in property <Theme> theme;
     callback clicked();
+    // Drawn once into an image and reused (text is the costliest part of a frame).
+    cache-rendering-hint: true;
     height: 52px;
     border-radius: 18px;
     background: touch.pressed || root.open ? root.theme.surface-container-high : transparent;
@@ -495,40 +497,48 @@ component DayChart inherits Rectangle {
         // Open with the hour before `first-hour` at the left edge.
         content-x: -max(0, min(root.day.first-hour - 1, root.day.hours.length - floor(self.width / root.step))) * root.step;
 
-        // The models' range, then the area under the curve, then the curve.
-        if root.day.band-path != "": Path {
+        // The models' range, then the area under the curve, then the curve,
+        // cached as one image: swiping only slides it (Skia would otherwise
+        // redraw these long curves on the CPU every frame).
+        Rectangle {
             x: 0; y: 0;
             width: root.day.chart-width * 1px;
             height: root.curve;
-            viewbox-width: root.day.chart-width;
-            viewbox-height: root.day.chart-height;
-            fit: fill;
-            commands: root.day.band-path;
-            fill: root.theme.primary.transparentize(82%);
-            stroke-width: 0px;
-        }
-        Path {
-            x: 0; y: 0;
-            width: root.day.chart-width * 1px;
-            height: root.curve;
-            viewbox-width: root.day.chart-width;
-            viewbox-height: root.day.chart-height;
-            // Map the viewbox 1:1 (the default `contain` rescales a stroked path).
-            fit: fill;
-            commands: root.day.area-path == "" ? "M 0 0" : root.day.area-path;
-            fill: @linear-gradient(180deg, root.theme.primary.transparentize(75%) 0%, root.theme.primary.transparentize(100%) 100%);
-            stroke-width: 0px;
-        }
-        Path {
-            x: 0; y: 0;
-            width: root.day.chart-width * 1px;
-            height: root.curve;
-            viewbox-width: root.day.chart-width;
-            viewbox-height: root.day.chart-height;
-            fit: fill;
-            commands: root.day.line-path == "" ? "M 0 0" : root.day.line-path;
-            stroke: root.theme.primary;
-            stroke-width: 3px;
+            cache-rendering-hint: true;
+            if root.day.band-path != "": Path {
+                x: 0; y: 0;
+                width: root.day.chart-width * 1px;
+                height: root.curve;
+                viewbox-width: root.day.chart-width;
+                viewbox-height: root.day.chart-height;
+                fit: fill;
+                commands: root.day.band-path;
+                fill: root.theme.primary.transparentize(82%);
+                stroke-width: 0px;
+            }
+            Path {
+                x: 0; y: 0;
+                width: root.day.chart-width * 1px;
+                height: root.curve;
+                viewbox-width: root.day.chart-width;
+                viewbox-height: root.day.chart-height;
+                // Map the viewbox 1:1 (the default `contain` rescales a stroked path).
+                fit: fill;
+                commands: root.day.area-path == "" ? "M 0 0" : root.day.area-path;
+                fill: @linear-gradient(180deg, root.theme.primary.transparentize(75%) 0%, root.theme.primary.transparentize(100%) 100%);
+                stroke-width: 0px;
+            }
+            Path {
+                x: 0; y: 0;
+                width: root.day.chart-width * 1px;
+                height: root.curve;
+                viewbox-width: root.day.chart-width;
+                viewbox-height: root.day.chart-height;
+                fit: fill;
+                commands: root.day.line-path == "" ? "M 0 0" : root.day.line-path;
+                stroke: root.theme.primary;
+                stroke-width: 3px;
+            }
         }
 
         for h in root.day.hours: column := Rectangle {
@@ -623,6 +633,8 @@ component DayChart inherits Rectangle {
 
 /// Rain over the next 2 hours: a summary, and 15-minute bars when wet.
 component NowcastCard inherits Rectangle {
+    // Drawn once into an image and reused (text is the costliest part of a frame).
+    cache-rendering-hint: true;
     in property <Nowcast> nowcast;
     in property <string> title;
     in property <Theme> theme;
@@ -1426,6 +1438,8 @@ export component MainWindow inherits Window {
 
                     // Details: one list.
                     details-card := Rectangle {
+                        // Drawn once into an image and reused while other parts move.
+                        cache-rendering-hint: true;
                         border-radius: 28px;
                         background: root.theme.surface-container;
                         VerticalLayout {
@@ -1457,6 +1471,8 @@ export component MainWindow inherits Window {
 
                     // Footer: where the data comes from, and when it was updated.
                     footer-card := Rectangle {
+                        // Drawn once into an image and reused while other parts move.
+                        cache-rendering-hint: true;
                         border-radius: 22px;
                         background: root.theme.surface-container;
                         VerticalLayout {

@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- For themed icons (Android 13+): the system tints this with the wallpaper colours.
-     The sun is a ring so it stays visible behind the cloud. -->
+<!-- For themed icons (Android 13+) and the notifications' small icon: the
+     system tints it. A shining sun over a mountain line, inside the safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#FF000000" android:strokeWidth="4" android:pathData="M 52,44 a 12,12 0 1,0 24,0 a 12,12 0 1,0 -24,0 Z" />
-    <path android:fillColor="#FF000000" android:pathData="M 31,58 a 11,11 0 1,0 22,0 a 11,11 0 1,0 -22,0 Z M 42,52 a 14,14 0 1,0 28,0 a 14,14 0 1,0 -28,0 Z M 59,60 a 9,9 0 1,0 18,0 a 9,9 0 1,0 -18,0 Z M 38,58 L 70,58 Q 78,58 78,64 Q 78,70 70,70 L 38,70 Q 30,70 30,64 Q 30,58 38,58 Z" />
+    <path android:fillColor="#FF000000" android:pathData="M47,43 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M64.00,43.00 L68.50,43.00 M61.07,50.07 L64.25,53.25 M54.00,53.00 L54.00,57.50 M46.93,50.07 L43.75,53.25 M44.00,43.00 L39.50,43.00 M46.93,35.93 L43.75,32.75 M54.00,33.00 L54.00,28.50 M61.07,35.93 L64.25,32.75" />
+    <path android:fillColor="#FF000000"
+        android:pathData="M24,74 L36,64 L44,68 L54,59 L63,67 L71,62 L84,72 L84,78 L24,78 Z" />
 </vector>

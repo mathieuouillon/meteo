@@ -1,0 +1,4 @@
+# Android: stamp the libraries with a build ID so profilers (simpleperf) and
+# crash reports can find their symbols in target/.
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,--build-id=sha1"]

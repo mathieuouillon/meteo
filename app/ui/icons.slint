@@ -22,6 +22,9 @@ export component WeatherIcon inherits Rectangle {
     /// Line colour of clouds and fog, and the fill that hides what's behind a cloud.
     in property <color> ink: #5d6672;
     in property <color> cloud-fill: white;
+    // Drawn once into a small image and reused: Skia can't fill these curves
+    // on the GPU of many phones and would redraw them on the CPU every frame.
+    cache-rendering-hint: true;
     property <length> size: min(self.width, self.height);
     property <length> line: root.size * 0.07;
     property <color> sun: #f5a623;

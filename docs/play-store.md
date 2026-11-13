@@ -86,8 +86,7 @@ Sans compte, sans publicité, sans pistage. Prévisions d'Open-Meteo.com (CC BY 
 
 **Graphics** (all in English and French if you can):
 
-- App icon 512 × 512 PNG (from `android/app/src/main/res/mipmap-anydpi-v26`'s
-  drawables; export at 512 px).
+- App icon 512 × 512 PNG: `docs/play-icon-512.png`.
 - Feature graphic 1024 × 500.
 - At least 2 phone screenshots (`docs/look-*.png`, `docs/android-*.png` are a
   start; take fresh ones from a phone for the final listing).

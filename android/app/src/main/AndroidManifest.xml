@@ -10,6 +10,9 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Météo">
 
+        <!-- Lets Android's profilers (simpleperf, Perfetto) measure release builds. -->
+        <profileable android:shell="true" />
+
         <!-- The app itself: Slint UI in libmeteo.so, no Java code. -->
         <activity
             android:name="android.app.NativeActivity"

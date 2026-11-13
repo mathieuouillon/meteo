@@ -234,11 +234,15 @@ On the desktop: `METEO_LANG=fr cargo run -p meteo`.
 
 ## App icon
 
-A sun behind a cloud on the clear-day sky.
+The app's landscape in miniature: a glowing sun setting behind tone-on-tone
+mountains, hills and pines, on a warm dawn sky.
 
 It's an adaptive icon made of vector drawables
 (`android/app/src/main/res/drawable/ic_launcher_*.xml`), with a monochrome layer so
 Android 13+ can tint it with the wallpaper colours (themed icons).
+The monochrome layer (a sun with rays over a mountain line) is also the
+notifications' small icon. `docs/play-icon-512.png` is the 512 px version for the
+Play Store listing.
 
 ## Cities and location
 
