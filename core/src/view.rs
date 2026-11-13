@@ -5,14 +5,14 @@
 use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart_with_band};
-use crate::extras::{Air, rain_agreement, spread_by_time, temperature_agreement};
 use crate::date::weekday_index;
+use crate::extras::{Air, rain_agreement, spread_by_time, temperature_agreement};
 use crate::i18n::Lang;
-use crate::units::Units;
-use crate::model::{Day, Forecast};
 use crate::landscape::{Landscape, Phase, landscape, seed_for};
+use crate::model::{Day, Forecast};
 use crate::palette::{Palette, icon_kind};
 use crate::scene::SceneSpec;
+use crate::units::Units;
 
 /// Horizontal space per hour in a day's detail chart, in logical pixels.
 pub const HOUR_STEP: f64 = 56.0;
@@ -79,15 +79,9 @@ pub struct AirView {
     /// "28"; "--" if unknown.
     pub aqi: String,
     pub aqi_level: String,
-    /// 0–1 on the 0–100 scale.
-    pub aqi_position: f64,
-    pub aqi_known: bool,
     /// The strongest pollen ("Birch"), or a note when there's none.
     pub pollen: String,
     pub pollen_level: String,
-    /// 0–1 (very high = 1).
-    pub pollen_position: f64,
-    pub pollen_known: bool,
 }
 
 impl NowcastView {
@@ -138,28 +132,28 @@ fn pollen_thresholds(kind: &str) -> [f64; 3] {
 impl AirView {
     fn new(air: Option<&Air>, lang: Lang) -> Self {
         let Some(air) = air else {
-            return Self { aqi: "--".into(), pollen: "--".into(), pollen_level: lang.not_here().into(), aqi_level: lang.not_here().into(), ..Self::default() };
+            return Self {
+                aqi: "--".into(),
+                pollen: "--".into(),
+                pollen_level: lang.not_here().into(),
+                aqi_level: lang.not_here().into(),
+            };
         };
-        let (aqi, aqi_level, aqi_position) = match air.european_aqi {
-            Some(a) => (format!("{a:.0}"), lang.aqi_level(a).to_string(), (a / 100.0).clamp(0.0, 1.0)),
-            None => ("--".into(), lang.not_here().into(), 0.0),
+        let (aqi, aqi_level) = match air.european_aqi {
+            Some(a) => (format!("{a:.0}"), lang.aqi_level(a).to_string()),
+            None => ("--".into(), lang.not_here().into()),
         };
         // The pollen with the highest level (relative to its own scale).
         let level = |kind: &str, v: f64| pollen_thresholds(kind).iter().filter(|&&t| v >= t).count();
-        let top = air
-            .pollen
-            .iter()
-            .filter(|(_, v)| *v >= 1.0)
-            .max_by(|a, b| (level(&a.0, a.1), a.1).partial_cmp(&(level(&b.0, b.1), b.1)).unwrap_or(std::cmp::Ordering::Equal));
-        let (pollen, pollen_level, pollen_position, pollen_known) = match (top, air.pollen.is_empty()) {
-            (_, true) => ("--".into(), lang.not_here().into(), 0.0, false),
-            (None, false) => ("–".into(), lang.no_pollen().into(), 0.0, false),
-            (Some((kind, v)), false) => {
-                let l = level(kind, *v);
-                (lang.pollen_name(kind).into(), lang.pollen_level(l).into(), (l as f64 + 0.5) / 4.0, true)
-            }
+        let top = air.pollen.iter().filter(|(_, v)| *v >= 1.0).max_by(|a, b| {
+            (level(&a.0, a.1), a.1).partial_cmp(&(level(&b.0, b.1), b.1)).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let (pollen, pollen_level) = match (top, air.pollen.is_empty()) {
+            (_, true) => ("--".into(), lang.not_here().into()),
+            (None, false) => ("–".into(), lang.no_pollen().into()),
+            (Some((kind, v)), false) => (lang.pollen_name(kind).into(), lang.pollen_level(level(kind, *v)).into()),
         };
-        Self { aqi_known: air.european_aqi.is_some(), aqi, aqi_level, aqi_position, pollen, pollen_level, pollen_position, pollen_known }
+        Self { aqi, aqi_level, pollen, pollen_level }
     }
 }
 
@@ -179,8 +173,6 @@ pub struct DetailsView {
     pub feels_like: String,
     pub feels_note: String,
     pub humidity: String,
-    /// 0–1, for the humidity gauge.
-    pub humidity_fraction: f64,
     pub dew_point: String,
     /// "20", with the unit apart so the number can be big.
     pub wind_speed: String,
@@ -189,28 +181,16 @@ pub struct DetailsView {
     pub wind_gusts: String,
     /// "From the SW".
     pub wind_from: String,
-    /// Where the wind blows *to*, in degrees clockwise from north.
-    pub wind_arrow: f64,
-    /// That arrow, drawn in a 64×64 compass box (centre 32,32).
+    /// An arrow pointing where the wind blows *to*, drawn in a 64×64 compass
+    /// box (centre 32,32).
     pub wind_arrow_path: String,
     /// "07:42"; empty if unknown.
     pub sunrise: String,
     pub sunset: String,
     pub daylight: String,
-    /// The sun's position along its arc, 0 (sunrise) – 1 (sunset), clamped.
-    pub sun_progress: f64,
-    pub sun_up: bool,
-    /// The sun's dot on its arc, in the 100×56 box the arc is drawn in
-    /// (`SUN_ARC_PATH`).
-    pub sun_x: f64,
-    pub sun_y: f64,
     /// "3"; "--" if unknown.
     pub uv: String,
     pub uv_level: String,
-    /// Where the UV marker sits on its scale, 0–1 (0 to 11+).
-    pub uv_position: f64,
-    /// False when the source has no UV index.
-    pub uv_known: bool,
     /// "1013 hPa"; "--" if unknown.
     pub pressure: String,
     pub pressure_note: String,
@@ -260,7 +240,7 @@ impl MainScreen {
             sky_bottom_css: sky.bottom_css(),
             hours,
             days: DayView::list(&f.days, &f.spread, now.as_deref(), lang, units),
-            details: DetailsView::new(f, rise, set, progress, lang, units),
+            details: DetailsView::new(f, rise, set, lang, units),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction)
                 .with_rain_rate(c.precipitation.map_or(0.0, |mm| mm * 4.0)),
             landscape: land,
@@ -279,10 +259,12 @@ impl MainScreen {
 }
 
 impl DetailsView {
-    fn new(f: &Forecast, rise: Option<&str>, set: Option<&str>, progress: f64, lang: Lang, units: Units) -> Self {
+    fn new(f: &Forecast, rise: Option<&str>, set: Option<&str>, lang: Lang, units: Units) -> Self {
         let c = &f.current;
         let clock = |t: Option<&str>| t.and_then(|t| t.get(11..16)).unwrap_or("").to_string();
-        let minutes = |t: &str| -> Option<i64> { Some(t.get(11..13)?.parse::<i64>().ok()? * 60 + t.get(14..16)?.parse::<i64>().ok()?) };
+        let minutes = |t: &str| -> Option<i64> {
+            Some(t.get(11..13)?.parse::<i64>().ok()? * 60 + t.get(14..16)?.parse::<i64>().ok()?)
+        };
         let daylight = match (rise.and_then(minutes), set.and_then(minutes)) {
             (Some(r), Some(s)) if s > r => lang.daylight(s - r),
             _ => String::new(),
@@ -291,35 +273,24 @@ impl DetailsView {
             feels_like: units.temp(c.apparent_temperature),
             feels_note: lang.feels_note(c.temperature, c.apparent_temperature).into(),
             humidity: format!("{:.0}%", c.humidity),
-            humidity_fraction: (c.humidity / 100.0).clamp(0.0, 1.0),
             dew_point: c.dew_point.map(|d| lang.dew_point(&units.temp(d))).unwrap_or_default(),
             wind_speed: units.wind(c.wind_speed).0,
             wind_unit: units.wind(c.wind_speed).1.into(),
             wind_gusts: c.wind_gusts.map(|g| lang.gusts(&units.wind_text(g))).unwrap_or_default(),
             wind_from: lang.wind_from(c.wind_direction),
-            wind_arrow: (c.wind_direction + 180.0).rem_euclid(360.0),
             wind_arrow_path: arrow_path((c.wind_direction + 180.0).rem_euclid(360.0)),
             sunrise: clock(rise),
             sunset: clock(set),
             daylight,
-            sun_progress: progress.clamp(0.0, 1.0),
-            sun_up: (0.0..=1.0).contains(&progress),
-            sun_x: SUN_ARC_CENTER.0 - SUN_ARC_RADIUS * (std::f64::consts::PI * progress.clamp(0.0, 1.0)).cos(),
-            sun_y: SUN_ARC_CENTER.1 - SUN_ARC_RADIUS * (std::f64::consts::PI * progress.clamp(0.0, 1.0)).sin(),
             uv: c.uv_index.map_or("--".into(), |u| format!("{:.0}", u.round())),
             uv_level: c.uv_index.map_or_else(|| lang.not_available().to_string(), |u| lang.uv_level(u).to_string()),
-            uv_known: c.uv_index.is_some(),
-            uv_position: c.uv_index.map_or(0.0, |u| (u / 11.0).clamp(0.0, 1.0)),
             pressure: c.pressure.map_or("--".into(), |p| units.pressure(p)),
-            pressure_note: c.pressure.map_or_else(|| lang.not_available().to_string(), |p| lang.pressure_level(p).to_string()),
+            pressure_note: c
+                .pressure
+                .map_or_else(|| lang.not_available().to_string(), |p| lang.pressure_level(p).to_string()),
         }
     }
 }
-
-/// The sun's half-circle arc, drawn in a 100×56 box.
-pub const SUN_ARC_PATH: &str = "M 8 50 A 42 42 0 0 1 92 50";
-const SUN_ARC_CENTER: (f64, f64) = (50.0, 50.0);
-const SUN_ARC_RADIUS: f64 = 42.0;
 
 /// A compass arrow pointing `degrees` clockwise from north, in a 64×64 box.
 fn arrow_path(degrees: f64) -> String {
@@ -445,20 +416,21 @@ impl DayView {
                     .map(|(i, ((h, p), s))| {
                         let range = s.filter(|s| rain_differs(s.r_min, s.r_max));
                         DayHourView {
-                        label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
-                        is_now: Some(i) == now_index,
-                        temperature: units.temp(h.temperature),
-                        icon: h.condition.icon(h.is_day).into(),
-                        icon_kind: icon_kind(h.condition, h.is_day).into(),
-                        precipitation: rain_chance(h.precipitation_probability),
-                        rain: units.rain(h.precipitation, false),
-                        rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
-                        rain_range: range.map(|s| rain_range(units, s.r_min, s.r_max)).unwrap_or_default(),
-                        range_low: range.map_or(0.0, |s| (s.r_min / wettest).clamp(0.0, 1.0)),
-                        range_high: range.map_or(0.0, |s| (s.r_max / wettest).clamp(0.0, 1.0)),
-                        x: p.x,
-                        y: p.y,
-                    }})
+                            label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
+                            is_now: Some(i) == now_index,
+                            temperature: units.temp(h.temperature),
+                            icon: h.condition.icon(h.is_day).into(),
+                            icon_kind: icon_kind(h.condition, h.is_day).into(),
+                            precipitation: rain_chance(h.precipitation_probability),
+                            rain: units.rain(h.precipitation, false),
+                            rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
+                            rain_range: range.map(|s| rain_range(units, s.r_min, s.r_max)).unwrap_or_default(),
+                            range_low: range.map_or(0.0, |s| (s.r_min / wettest).clamp(0.0, 1.0)),
+                            range_high: range.map_or(0.0, |s| (s.r_max / wettest).clamp(0.0, 1.0)),
+                            x: p.x,
+                            y: p.y,
+                        }
+                    })
                     .collect();
                 Self {
                     first_hour: now_index.unwrap_or(MORNING.min(d.hours.len().saturating_sub(1))),
@@ -622,7 +594,13 @@ mod tests {
     fn next_two_hours() {
         use crate::model::Quarter;
         let q = |mm: &[f64]| -> Vec<Quarter> {
-            mm.iter().enumerate().map(|(i, &p)| Quarter { time: format!("2026-11-13T{:02}:{:02}", 9 + i / 4, i % 4 * 15), precipitation: p }).collect()
+            mm.iter()
+                .enumerate()
+                .map(|(i, &p)| Quarter {
+                    time: format!("2026-11-13T{:02}:{:02}", 9 + i / 4, i % 4 * 15),
+                    precipitation: p,
+                })
+                .collect()
         };
         let view = |mm: &[f64]| {
             let mut f = crate::api::parse_forecast("X", br#"{"current":{"time":"2026-11-13T09:00","temperature_2m":1,"apparent_temperature":1,"relative_humidity_2m":1,"is_day":1,"weather_code":0,"wind_speed_10m":1},"hourly":{"time":["2026-11-13T09:00"],"temperature_2m":[1],"weather_code":[0],"is_day":[1]},"daily":{"time":["2026-11-13"],"weather_code":[0],"temperature_2m_max":[1],"temperature_2m_min":[0]}}"#).unwrap();
@@ -660,5 +638,4 @@ mod tests {
         assert_eq!(temp(-0.3), "0°");
         assert_eq!(temp(-2.6), "-3°");
     }
-
 }

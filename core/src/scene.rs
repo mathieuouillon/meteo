@@ -42,7 +42,17 @@ impl SceneSpec {
         // Wind from the west (270°) blows to the east, i.e. to the right.
         let toward_right = -wind_from_deg.to_radians().sin();
         let wind = (wind_kmh * 4.0 * toward_right).clamp(-160.0, 160.0);
-        let none = Self { rain: 0.0, snow: 0.0, clouds: 0, dark_clouds: false, fog: false, stars: false, lightning: false, wind, rain_rate: 0.0 };
+        let none = Self {
+            rain: 0.0,
+            snow: 0.0,
+            clouds: 0,
+            dark_clouds: false,
+            fog: false,
+            stars: false,
+            lightning: false,
+            wind,
+            rain_rate: 0.0,
+        };
         use Condition::*;
         match condition {
             Clear => Self { clouds: u8::from(is_day), stars: !is_day, ..none },
@@ -346,7 +356,11 @@ impl Scene {
         for i in 0..self.drops.len() {
             let d = &mut self.drops[i];
             // Heavier rain has bigger drops, which fall faster.
-            let size = if self.spec.rain_rate > 0.0 { (0.6 + (self.spec.rain_rate / 6.0).sqrt() * 0.5).clamp(0.6, 1.25) } else { 1.0 };
+            let size = if self.spec.rain_rate > 0.0 {
+                (0.6 + (self.spec.rain_rate / 6.0).sqrt() * 0.5).clamp(0.6, 1.25)
+            } else {
+                1.0
+            };
             let terminal = (900.0 + 500.0 * d.z) * size;
             d.vy += GRAVITY * (1.0 - (d.vy / terminal).powi(2)) * dt;
             d.vx += (wind * d.z - d.vx) * 3.0 * dt;
@@ -497,7 +511,13 @@ impl Scene {
             .clouds
             .iter()
             // Bigger (closer) clouds are a little more opaque.
-            .map(|c| CloudView { x: c.x, y: c.y, scale: c.scale, opacity: if dark { 0.55 } else { 0.28 } * (0.7 + 0.3 * c.scale), dark })
+            .map(|c| CloudView {
+                x: c.x,
+                y: c.y,
+                scale: c.scale,
+                opacity: if dark { 0.55 } else { 0.28 } * (0.7 + 0.3 * c.scale),
+                dark,
+            })
             .collect();
         f.fog = self
             .fog

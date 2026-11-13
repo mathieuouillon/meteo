@@ -18,12 +18,7 @@ pub async fn search_cities(query: &str, lang: Lang) -> Result<Vec<Location>, Err
     }
     let url = reqwest::Url::parse_with_params(
         "https://geocoding-api.open-meteo.com/v1/search",
-        &[
-            ("name", query),
-            ("count", &MAX_RESULTS.to_string()),
-            ("language", lang.code()),
-            ("format", "json"),
-        ],
+        &[("name", query), ("count", &MAX_RESULTS.to_string()), ("language", lang.code()), ("format", "json")],
     )
     .expect("valid geocoding URL");
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;

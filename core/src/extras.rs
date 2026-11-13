@@ -19,7 +19,8 @@ use crate::model::{Forecast, Location};
 
 /// Models compared for the agreement band (global and regional ones that
 /// cover most places; those without data for a place are simply skipped).
-pub const SPREAD_MODELS: [&str; 5] = ["ecmwf_ifs025", "icon_seamless", "gfs_seamless", "meteofrance_seamless", "ukmo_seamless"];
+pub const SPREAD_MODELS: [&str; 5] =
+    ["ecmwf_ifs025", "icon_seamless", "gfs_seamless", "meteofrance_seamless", "ukmo_seamless"];
 
 /// One hour across several models.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -216,7 +217,7 @@ pub fn parse_normals(json: &[u8]) -> Result<Normals, Error> {
         (0..365)
             .map(|d| {
                 let (s, n) = (-7i32..=7).fold((0.0, 0.0), |(s, n), k| {
-                    let j = (d as i32 + k).rem_euclid(365) as usize;
+                    let j = (d + k).rem_euclid(365) as usize;
                     (s + sum[j], n + count[j])
                 });
                 if n > 0.0 { s / n } else { 0.0 }
@@ -265,11 +266,8 @@ pub async fn normals_for(dir: &Path, location: &Location) -> Option<Normals> {
 /// spread and the air quality fetched alongside, and the normals (from disk
 /// in `dir`, or downloaded once). Only the forecast's own failure is an error.
 pub async fn download(dir: Option<&Path>, location: &Location, source: crate::Source) -> Result<Forecast, Error> {
-    let (forecast, spread, air) = tokio::join!(
-        crate::api::fetch_forecast(location, source),
-        fetch_spread(location),
-        fetch_air(location),
-    );
+    let (forecast, spread, air) =
+        tokio::join!(crate::api::fetch_forecast(location, source), fetch_spread(location), fetch_air(location),);
     let mut forecast = forecast?;
     let normals = match dir {
         Some(dir) => normals_for(dir, location).await,
@@ -319,7 +317,15 @@ mod tests {
 
     #[test]
     fn agreement_on_temperature_and_rain() {
-        let hour = |t_min, t_max, wet, r_min, r_max| Spread { time: String::new(), t_min, t_max, models: 4, wet, r_min, r_max };
+        let hour = |t_min, t_max, wet, r_min, r_max| Spread {
+            time: String::new(),
+            t_min,
+            t_max,
+            models: 4,
+            wet,
+            r_min,
+            r_max,
+        };
         let dry = hour(10.0, 10.5, 0, 0.0, 0.0);
         assert_eq!((temperature_agreement(&[&dry]), rain_agreement(&[&dry])), (Some(100), Some(100)));
         // Far apart, and split on whether it rains.

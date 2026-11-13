@@ -23,10 +23,7 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_state<'l>(
     dir: JString<'l>,
     language: JString<'l>,
 ) -> jstring {
-    let lang = env
-        .get_string(&language)
-        .map(|s| meteo_core::Lang::from_code(&String::from(s)))
-        .unwrap_or_default();
+    let lang = env.get_string(&language).map(|s| meteo_core::Lang::from_code(&String::from(s))).unwrap_or_default();
     let state = data_dir(&mut env, &dir).map(|d| meteo_core::widget_state(&d, meteo_core::unix_now(), lang));
     let json = state
         .and_then(|s| serde_json::to_string(&s).ok())
@@ -74,13 +71,9 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notifications<'l>(
     dir: JString<'l>,
     language: JString<'l>,
 ) -> jstring {
-    let lang = env
-        .get_string(&language)
-        .map(|s| meteo_core::Lang::from_code(&String::from(s)))
-        .unwrap_or_default();
-    let due = data_dir(&mut env, &dir)
-        .map(|d| meteo_core::notify::due(&d, meteo_core::unix_now(), lang))
-        .unwrap_or_default();
+    let lang = env.get_string(&language).map(|s| meteo_core::Lang::from_code(&String::from(s))).unwrap_or_default();
+    let due =
+        data_dir(&mut env, &dir).map(|d| meteo_core::notify::due(&d, meteo_core::unix_now(), lang)).unwrap_or_default();
     let json = serde_json::to_string(&due).unwrap_or_else(|_| "[]".into());
     env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
 }

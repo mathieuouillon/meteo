@@ -75,7 +75,6 @@ export struct Details {
     feels-like: string,
     feels-note: string,
     humidity: string,
-    humidity-fraction: float,
     dew-point: string,
     wind-speed: string,
     wind-unit: string,
@@ -85,13 +84,8 @@ export struct Details {
     sunrise: string,
     sunset: string,
     daylight: string,
-    sun-up: bool,
-    sun-x: float,
-    sun-y: float,
     uv: string,
     uv-level: string,
-    uv-position: float,
-    uv-known: bool,
     pressure: string,
     pressure-note: string,
 }
@@ -171,12 +165,8 @@ export struct Nowcast {
 export struct AirInfo {
     aqi: string,
     aqi-level: string,
-    aqi-position: float,
-    aqi-known: bool,
     pollen: string,
     pollen-level: string,
-    pollen-position: float,
-    pollen-known: bool,
 }
 
 /// One silhouette of the landscape (core/src/landscape.rs), far to near.

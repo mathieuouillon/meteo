@@ -28,17 +28,12 @@ pub struct CachedForecast {
 
 /// Seconds since the Unix epoch.
 pub fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
 /// Saves the forecast for `location` in `dir` (created if needed).
 pub fn save(dir: &Path, location: &Location, source: Source, forecast: &Forecast, fetched_at: i64) -> io::Result<()> {
-    let json = serde_json::to_vec(&CachedForecast {
-        fetched_at,
-        forecast: forecast.clone(),
-    })?;
+    let json = serde_json::to_vec(&CachedForecast { fetched_at, forecast: forecast.clone() })?;
     write_atomic(dir, &file_name(location, source), &json)
 }
 

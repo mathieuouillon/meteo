@@ -78,9 +78,7 @@ pub(crate) fn client() -> Result<&'static reqwest::Client, Error> {
     // (Tauri, Slint, a widget). Elsewhere the OS certificate store is used.
     #[cfg(target_os = "android")]
     let builder = builder.tls_certs_only(
-        webpki_root_certs::TLS_SERVER_ROOT_CERTS
-            .iter()
-            .filter_map(|der| reqwest::Certificate::from_der(der).ok()),
+        webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().filter_map(|der| reqwest::Certificate::from_der(der).ok()),
     );
     Ok(CLIENT.get_or_init(|| builder.build().expect("valid HTTP client config")))
 }
@@ -112,11 +110,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         condition: Condition::from_wmo(at(&h.weather_code, i).unwrap_or(0)),
         is_day: at(&h.is_day, i) == Some(1),
     };
-    let mut hours: Vec<Hour> = (start..h.time.len())
-        .take_while(|&i| hour_ok(i))
-        .take(HOURS_KEPT)
-        .map(hour)
-        .collect();
+    let mut hours: Vec<Hour> = (start..h.time.len()).take_while(|&i| hour_ok(i)).take(HOURS_KEPT).map(hour).collect();
     if let Some(first) = hours.first_mut() {
         first.label = "Now".into();
     }
@@ -130,16 +124,10 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
             let (min, max) = (at(&d.temperature_2m_min, i)?, at(&d.temperature_2m_max, i)?);
             let date = d.time[i].clone();
             // Every hour of this day (local time), for the day's detail chart.
-            let day_hours: Vec<Hour> = (0..h.time.len())
-                .filter(|&j| h.time[j].starts_with(&date) && hour_ok(j))
-                .map(hour)
-                .collect();
+            let day_hours: Vec<Hour> =
+                (0..h.time.len()).filter(|&j| h.time[j].starts_with(&date) && hour_ok(j)).map(hour).collect();
             Some(Day {
-                label: if i == 0 {
-                    "Today".into()
-                } else {
-                    weekday_short(&date).unwrap_or("?").into()
-                },
+                label: if i == 0 { "Today".into() } else { weekday_short(&date).unwrap_or("?").into() },
                 min,
                 max,
                 precipitation_probability: at(&d.precipitation_probability_max, i).unwrap_or(0.0),

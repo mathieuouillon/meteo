@@ -19,10 +19,7 @@ pub struct Places {
 
 impl Default for Places {
     fn default() -> Self {
-        Self {
-            cities: vec![Location::paris()],
-            selected: 0,
-        }
+        Self { cities: vec![Location::paris()], selected: 0 }
     }
 }
 

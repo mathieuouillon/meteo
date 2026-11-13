@@ -155,8 +155,8 @@ pub fn landscape(condition: Condition, phase: Phase, sun_progress: f64, seed: u6
     let paths = [
         ridge(&mut rng, 85.0, 70.0, 0.62),  // far mountains
         ridge(&mut rng, 150.0, 45.0, 0.5),  // nearer mountains
-        hills(&mut rng, 200.0, 22.0, true),        // hills with pines
-        hills(&mut rng, 245.0, 14.0, true),        // foreground with pines
+        hills(&mut rng, 200.0, 22.0, true), // hills with pines
+        hills(&mut rng, 245.0, 14.0, true), // foreground with pines
     ];
 
     let (orb_x, orb_y, orb_color, orb_is_moon) = if night {
@@ -216,8 +216,11 @@ fn ridge(rng: &mut Rng, base: f64, amp: f64, rough: f64) -> String {
 
 /// Rolling hills (a sum of gentle waves), optionally with pines on top.
 fn hills(rng: &mut Rng, base: f64, amp: f64, trees: bool) -> String {
-    let waves: Vec<(f64, f64, f64)> =
-        (0..3).map(|k| (rng.range(0.6, 1.0) * amp / (k + 1) as f64, rng.range(1.0, 2.5) * (k + 1) as f64, rng.range(0.0, 2.0 * PI))).collect();
+    let waves: Vec<(f64, f64, f64)> = (0..3)
+        .map(|k| {
+            (rng.range(0.6, 1.0) * amp / (k + 1) as f64, rng.range(1.0, 2.5) * (k + 1) as f64, rng.range(0.0, 2.0 * PI))
+        })
+        .collect();
     let y_at = |x: f64| base + waves.iter().map(|(a, f, p)| a * (x / LANDSCAPE_WIDTH * f * PI + p).sin()).sum::<f64>();
 
     let mut points = Vec::new();

@@ -194,7 +194,5 @@ fn update_model<T: Clone + 'static>(model: &VecModel<T>, items: impl ExactSizeIt
 }
 
 fn seed() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(1, |d| d.as_nanos() as u64)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64)
 }

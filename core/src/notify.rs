@@ -54,10 +54,8 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
     let hour: u32 = local.get(11..13).and_then(|h| h.parse().ok()).unwrap_or(0);
     let today = local.get(..10).unwrap_or("").to_string();
 
-    let mut state: State = std::fs::read(dir.join(STATE_FILE))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    let mut state: State =
+        std::fs::read(dir.join(STATE_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let mut out = Vec::new();
 
     if settings.morning_summary && (MORNING.0..MORNING.1).contains(&hour) && state.morning_date != today {
@@ -75,14 +73,18 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
     // Rain about to start (not already raining), at most every few hours.
     let soon = screen.nowcast.starts_in.is_some_and(|m| (1..=60).contains(&m));
     if settings.rain_alerts && soon && unix_now - state.rain_alert_at > RAIN_ALERT_GAP_SECS {
-        out.push(Notification { kind: "rain".into(), title: lang.rain_soon_title(&city.name), text: screen.nowcast.summary.clone() });
+        out.push(Notification {
+            kind: "rain".into(),
+            title: lang.rain_soon_title(&city.name),
+            text: screen.nowcast.summary.clone(),
+        });
         state.rain_alert_at = unix_now;
     }
 
-    if !out.is_empty() {
-        if let Ok(json) = serde_json::to_vec(&state) {
-            let _ = cache::write_atomic(dir, STATE_FILE, &json);
-        }
+    if !out.is_empty()
+        && let Ok(json) = serde_json::to_vec(&state)
+    {
+        let _ = cache::write_atomic(dir, STATE_FILE, &json);
     }
     out
 }

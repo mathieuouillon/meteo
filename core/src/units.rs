@@ -29,7 +29,13 @@ impl Units {
             Units::Imperial => celsius * 9.0 / 5.0,
         }
         .round();
-        if d > 0.0 { format!("+{d}°") } else if d < 0.0 { format!("{d}°") } else { "0°".into() }
+        if d > 0.0 {
+            format!("+{d}°")
+        } else if d < 0.0 {
+            format!("{d}°")
+        } else {
+            "0°".into()
+        }
     }
 
     /// Speed and unit, separately: ("20", "km/h") or ("12", "mph").

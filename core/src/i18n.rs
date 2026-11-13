@@ -351,7 +351,10 @@ impl Lang {
         self.pick("Location permission wasn’t granted", "L’accès à la position n’a pas été autorisé")
     }
     pub fn no_fix(self) -> &'static str {
-        self.pick("Couldn’t find your location. Is location turned on?", "Position introuvable. La localisation est-elle activée ?")
+        self.pick(
+            "Couldn’t find your location. Is location turned on?",
+            "Position introuvable. La localisation est-elle activée ?",
+        )
     }
     pub fn my_location(self) -> &'static str {
         self.pick("My location", "Ma position")

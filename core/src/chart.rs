@@ -29,13 +29,7 @@ pub struct ChartPoint {
 
 /// Lays out one point per hour, `step` apart horizontally, with the curve
 /// fitted between `top_pad` and `height - bottom_pad`.
-pub fn temperature_chart(
-    hours: &[Hour],
-    step: f64,
-    height: f64,
-    top_pad: f64,
-    bottom_pad: f64,
-) -> ChartGeometry {
+pub fn temperature_chart(hours: &[Hour], step: f64, height: f64, top_pad: f64, bottom_pad: f64) -> ChartGeometry {
     temperature_chart_with_band(hours, &[], step, height, top_pad, bottom_pad)
 }
 
@@ -103,14 +97,7 @@ pub fn temperature_chart_with_band(
         String::new()
     };
 
-    ChartGeometry {
-        width,
-        height,
-        line,
-        area,
-        band,
-        points,
-    }
+    ChartGeometry { width, height, line, area, band, points }
 }
 
 /// Catmull-Rom spline through the points, written as cubic Bézier segments.
@@ -125,10 +112,7 @@ fn smooth_path(p: &[ChartPoint]) -> String {
         let p3 = p[(i + 2).min(p.len() - 1)];
         let c1 = (p1.x + (p2.x - p0.x) / 6.0, p1.y + (p2.y - p0.y) / 6.0);
         let c2 = (p2.x - (p3.x - p1.x) / 6.0, p2.y - (p3.y - p1.y) / 6.0);
-        d += &format!(
-            " C {:.1},{:.1} {:.1},{:.1} {:.1},{:.1}",
-            c1.0, c1.1, c2.0, c2.1, p2.x, p2.y
-        );
+        d += &format!(" C {:.1},{:.1} {:.1},{:.1} {:.1},{:.1}", c1.0, c1.1, c2.0, c2.1, p2.x, p2.y);
     }
     d
 }

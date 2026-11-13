@@ -49,9 +49,8 @@ fn ok_or_clear<T>(env: &mut JNIEnv, r: Result<T>) -> Option<T> {
 pub fn has_permission(app: &AndroidApp) -> bool {
     with_activity(app, |env, activity| {
         let perm = env.new_string(PERMISSIONS[0])?;
-        let state = env
-            .call_method(activity, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&perm)])?
-            .i()?;
+        let state =
+            env.call_method(activity, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&perm)])?.i()?;
         Ok(state == 0) // PackageManager.PERMISSION_GRANTED
     })
     .unwrap_or(false)
@@ -65,7 +64,12 @@ pub fn request_permission(app: &AndroidApp) {
             let s = env.new_string(p)?;
             env.set_object_array_element(&array, i as i32, s)?;
         }
-        env.call_method(activity, "requestPermissions", "([Ljava/lang/String;I)V", &[JValue::Object(&array), JValue::Int(1)])?;
+        env.call_method(
+            activity,
+            "requestPermissions",
+            "([Ljava/lang/String;I)V",
+            &[JValue::Object(&array), JValue::Int(1)],
+        )?;
         Ok(())
     });
 }
@@ -88,7 +92,12 @@ pub fn current_position(app: &AndroidApp, timeout: Duration) -> Option<(f64, f64
     with_activity(app, |env, activity| {
         let service = env.new_string("location")?;
         let manager = env
-            .call_method(activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&service)])?
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[JValue::Object(&service)],
+            )?
             .l()?;
 
         if let Some(fix) = last_known(env, &manager).filter(|f| f.age < FRESH_ENOUGH) {
@@ -105,7 +114,12 @@ pub fn current_position(app: &AndroidApp, timeout: Duration) -> Option<(f64, f64
                 "android/app/PendingIntent",
                 "getBroadcast",
                 "(Landroid/content/Context;ILandroid/content/Intent;I)Landroid/app/PendingIntent;",
-                &[JValue::Object(activity), JValue::Int(0), JValue::Object(&intent), JValue::Int(FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE)],
+                &[
+                    JValue::Object(activity),
+                    JValue::Int(0),
+                    JValue::Object(&intent),
+                    JValue::Int(FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE),
+                ],
             )?
             .l()?;
         for provider in PROVIDERS {
@@ -128,7 +142,8 @@ pub fn current_position(app: &AndroidApp, timeout: Duration) -> Option<(f64, f64
             }
             std::thread::sleep(Duration::from_millis(500));
         }
-        let r = env.call_method(&manager, "removeUpdates", "(Landroid/app/PendingIntent;)V", &[JValue::Object(&pending)]);
+        let r =
+            env.call_method(&manager, "removeUpdates", "(Landroid/app/PendingIntent;)V", &[JValue::Object(&pending)]);
         ok_or_clear(env, r);
 
         Ok(found.or_else(|| last_known(env, &manager)).map(|f| (f.latitude, f.longitude)))
@@ -150,7 +165,12 @@ fn last_known(env: &mut JNIEnv, manager: &JObject) -> Option<Fix> {
     for provider in PROVIDERS {
         let Ok(name) = env.new_string(provider) else { continue };
         let r = env
-            .call_method(manager, "getLastKnownLocation", "(Ljava/lang/String;)Landroid/location/Location;", &[JValue::Object(&name)])
+            .call_method(
+                manager,
+                "getLastKnownLocation",
+                "(Ljava/lang/String;)Landroid/location/Location;",
+                &[JValue::Object(&name)],
+            )
             .and_then(|v| v.l());
         let Some(loc) = ok_or_clear(env, r).filter(|l| !l.is_null()) else { continue };
         let read = |env: &mut JNIEnv, m: &str| env.call_method(&loc, m, "()D", &[]).and_then(|v| v.d());
@@ -170,9 +190,15 @@ fn last_known(env: &mut JNIEnv, manager: &JObject) -> Option<Fix> {
 /// Town name and "region, country" for a position, from Android's Geocoder.
 pub fn place_name(app: &AndroidApp, latitude: f64, longitude: f64) -> Option<(String, String)> {
     with_activity(app, |env, activity| {
-        let geocoder = env.new_object("android/location/Geocoder", "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
+        let geocoder =
+            env.new_object("android/location/Geocoder", "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
         let list = env
-            .call_method(&geocoder, "getFromLocation", "(DDI)Ljava/util/List;", &[JValue::Double(latitude), JValue::Double(longitude), JValue::Int(1)])?
+            .call_method(
+                &geocoder,
+                "getFromLocation",
+                "(DDI)Ljava/util/List;",
+                &[JValue::Double(latitude), JValue::Double(longitude), JValue::Int(1)],
+            )?
             .l()?;
         if list.is_null() || env.call_method(&list, "size", "()I", &[])?.i()? == 0 {
             return Ok(None);
@@ -222,16 +248,32 @@ pub fn notify_widgets(app: &AndroidApp) {
                 &[JValue::Object(activity), JValue::Object(&class)],
             )?;
             let ids = env
-                .call_method(&manager, "getAppWidgetIds", "(Landroid/content/ComponentName;)[I", &[JValue::Object(&component)])?
+                .call_method(
+                    &manager,
+                    "getAppWidgetIds",
+                    "(Landroid/content/ComponentName;)[I",
+                    &[JValue::Object(&component)],
+                )?
                 .l()?;
             if env.get_array_length(&jni::objects::JIntArray::from(env.new_local_ref(&ids)?))? == 0 {
                 return Ok(()); // none of these on the home screen
             }
             let action = env.new_string("android.appwidget.action.APPWIDGET_UPDATE")?;
-            let intent = env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&action)])?;
-            env.call_method(&intent, "setComponent", "(Landroid/content/ComponentName;)Landroid/content/Intent;", &[JValue::Object(&component)])?;
+            let intent =
+                env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&action)])?;
+            env.call_method(
+                &intent,
+                "setComponent",
+                "(Landroid/content/ComponentName;)Landroid/content/Intent;",
+                &[JValue::Object(&component)],
+            )?;
             let key = env.new_string("appWidgetIds")?;
-            env.call_method(&intent, "putExtra", "(Ljava/lang/String;[I)Landroid/content/Intent;", &[JValue::Object(&key), JValue::Object(&ids)])?;
+            env.call_method(
+                &intent,
+                "putExtra",
+                "(Ljava/lang/String;[I)Landroid/content/Intent;",
+                &[JValue::Object(&key), JValue::Object(&ids)],
+            )?;
             env.call_method(activity, "sendBroadcast", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
             Ok(())
         });
@@ -261,9 +303,8 @@ pub fn system_colors(app: &AndroidApp) -> Option<SystemColors> {
     with_activity(app, |env, activity| {
         // Configuration.uiMode & UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES
         let resources = env.call_method(activity, "getResources", "()Landroid/content/res/Resources;", &[])?.l()?;
-        let config = env
-            .call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?
-            .l()?;
+        let config =
+            env.call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?.l()?;
         let ui_mode = env.get_field(&config, "uiMode", "I")?.i()?;
         let dark = ui_mode & 0x30 == 0x20;
 
@@ -289,9 +330,8 @@ pub fn system_colors(app: &AndroidApp) -> Option<SystemColors> {
 pub fn language(app: &AndroidApp) -> Option<String> {
     with_activity(app, |env, activity| {
         let resources = env.call_method(activity, "getResources", "()Landroid/content/res/Resources;", &[])?.l()?;
-        let config = env
-            .call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?
-            .l()?;
+        let config =
+            env.call_method(&resources, "getConfiguration", "()Landroid/content/res/Configuration;", &[])?.l()?;
         let locales = env.call_method(&config, "getLocales", "()Landroid/os/LocaleList;", &[])?.l()?;
         let locale = env.call_method(&locales, "get", "(I)Ljava/util/Locale;", &[JValue::Int(0)])?.l()?;
         let lang = env.call_method(&locale, "getLanguage", "()Ljava/lang/String;", &[])?.l()?;
@@ -311,7 +351,12 @@ pub fn request_notification_permission(app: &AndroidApp) {
         let array = env.new_object_array(1, "java/lang/String", JObject::null())?;
         let perm = env.new_string("android.permission.POST_NOTIFICATIONS")?;
         env.set_object_array_element(&array, 0, perm)?;
-        env.call_method(activity, "requestPermissions", "([Ljava/lang/String;I)V", &[JValue::Object(&array), JValue::Int(2)])?;
+        env.call_method(
+            activity,
+            "requestPermissions",
+            "([Ljava/lang/String;I)V",
+            &[JValue::Object(&array), JValue::Int(2)],
+        )?;
         Ok(())
     });
 }
@@ -370,7 +415,12 @@ pub fn open_url(app: &AndroidApp, url: &str) {
     let _ = with_activity(app, |env, activity| {
         let s = env.new_string(url)?;
         let uri = env
-            .call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&s)])?
+            .call_static_method(
+                "android/net/Uri",
+                "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[JValue::Object(&s)],
+            )?
             .l()?;
         let action = env.new_string("android.intent.action.VIEW")?;
         let intent = env.new_object(

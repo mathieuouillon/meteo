@@ -1,13 +1,13 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use meteo_core::{
-    ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units,
-    cache, extras, search_cities, unix_now,
+    ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units, cache,
+    extras, search_cities, unix_now,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
@@ -260,10 +260,10 @@ impl App {
     /// Applies a change to the settings, saves them, and redraws.
     fn change_settings(&self, change: impl FnOnce(&mut Settings)) {
         change(&mut self.settings.borrow_mut());
-        if let Some(dir) = &self.dir {
-            if let Err(e) = self.settings.borrow().save(dir) {
-                eprintln!("couldn't save settings: {e}");
-            }
+        if let Some(dir) = &self.dir
+            && let Err(e) = self.settings.borrow().save(dir)
+        {
+            eprintln!("couldn't save settings: {e}");
         }
         set_lang(&self.settings.borrow());
         if let Some(ui) = self.ui.upgrade() {
@@ -321,10 +321,10 @@ impl App {
     fn change_places(&self, change: impl FnOnce(&mut Places)) {
         let before = self.places.borrow().selected().key();
         change(&mut self.places.borrow_mut());
-        if let Some(dir) = &self.dir {
-            if let Err(e) = self.places.borrow().save(dir) {
-                eprintln!("couldn't save cities: {e}");
-            }
+        if let Some(dir) = &self.dir
+            && let Err(e) = self.places.borrow().save(dir)
+        {
+            eprintln!("couldn't save cities: {e}");
         }
         if self.places.borrow().selected().key() != before {
             self.show_selected();
@@ -339,10 +339,10 @@ impl App {
             return;
         }
         self.settings.borrow_mut().source = source;
-        if let Some(dir) = &self.dir {
-            if let Err(e) = self.settings.borrow().save(dir) {
-                eprintln!("couldn't save settings: {e}");
-            }
+        if let Some(dir) = &self.dir
+            && let Err(e) = self.settings.borrow().save(dir)
+        {
+            eprintln!("couldn't save settings: {e}");
         }
         self.show_selected();
     }
@@ -386,12 +386,8 @@ impl App {
     fn update_city_list(&self) {
         let Some(ui) = self.ui.upgrade() else { return };
         let places = self.places.borrow();
-        let items: Vec<CityItem> = places
-            .cities()
-            .iter()
-            .enumerate()
-            .map(|(i, c)| city_item(c, i == places.selected_index()))
-            .collect();
+        let items: Vec<CityItem> =
+            places.cities().iter().enumerate().map(|(i, c)| city_item(c, i == places.selected_index())).collect();
         ui.set_cities(ModelRc::from(Rc::new(VecModel::from(items))));
     }
 
@@ -400,24 +396,20 @@ impl App {
         let city = self.places.borrow().selected().clone();
         let source = self.settings.borrow().source;
         let generation = self.fetch_gen.fetch_add(1, Ordering::Relaxed) + 1;
-        let (weak, dir, shown_at, fetch_gen) = (
-            self.ui.clone(),
-            self.dir.clone(),
-            self.shown_at.clone(),
-            self.fetch_gen.clone(),
-        );
+        let (weak, dir, shown_at, fetch_gen) =
+            (self.ui.clone(), self.dir.clone(), self.shown_at.clone(), self.fetch_gen.clone());
         std::thread::spawn(move || {
             // The forecast, with several models, air quality and normals.
             let result = block_on(extras::download(dir.as_deref(), &city, source));
             let fetched_at = unix_now();
-            if let (Ok(forecast), Some(dir)) = (&result, &dir) {
-                if let Err(e) = cache::save(dir, &city, source, forecast, fetched_at) {
-                    eprintln!("couldn't save the forecast cache: {e}");
-                }
-                #[cfg(target_os = "android")]
-                if let Some(app) = ANDROID_APP.get() {
-                    android::notify_widgets(app);
-                }
+            if let (Ok(forecast), Some(dir)) = (&result, &dir)
+                && let Err(e) = cache::save(dir, &city, source, forecast, fetched_at)
+            {
+                eprintln!("couldn't save the forecast cache: {e}");
+            }
+            #[cfg(target_os = "android")]
+            if let Some(app) = ANDROID_APP.get() {
+                android::notify_widgets(app);
             }
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
@@ -537,8 +529,7 @@ fn device_location(quiet: bool) -> Result<Location, String> {
             return Err(lang().permission_denied().into());
         }
     }
-    let (lat, lon) = loc::current_position(app, Duration::from_secs(15))
-        .ok_or(lang().no_fix())?;
+    let (lat, lon) = loc::current_position(app, Duration::from_secs(15)).ok_or(lang().no_fix())?;
     // About 1 km is plenty for the weather, and that's all that leaves the
     // phone (see docs/privacy-policy.md).
     let round = |x: f64| (x * 100.0).round() / 100.0;
@@ -559,20 +550,11 @@ fn can_locate() -> bool {
 
 /// Runs a future on a small single-threaded runtime (we're on a worker thread).
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("tokio runtime")
-        .block_on(future)
+    tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime").block_on(future)
 }
 
 fn city_item(c: &Location, selected: bool) -> CityItem {
-    CityItem {
-        name: c.name.as_str().into(),
-        detail: c.detail.as_str().into(),
-        selected,
-        device: c.is_device,
-    }
+    CityItem { name: c.name.as_str().into(), detail: c.detail.as_str().into(), selected, device: c.is_device }
 }
 
 /// A city with no cached forecast yet: its name and a loading state.
@@ -606,12 +588,8 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     ui.set_air(AirInfo {
         aqi: a.aqi.as_str().into(),
         aqi_level: a.aqi_level.as_str().into(),
-        aqi_position: a.aqi_position as f32,
-        aqi_known: a.aqi_known,
         pollen: a.pollen.as_str().into(),
         pollen_level: a.pollen_level.as_str().into(),
-        pollen_position: a.pollen_position as f32,
-        pollen_known: a.pollen_known,
     });
     ui.set_error(SharedString::new());
     ui.set_city(s.city.as_str().into());
@@ -625,7 +603,8 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
         (None, None) => None,
         (condition, phase) => {
             let (condition, day) = condition.unwrap_or((meteo_core::Condition::Clear, true));
-            let (phase, sun) = phase.unwrap_or((if day { meteo_core::Phase::Day } else { meteo_core::Phase::Night }, 0.5));
+            let (phase, sun) =
+                phase.unwrap_or((if day { meteo_core::Phase::Day } else { meteo_core::Phase::Night }, 0.5));
             let palette = meteo_core::Palette::for_weather(condition, phase);
             let mut land = meteo_core::landscape(condition, phase, sun, meteo_core::seed_for(&s.city));
             for (layer, color) in land.layers.iter_mut().zip(palette.hills()) {
@@ -657,11 +636,8 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     ui.set_theme(ui_theme(&palette));
     ui.set_icon_kind(icon.into());
     ui.set_ground(rgb(land.ground));
-    let layers: Vec<LandLayer> = land
-        .layers
-        .iter()
-        .map(|l| LandLayer { path: l.path.as_str().into(), color: rgb(l.color) })
-        .collect();
+    let layers: Vec<LandLayer> =
+        land.layers.iter().map(|l| LandLayer { path: l.path.as_str().into(), color: rgb(l.color) }).collect();
     ui.set_land_layers(ModelRc::from(Rc::new(VecModel::from(layers))));
 
     let days: Vec<DayItem> = s
@@ -717,7 +693,6 @@ fn ui_details(d: &meteo_core::DetailsView) -> Details {
         feels_like: d.feels_like.as_str().into(),
         feels_note: d.feels_note.as_str().into(),
         humidity: d.humidity.as_str().into(),
-        humidity_fraction: d.humidity_fraction as f32,
         dew_point: d.dew_point.as_str().into(),
         wind_speed: d.wind_speed.as_str().into(),
         wind_unit: d.wind_unit.as_str().into(),
@@ -727,13 +702,8 @@ fn ui_details(d: &meteo_core::DetailsView) -> Details {
         sunrise: d.sunrise.as_str().into(),
         sunset: d.sunset.as_str().into(),
         daylight: d.daylight.as_str().into(),
-        sun_up: d.sun_up,
-        sun_x: d.sun_x as f32,
-        sun_y: d.sun_y as f32,
         uv: d.uv.as_str().into(),
         uv_level: d.uv_level.as_str().into(),
-        uv_position: d.uv_position as f32,
-        uv_known: d.uv_known,
         pressure: d.pressure.as_str().into(),
         pressure_note: d.pressure_note.as_str().into(),
     }

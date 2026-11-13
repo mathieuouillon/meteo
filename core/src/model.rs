@@ -82,20 +82,12 @@ impl Forecast {
         self.spread.retain(|s| s.time.get(..13).is_some_and(|t| t >= this_hour));
         self.hours.retain(|h| h.time.get(..13).is_some_and(|t| t >= this_hour));
         for (i, h) in self.hours.iter_mut().enumerate() {
-            h.label = if i == 0 {
-                "Now".into()
-            } else {
-                format!("{}h", h.time.get(11..13).unwrap_or("?"))
-            };
+            h.label = if i == 0 { "Now".into() } else { format!("{}h", h.time.get(11..13).unwrap_or("?")) };
         }
 
         self.days.retain(|d| d.date.as_str() >= today);
         for (i, d) in self.days.iter_mut().enumerate() {
-            d.label = if i == 0 {
-                "Today".into()
-            } else {
-                crate::date::weekday_short(&d.date).unwrap_or("?").into()
-            };
+            d.label = if i == 0 { "Today".into() } else { crate::date::weekday_short(&d.date).unwrap_or("?").into() };
         }
         if let Some(d) = self.days.first() {
             (self.today_min, self.today_max) = (d.min, d.max);

@@ -7,9 +7,9 @@ use serde::Serialize;
 
 use crate::api::Error;
 use crate::cache::{self, unix_now};
+use crate::i18n::Lang;
 use crate::places::Places;
 use crate::source::Settings;
-use crate::i18n::Lang;
 use crate::view::MainScreen;
 
 /// Hours shown in the wide widget.
