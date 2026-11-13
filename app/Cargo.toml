@@ -14,6 +14,8 @@ slint = { version = "1.18.1", features = ["backend-android-activity-06"] }
 jni = "0.21.1"
 # __system_property_get, for the preview overrides (animation.rs).
 libc = "0.2"
+# Android's sensor API (compass), the version android-activity already uses.
+ndk-sys = "0.6.0"
 
 [lib]
 crate-type = ["lib", "cdylib"]

@@ -298,6 +298,9 @@ component ValueNote inherits VerticalLayout {
 /// Wind: speed, where it comes from and gusts, with a compass.
 component WindCard inherits DetailCard {
     in property <Details> details;
+    /// The phone's heading (degrees from north), so the dial stays aligned
+    /// with real north; 0 where there's no compass sensor.
+    in property <float> heading;
     VerticalLayout {
         x: 16px; y: 40px;
         width: parent.width - 32px - 70px;
@@ -322,14 +325,19 @@ component WindCard inherits DetailCard {
         border-width: 2px;
         border-color: root.theme.outline-variant;
         background: root.theme.surface-container-high;
-        Text { y: 3px; text: "N"; color: root.theme.on-surface-variant; font-size: 10px; font-weight: 600; }
-        Path {
+        // The dial: north and the arrow turn together against the phone's heading.
+        Rectangle {
             width: 64px; height: 64px;
-            viewbox-width: 64; viewbox-height: 64;
-            fit: fill;
-            commands: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
-            fill: root.theme.primary;
-            stroke-width: 0px;
+            transform-rotation: -root.heading * 1deg;
+            Text { y: 3px; text: "N"; color: root.theme.on-surface-variant; font-size: 10px; font-weight: 600; }
+            Path {
+                width: 64px; height: 64px;
+                viewbox-width: 64; viewbox-height: 64;
+                fit: fill;
+                commands: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
+                fill: root.theme.primary;
+                stroke-width: 0px;
+            }
         }
     }
 }
@@ -1158,7 +1166,6 @@ export component MainWindow inherits Window {
     }
     Particles { d: root.rain-far; stroke: root.theme.particle.transparentize(70%); stroke-width: 1px; }
     Particles { d: root.rain-near; stroke: root.theme.particle.transparentize(40%); stroke-width: 1.6px; }
-    Particles { d: root.splashes; stroke: root.theme.particle.transparentize(35%); stroke-width: 2.5px; }
     Particles { d: root.snow-small; stroke: root.theme.particle.transparentize(25%); stroke-width: 4px; }
     Particles { d: root.snow-large; stroke: root.theme.particle; stroke-width: 7px; }
     Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
@@ -1166,6 +1173,14 @@ export component MainWindow inherits Window {
     if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
 
     // ── Content: scrolls over the scene ──
+    // Tops of the cards, in window coordinates, for drops to land on.
+    out property <[length]> surface-tops: [
+        forecast-card.absolute-position.y,
+        wind-row.absolute-position.y,
+        footer-card.absolute-position.y,
+    ];
+    in property <float> compass-heading;
+
     // Pull to refresh with plain scrolling: the content starts with a strip
     // (`pull-zone`) scrolled just out of view. Pulling down from the top
     // reveals it; once it's fully shown and has stopped moving, the timer
@@ -1350,7 +1365,7 @@ export component MainWindow inherits Window {
                     }
 
                     // 7-day forecast; a day opens hour by hour.
-                    Rectangle {
+                    forecast-card := Rectangle {
                         background: root.theme.surface-container;
                         border-radius: 28px;
                         VerticalLayout {
@@ -1376,9 +1391,9 @@ export component MainWindow inherits Window {
                     }
 
                     // Details: two per row.
-                    HorizontalLayout {
+                    wind-row := HorizontalLayout {
                         spacing: 12px;
-                        WindCard { title: root.labels.wind; theme: root.theme; details: root.details; }
+                        WindCard { title: root.labels.wind; theme: root.theme; details: root.details; heading: root.compass-heading; }
                         SunCard { title: root.labels.sun; theme: root.theme; details: root.details; labels: root.labels; }
                     }
                     HorizontalLayout {
@@ -1450,7 +1465,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Footer: where the data comes from, and when it was updated.
-                    Rectangle {
+                    footer-card := Rectangle {
                         border-radius: 28px;
                         background: root.theme.surface-container;
                         VerticalLayout {
@@ -1497,6 +1512,9 @@ export component MainWindow inherits Window {
         }
     }
 
+
+    // Splashes land on the cards, so they're drawn in front of them.
+    Particles { d: root.splashes; stroke: root.theme.particle.transparentize(20%); stroke-width: 2.5px; }
 
     // While a pull-started refresh runs: a pill with the arrow.
     if root.refreshing: Rectangle {

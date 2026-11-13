@@ -34,6 +34,6 @@ pub use palette::{Palette, icon_kind};
 pub use places::Places;
 pub use source::{ColorMode, LanguageChoice, Settings, Source};
 pub use units::Units;
-pub use scene::{CLOUD_HEIGHT, CLOUD_WIDTH, CloudView, FogView, Scene, SceneFrame, SceneSpec};
+pub use scene::{CLOUD_HEIGHT, CLOUD_WIDTH, CloudView, FogView, SURFACE_MARGIN, Scene, SceneFrame, SceneSpec};
 pub use view::{CHART_HEIGHT, DayHourView, DayView, DetailsView, HOUR_STEP, HOURS_SHOWN, HourView, MainScreen, SUN_ARC_PATH, rain_amount, temp};
 pub use widget::{WidgetHour, WidgetState, WidgetView, refresh_selected, widget_state};

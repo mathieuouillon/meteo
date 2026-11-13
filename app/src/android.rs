@@ -306,3 +306,52 @@ pub fn request_notification_permission(app: &AndroidApp) {
         Ok(())
     });
 }
+
+/// The phone's heading for the wind compass: a thread reading the rotation
+/// vector sensor (NDK sensor API, no Java) about 15 times a second and
+/// calling `on_heading` with degrees clockwise from north (portrait).
+/// Does nothing on devices without that sensor.
+pub fn start_compass(on_heading: impl Fn(f32) + Send + 'static) {
+    std::thread::spawn(move || {
+        use ndk_sys::*;
+        // SAFETY: plain NDK calls on this thread's own looper; the queue and
+        // sensor stay valid for the thread's (= the process's) lifetime.
+        unsafe {
+            // Events without a callback are only delivered with this option.
+            let looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS as i32);
+            let manager = ASensorManager_getInstanceForPackage(c"dev.meteo.app".as_ptr());
+            if manager.is_null() {
+                return;
+            }
+            let sensor = ASensorManager_getDefaultSensor(manager, ASENSOR_TYPE_ROTATION_VECTOR as i32);
+            if sensor.is_null() {
+                return;
+            }
+            let queue = ASensorManager_createEventQueue(manager, looper, 1, None, std::ptr::null_mut());
+            if queue.is_null() || ASensorEventQueue_enableSensor(queue, sensor) < 0 {
+                return;
+            }
+            ASensorEventQueue_setEventRate(queue, sensor, 66_000);
+            let mut events: [ASensorEvent; 8] = std::mem::zeroed();
+            loop {
+                ALooper_pollOnce(-1, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+                let n = ASensorEventQueue_getEvents(queue, events.as_mut_ptr(), events.len());
+                if n <= 0 {
+                    continue;
+                }
+                let e = &events[n as usize - 1];
+                let v = e.__bindgen_anon_1.__bindgen_anon_1.data;
+                on_heading(heading_from_rotation_vector(v[0], v[1], v[2]));
+            }
+        }
+    });
+}
+
+/// Azimuth from a rotation vector (x, y, z = axis × sin(θ/2)), as Android's
+/// SensorManager.getRotationMatrixFromVector + getOrientation compute it.
+fn heading_from_rotation_vector(x: f32, y: f32, z: f32) -> f32 {
+    let w = (1.0 - x * x - y * y - z * z).max(0.0).sqrt();
+    let r1 = 2.0 * (x * y - z * w);
+    let r4 = 1.0 - 2.0 * (x * x + z * z);
+    (r1.atan2(r4).to_degrees() + 360.0) % 360.0
+}

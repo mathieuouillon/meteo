@@ -142,6 +142,9 @@ fn tick(weak: &Weak<MainWindow>) {
         }
         let scene = s.scene.get_or_insert_with(|| Scene::new(spec, w, h, seed()));
         scene.resize(w, h);
+        // Drops land on the cards' tops (they move as the page scrolls).
+        let tops = ui.get_surface_tops();
+        scene.set_surfaces((0..tops.row_count()).filter_map(|i| tops.row_data(i)).map(f64::from));
         scene.step(dt);
         let frame = scene.frame();
         show(&ui, &s, frame);

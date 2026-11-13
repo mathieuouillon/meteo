@@ -186,7 +186,13 @@ pub struct Scene {
     /// A second, quicker flicker shortly after the main flash.
     flicker_at: Option<f64>,
     bolt: Vec<(f64, f64)>,
+    /// Tops of the cards on screen (y), which drops land on; they span the
+    /// width minus `SURFACE_MARGIN` on each side.
+    surfaces: Vec<f64>,
 }
+
+/// Side margin of the cards drops can land on.
+pub const SURFACE_MARGIN: f64 = 14.0;
 
 impl Scene {
     pub fn new(spec: SceneSpec, width: f64, height: f64, seed: u64) -> Self {
@@ -206,6 +212,7 @@ impl Scene {
             next_flash: 0.0,
             flicker_at: None,
             bolt: Vec::new(),
+            surfaces: Vec::new(),
         };
         scene.populate();
         scene
@@ -226,6 +233,12 @@ impl Scene {
                 *new = old;
             }
         }
+    }
+
+    /// Where the cards' tops are now (they move as the page scrolls).
+    pub fn set_surfaces(&mut self, tops: impl IntoIterator<Item = f64>) {
+        self.surfaces.clear();
+        self.surfaces.extend(tops.into_iter().filter(|&y| y > 0.0 && y < self.height));
     }
 
     /// Adapts to a new window size (particles are re-spread if it changed a lot).
@@ -337,8 +350,29 @@ impl Scene {
             let terminal = (900.0 + 500.0 * d.z) * size;
             d.vy += GRAVITY * (1.0 - (d.vy / terminal).powi(2)) * dt;
             d.vx += (wind * d.z - d.vx) * 3.0 * dt;
+            let before = d.y;
             d.x += d.vx * dt;
             d.y += d.vy * dt;
+            // Landing on a card: stop at its top edge and splash there.
+            let on_card = (SURFACE_MARGIN..w - SURFACE_MARGIN).contains(&d.x)
+                && self.surfaces.iter().any(|&top| before < top && d.y >= top);
+            if on_card {
+                let top = self.surfaces.iter().copied().filter(|&t| before < t && d.y >= t).fold(f64::MAX, f64::min);
+                let (x, vx, z) = (d.x, d.vx, d.z);
+                if self.rng.chance(0.7) {
+                    for _ in 0..2 {
+                        self.splashes.push(Splash {
+                            x,
+                            y: top - 1.0,
+                            vx: vx * 0.2 + self.rng.range(-70.0, 70.0),
+                            vy: -self.rng.range(90.0, 200.0) * z,
+                            life: self.rng.range(0.15, 0.3),
+                        });
+                    }
+                }
+                self.drops[i] = self.new_drop();
+                continue;
+            }
             if d.y > h {
                 let (x, vx, z) = (d.x, d.vx, d.z);
                 if z > 0.7 && self.rng.chance(0.6) {
@@ -546,6 +580,29 @@ mod tests {
         assert!(mean_vy > 900.0, "mean vy {mean_vy}");
         assert!(mean_vx > 0.0);
         assert!(!scene.frame().rain_near.is_empty());
+    }
+
+    #[test]
+    fn drops_splash_on_cards() {
+        let spec = SceneSpec::for_weather(Condition::Rain, true, 0.0, 0.0).with_rain_rate(6.0);
+        let mut scene = Scene::new(spec, 400.0, 800.0, 21);
+        scene.set_surfaces([500.0]);
+        run(&mut scene, 3.0);
+        // No drop gets past the card top (within the margins), and some splash there.
+        for d in &scene.drops {
+            let inside = (SURFACE_MARGIN..400.0 - SURFACE_MARGIN).contains(&d.x);
+            assert!(!(inside && d.y > 520.0 && d.y < 800.0), "drop at {},{}", d.x, d.y);
+        }
+        assert!(scene.splashes.iter().any(|s| (s.y - 499.0).abs() < 40.0));
+    }
+
+    #[test]
+    fn heavier_rain_is_denser() {
+        let light = SceneSpec::for_weather(Condition::Drizzle, true, 0.0, 0.0).with_rain_rate(0.3);
+        let heavy = SceneSpec::for_weather(Condition::Drizzle, true, 0.0, 0.0).with_rain_rate(8.0);
+        assert!(heavy.rain > light.rain * 2.0);
+        let (a, b) = (Scene::new(light, 400.0, 800.0, 1), Scene::new(heavy, 400.0, 800.0, 1));
+        assert!(b.drops.len() > a.drops.len() * 2);
     }
 
     #[test]

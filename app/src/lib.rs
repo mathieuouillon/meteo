@@ -115,6 +115,26 @@ pub fn run() -> Result<(), slint::PlatformError> {
     animation::start(&ui);
     ui.set_labels(ui_labels(&lang().labels()));
     app.update_settings_ui();
+    // The wind compass follows the phone's heading (Android's rotation sensor).
+    #[cfg(target_os = "android")]
+    {
+        let weak = ui.as_weak();
+        let last = Arc::new(std::sync::Mutex::new(f32::NAN));
+        android::start_compass(move |heading| {
+            // Only redraw for a change of a degree or more.
+            let mut l = last.lock().unwrap();
+            if (heading - *l).abs() < 1.0 {
+                return;
+            }
+            *l = heading;
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_compass_heading(heading);
+                }
+            });
+        });
+    }
     // "Updated 3 min ago" keeps counting while the app is open.
     UPDATED_TIMER.with(|t| {
         let app = app.clone();
