@@ -273,7 +273,10 @@ component TonalButton inherits Rectangle {
 component DetailCard inherits Rectangle {
     in property <string> title;
     in property <Theme> theme;
-    height: 164px;
+    /// Height of what's under the title. Tiles with a dial or an arc keep the
+    /// default; the others take what their row's contents need.
+    in property <length> content-height: 110px;
+    height: self.content-height + 54px;
     border-radius: 28px;
     background: root.theme.surface-container;
     Text {
@@ -1415,16 +1418,18 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         spacing: 12px;
                         DetailCard {
+                            content-height: max(d1.preferred-height, d2.preferred-height);
                             title: root.labels.feels-like; theme: root.theme;
-                            ValueNote {
+                            d1 := ValueNote {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 value: root.details.feels-like; note: root.details.feels-note; theme: root.theme;
                             }
                         }
                         DetailCard {
+                            content-height: max(d1.preferred-height, d2.preferred-height);
                             title: root.labels.humidity; theme: root.theme;
-                            VerticalLayout {
+                            d2 := VerticalLayout {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 spacing: 8px;
@@ -1436,8 +1441,9 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         spacing: 12px;
                         DetailCard {
+                            content-height: max(d3.preferred-height, d4.preferred-height);
                             title: root.labels.uv-index; theme: root.theme;
-                            VerticalLayout {
+                            d3 := VerticalLayout {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 spacing: 10px;
@@ -1446,8 +1452,9 @@ export component MainWindow inherits Window {
                             }
                         }
                         DetailCard {
+                            content-height: max(d3.preferred-height, d4.preferred-height);
                             title: root.labels.pressure; theme: root.theme;
-                            ValueNote {
+                            d4 := ValueNote {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 value-size: 24px;
@@ -1459,8 +1466,9 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         spacing: 12px;
                         DetailCard {
+                            content-height: max(d5.preferred-height, d6.preferred-height);
                             title: root.labels.air-quality; theme: root.theme;
-                            VerticalLayout {
+                            d5 := VerticalLayout {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 spacing: 10px;
@@ -1469,8 +1477,9 @@ export component MainWindow inherits Window {
                             }
                         }
                         DetailCard {
+                            content-height: max(d5.preferred-height, d6.preferred-height);
                             title: root.labels.pollen; theme: root.theme;
-                            VerticalLayout {
+                            d6 := VerticalLayout {
                                 x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
                                 alignment: end;
                                 spacing: 10px;
