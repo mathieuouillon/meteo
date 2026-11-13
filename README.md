@@ -104,6 +104,10 @@ cargo test -p meteo-core                    # offline tests
 cargo test -p meteo-core -- --include-ignored  # also hits the live API
 ```
 
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
+`cargo fmt --check`, clippy with warnings as errors, the tests, and an Android
+release build (debug-signed, kept as the `meteo-apk` artifact).
+
 ## Days hour by hour
 
 The main screen shows the current weather and the 7-day list. Tap a day to open it
