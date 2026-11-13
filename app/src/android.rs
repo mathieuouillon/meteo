@@ -7,6 +7,7 @@
 //! delivered to a `PendingIntent` nobody listens to (enough to make the
 //! provider produce a fix) while polling `getLastKnownLocation`.
 
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use jni::objects::{JObject, JString, JValue};
@@ -361,10 +362,27 @@ pub fn request_notification_permission(app: &AndroidApp) {
     });
 }
 
+/// Whether the compass should read its sensor (false while the app is in
+/// the background), and the compass thread's looper, to wake it on a change.
+static COMPASS_WANTED: AtomicBool = AtomicBool::new(true);
+static COMPASS_LOOPER: AtomicPtr<ndk_sys::ALooper> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Turns the compass sensor off while the app is in the background, and on
+/// again when it comes back.
+pub fn set_compass_active(active: bool) {
+    COMPASS_WANTED.store(active, Ordering::Relaxed);
+    let looper = COMPASS_LOOPER.load(Ordering::Acquire);
+    if !looper.is_null() {
+        // SAFETY: the looper belongs to the compass thread, which never exits.
+        unsafe { ndk_sys::ALooper_wake(looper) };
+    }
+}
+
 /// The phone's heading for the wind compass: a thread reading the rotation
 /// vector sensor (NDK sensor API, no Java) about 15 times a second and
 /// calling `on_heading` with degrees clockwise from north (portrait).
-/// Does nothing on devices without that sensor.
+/// Does nothing on devices without that sensor. The sensor is only on while
+/// the app is in front (`set_compass_active`).
 pub fn start_compass(on_heading: impl Fn(f32) + Send + 'static) {
     std::thread::spawn(move || {
         use ndk_sys::*;
@@ -382,13 +400,29 @@ pub fn start_compass(on_heading: impl Fn(f32) + Send + 'static) {
                 return;
             }
             let queue = ASensorManager_createEventQueue(manager, looper, 1, None, std::ptr::null_mut());
-            if queue.is_null() || ASensorEventQueue_enableSensor(queue, sensor) < 0 {
+            if queue.is_null() {
                 return;
             }
-            ASensorEventQueue_setEventRate(queue, sensor, 66_000);
+            COMPASS_LOOPER.store(looper, Ordering::Release);
+            let mut enabled = false;
             let mut events: [ASensorEvent; 8] = std::mem::zeroed();
             loop {
+                // Follow the app going to the background and back.
+                let wanted = COMPASS_WANTED.load(Ordering::Relaxed);
+                if wanted && !enabled {
+                    enabled = ASensorEventQueue_enableSensor(queue, sensor) >= 0;
+                    if enabled {
+                        ASensorEventQueue_setEventRate(queue, sensor, 66_000);
+                    }
+                } else if !wanted && enabled {
+                    ASensorEventQueue_disableSensor(queue, sensor);
+                    enabled = false;
+                }
+                // Sleeps until a reading arrives, or `set_compass_active` wakes it.
                 ALooper_pollOnce(-1, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+                if !enabled {
+                    continue;
+                }
                 let n = ASensorEventQueue_getEvents(queue, events.as_mut_ptr(), events.len());
                 if n <= 0 {
                     continue;

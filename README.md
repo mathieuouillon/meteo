@@ -146,7 +146,8 @@ clouds, fog, twinkling stars at night, and lightning in storms.
   mm per hour, and drops that land on a card splash on its top edge (the UI passes the
   cards' positions to the simulation each frame).
 - It runs at 60 fps when something falls and 30 fps for clouds, fog and stars. It
-  pauses behind the city picker and when the app is in the background.
+  pauses behind the city picker and the settings, and stops entirely while the app
+  is in the background.
 
 To see a given weather whatever the forecast says:
 
@@ -186,7 +187,8 @@ One list, a line each, with a line icon, a short explanation and the value:
 
 - **Wind:** speed, where it comes from, and gusts. Its icon is a small compass whose
   arrow points where the wind blows; on a phone the dial turns with the phone
-  (rotation vector sensor), so its N points north.
+  (rotation vector sensor), so its N points north. The sensor is off while the app
+  is in the background.
 - **Feels like:** with why it differs, for example wind chill.
 - **Humidity:** with the dew point.
 - **UV index** and its level.

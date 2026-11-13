@@ -805,6 +805,17 @@ fn android_main(app: slint::android::AndroidApp) {
         let _ = DATA_DIR.set(dir);
     }
     let _ = ANDROID_APP.set(app.clone());
-    slint::android::init(app).expect("Slint Android backend");
+    // In the background: no sky animation, no compass sensor.
+    slint::android::init_with_event_listener(app, |event| {
+        use slint::android::android_activity::{MainEvent, PollEvent};
+        let running = match event {
+            PollEvent::Main(MainEvent::Pause) => false,
+            PollEvent::Main(MainEvent::Resume { .. }) => true,
+            _ => return,
+        };
+        animation::set_running(running);
+        android::set_compass_active(running);
+    })
+    .expect("Slint Android backend");
     run().expect("Slint event loop");
 }

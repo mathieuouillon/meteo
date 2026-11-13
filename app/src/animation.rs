@@ -41,6 +41,21 @@ pub fn start(ui: &MainWindow) {
     TIMER.with(|t| t.start(slint::TimerMode::Repeated, frame_interval(None), move || tick(&weak)));
 }
 
+/// Stops the animation while the app is in the background (no work, no
+/// battery), and starts it again when it comes back.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn set_running(running: bool) {
+    TIMER.with(|t| {
+        if running {
+            // Pick up where the scene was, rather than jumping by the time away.
+            STATE.with(|s| s.borrow_mut().last = Instant::now());
+            t.restart();
+        } else {
+            t.stop();
+        }
+    });
+}
+
 /// 60 fps for falling particles and lightning; slow drifting clouds, fog
 /// and stars look the same at 30 fps for half the work.
 fn frame_interval(spec: Option<SceneSpec>) -> Duration {
@@ -136,8 +151,8 @@ fn tick(weak: &Weak<MainWindow>) {
         s.last = now;
 
         let Some(spec) = s.spec else { return };
-        // Nothing moves behind the city picker.
-        if ui.get_picker_open() || w < 1.0 {
+        // Nothing moves behind the full-screen panels.
+        if ui.get_picker_open() || ui.get_settings_open() || w < 1.0 {
             return;
         }
         let scene = s.scene.get_or_insert_with(|| Scene::new(spec, w, h, seed()));
