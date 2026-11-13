@@ -355,3 +355,19 @@ fn heading_from_rotation_vector(x: f32, y: f32, z: f32) -> f32 {
     let r4 = 1.0 - 2.0 * (x * x + z * z);
     (r1.atan2(r4).to_degrees() + 360.0) % 360.0
 }
+
+/// Asks the Kotlin side to run the notification check now
+/// (`dev.meteo.app.MeteoApp.checkNow`). App classes aren't visible to
+/// `FindClass` from a native thread, so the activity's class loader loads it.
+pub fn check_notifications_now(app: &AndroidApp) {
+    let _ = with_activity(app, |env, activity| {
+        let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+        let name = env.new_string("dev.meteo.app.MeteoApp")?;
+        let class = env
+            .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
+            .l()?;
+        let class = jni::objects::JClass::from(class);
+        env.call_static_method(&class, "checkNow", "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
+        Ok(())
+    });
+}

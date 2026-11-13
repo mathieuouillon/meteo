@@ -51,3 +51,36 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_refresh<'l>(
         Err(_) => JNI_FALSE,
     }
 }
+
+/// `external fun notificationsEnabled(dataDir: String): Boolean` — whether
+/// the background worker has anything to do.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notificationsEnabled<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+) -> jboolean {
+    let Some(dir) = data_dir(&mut env, &dir) else { return JNI_FALSE };
+    let s = meteo_core::Settings::load(&dir);
+    if s.morning_summary || s.rain_alerts { JNI_TRUE } else { JNI_FALSE }
+}
+
+/// `external fun notifications(dataDir: String, language: String): String` —
+/// the notifications due now, as a JSON list of {kind, title, text}.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notifications<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+    language: JString<'l>,
+) -> jstring {
+    let lang = env
+        .get_string(&language)
+        .map(|s| meteo_core::Lang::from_code(&String::from(s)))
+        .unwrap_or_default();
+    let due = data_dir(&mut env, &dir)
+        .map(|d| meteo_core::notify::due(&d, meteo_core::unix_now(), lang))
+        .unwrap_or_default();
+    let json = serde_json::to_string(&due).unwrap_or_else(|_| "[]".into());
+    env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
+}

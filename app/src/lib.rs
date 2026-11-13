@@ -235,7 +235,11 @@ fn request_notifications() {
     #[cfg(target_os = "android")]
     if let Some(app) = ANDROID_APP.get() {
         let app = app.clone();
-        std::thread::spawn(move || android::request_notification_permission(&app));
+        std::thread::spawn(move || {
+            android::request_notification_permission(&app);
+            // Check right away rather than at the next 15-minute run.
+            android::check_notifications_now(&app);
+        });
     }
 }
 

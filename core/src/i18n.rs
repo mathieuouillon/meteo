@@ -285,6 +285,21 @@ impl Lang {
         }
     }
 
+    // ── Notifications ──────────────────────────────────────────────────
+
+    pub fn morning_title(self, city: &str) -> String {
+        match self {
+            Lang::En => format!("Today in {city}"),
+            Lang::Fr => format!("Aujourd’hui à {city}"),
+        }
+    }
+    pub fn rain_soon_title(self, city: &str) -> String {
+        match self {
+            Lang::En => format!("Rain soon in {city}"),
+            Lang::Fr => format!("Pluie bientôt à {city}"),
+        }
+    }
+
     // ── App messages ───────────────────────────────────────────────────
 
     pub fn loading(self) -> &'static str {

@@ -14,6 +14,7 @@ mod geocode;
 mod i18n;
 mod landscape;
 mod model;
+pub mod notify;
 mod palette;
 mod places;
 mod scene;

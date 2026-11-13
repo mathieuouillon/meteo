@@ -14,6 +14,12 @@ object RustBridge {
 
     /** Downloads the selected city's forecast into the cache. Blocking. */
     external fun refresh(dataDir: String): Boolean
+
+    /** Whether a notification (morning summary or rain alert) is turned on. */
+    external fun notificationsEnabled(dataDir: String): Boolean
+
+    /** The notifications due now, as JSON [{kind, title, text}], in `language`. */
+    external fun notifications(dataDir: String, language: String): String
 }
 
 data class WidgetHour(val label: String, val iconKind: String, val temperature: String)

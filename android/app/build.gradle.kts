@@ -39,6 +39,8 @@ android {
 
 dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
+    // Background checks for the notifications (NotifyWorker).
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
 }
 
 // Builds the Rust crates for Android with cargo-ndk:
