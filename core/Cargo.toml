@@ -2,6 +2,7 @@
 name = "meteo-core"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [dependencies]
 reqwest = "0.13.5"

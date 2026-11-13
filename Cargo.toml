@@ -5,6 +5,7 @@ members = ["core", "app", "widget-ffi"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+license = "MIT"
 
 # Slint 1.18.1 with small fixes (search "Météo patch" in vendor/): swiping the
 # day chart's hours inside the page on a real phone, and cached layers of

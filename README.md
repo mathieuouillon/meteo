@@ -344,3 +344,9 @@ match). The home-screen widget reads the same files.
 - Font: [Lexend](https://github.com/googlefonts/lexend), SIL Open Font License
   (`app/ui/fonts/OFL.txt`).
 
+## License
+
+Météo's own code is under the [MIT License](LICENSE). The copies of Slint in
+`vendor/` keep their own licences (`vendor/*/LICENSES/`), and the Lexend font
+its SIL Open Font License.
+
