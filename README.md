@@ -3,6 +3,14 @@
 A weather app for Android, written in Rust with a [Slint](https://slint.dev) UI.
 Forecasts come from [Open-Meteo](https://open-meteo.com) (free, no API key).
 
+<p>
+  <img src="docs/screenshots/top.png" width="19%" alt="Partly cloudy afternoon">
+  <img src="docs/screenshots/forecast.png" width="19%" alt="7-day forecast with today's hours">
+  <img src="docs/screenshots/details.png" width="19%" alt="Details list">
+  <img src="docs/screenshots/rain.png" width="19%" alt="Rain">
+  <img src="docs/screenshots/night.png" width="19%" alt="Night">
+</p>
+
 ```
 core/        meteo-core: Open-Meteo client, models, weather codes → icons/colours,
              chart geometry, cache, saved cities, and the view models for the
@@ -10,7 +18,9 @@ core/        meteo-core: Open-Meteo client, models, weather codes → icons/colo
 app/         meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
 widget-ffi/  JNI functions for the Android widget (libmeteo_widget.so, no UI code).
 android/     Gradle project: packages the Rust libraries + the Kotlin Glance widget.
-docs/        screenshots.
+docs/        screenshots, privacy policy, Play Store notes and icon.
+vendor/      Slint 1.18.1 core and Skia renderer with small fixes (see Notes).
+scripts/     gen-widget-icons.py: the widget's icons from the app's drawn icons.
 ```
 
 The UI only binds ready-to-display values from `MainScreen`; formatting and layout
@@ -318,3 +328,15 @@ match). The home-screen widget reads the same files.
 - **TLS on Android:** `core` uses bundled Mozilla root certificates on Android
   (`webpki-root-certs`). reqwest's default platform verifier needs JNI
   initialisation that a NativeActivity app doesn't do.
+
+## Credits
+
+- Weather data by [Open-Meteo.com](https://open-meteo.com), under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- UI made with [Slint](https://slint.dev), used under the Slint Royalty-free
+  License 2.0 (see `vendor/i-slint-core/LICENSES/`):
+
+  <a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" alt="Made with Slint" height="60"></a>
+- Font: [Lexend](https://github.com/googlefonts/lexend), SIL Open Font License
+  (`app/ui/fonts/OFL.txt`).
+
