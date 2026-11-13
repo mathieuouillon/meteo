@@ -230,10 +230,11 @@ impl Lang {
 
     // ── Models, air, normals ───────────────────────────────────────────
 
-    pub fn models_agree(self, percent: u8, models: usize) -> String {
+    /// How closely the models agree, on temperature and on rain.
+    pub fn models_agree(self, temperature: u8, rain: u8, models: usize) -> String {
         match self {
-            Lang::En => format!("Models agree {percent}% · {models} models"),
-            Lang::Fr => format!("Accord des modèles {percent} % · {models} modèles"),
+            Lang::En => format!("{models} models agree · temperature {temperature}% · rain {rain}%"),
+            Lang::Fr => format!("Accord de {models} modèles · température {temperature} % · pluie {rain} %"),
         }
     }
 

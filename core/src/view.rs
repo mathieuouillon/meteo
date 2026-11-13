@@ -5,7 +5,7 @@
 use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart_with_band};
-use crate::extras::{Air, agreement, spread_by_time};
+use crate::extras::{Air, rain_agreement, spread_by_time, temperature_agreement};
 use crate::date::weekday_index;
 use crate::i18n::Lang;
 use crate::units::Units;
@@ -372,8 +372,11 @@ pub struct DayView {
     pub rain_peak: f64,
     /// Whether any hour shows a chance of rain (some sources have none).
     pub has_chance: bool,
-    /// "Models agree 82% · 5 models"; empty without the models' data.
+    /// "5 models agree · temperature 91% · rain 76%"; empty without the
+    /// models' data.
     pub agreement: String,
+    /// Whether some hour shows the models' range of rain.
+    pub has_range: bool,
 }
 
 /// One hour of a day's chart.
@@ -391,6 +394,12 @@ pub struct DayHourView {
     pub rain: String,
     /// Rain bar height, 0–1, on a scale shared by the whole week.
     pub rain_height: f64,
+    /// The models' range of rain this hour, "0.4–2.1"; empty when they
+    /// agree (or all say dry).
+    pub rain_range: String,
+    /// That range as heights (0–1) on the same scale as `rain_height`.
+    pub range_low: f64,
+    pub range_high: f64,
     /// This hour's point on the temperature curve.
     pub x: f64,
     pub y: f64,
@@ -412,6 +421,7 @@ impl DayView {
         let wettest = days
             .iter()
             .flat_map(|d| d.hours.iter().map(|h| h.precipitation))
+            .chain(spread.iter().map(|s| s.r_max))
             .fold(RAIN_SCALE_MIN_MM, f64::max);
         days.iter()
             .enumerate()
@@ -421,14 +431,20 @@ impl DayView {
                 let chart = temperature_chart_with_band(&d.hours, &band, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
                 let known: Vec<_> = day_spread.iter().flatten().copied().collect();
                 let models = known.iter().map(|s| s.models as usize).max().unwrap_or(0);
-                let agreement = agreement(&known).map(|p| lang.models_agree(p, models)).unwrap_or_default();
+                let agreement = match (temperature_agreement(&known), rain_agreement(&known)) {
+                    (Some(t), Some(r)) => lang.models_agree(t, r, models),
+                    _ => String::new(),
+                };
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
                 let hours: Vec<DayHourView> = d
                     .hours
                     .iter()
                     .zip(&chart.points)
+                    .zip(&day_spread)
                     .enumerate()
-                    .map(|(i, (h, p))| DayHourView {
+                    .map(|(i, ((h, p), s))| {
+                        let range = s.filter(|s| rain_differs(s.r_min, s.r_max));
+                        DayHourView {
                         label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
                         is_now: Some(i) == now_index,
                         temperature: units.temp(h.temperature),
@@ -437,9 +453,12 @@ impl DayView {
                         precipitation: rain_chance(h.precipitation_probability),
                         rain: units.rain(h.precipitation, false),
                         rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
+                        rain_range: range.map(|s| rain_range(units, s.r_min, s.r_max)).unwrap_or_default(),
+                        range_low: range.map_or(0.0, |s| (s.r_min / wettest).clamp(0.0, 1.0)),
+                        range_high: range.map_or(0.0, |s| (s.r_max / wettest).clamp(0.0, 1.0)),
                         x: p.x,
                         y: p.y,
-                    })
+                    }})
                     .collect();
                 Self {
                     first_hour: now_index.unwrap_or(MORNING.min(d.hours.len().saturating_sub(1))),
@@ -456,7 +475,11 @@ impl DayView {
                     bar_start: (d.min - lo) / range,
                     bar_end: (d.max - lo) / range,
                     rain_total: units.rain(d.precipitation_sum, true),
-                    rain_peak: hours.iter().map(|h: &DayHourView| if h.rain.is_empty() { 0.0 } else { h.rain_height }).fold(0.0, f64::max),
+                    rain_peak: hours
+                        .iter()
+                        .map(|h: &DayHourView| if h.rain.is_empty() { 0.0 } else { h.rain_height }.max(h.range_high))
+                        .fold(0.0, f64::max),
+                    has_range: hours.iter().any(|h: &DayHourView| !h.rain_range.is_empty()),
                     has_chance: hours.iter().any(|h: &DayHourView| !h.precipitation.is_empty()),
                     agreement,
                     chart,
@@ -465,6 +488,19 @@ impl DayView {
             })
             .collect()
     }
+}
+
+/// Whether the models' rain this hour is worth showing as a range: some
+/// expect at least 0.1 mm, and they're at least 0.3 mm apart.
+fn rain_differs(low: f64, high: f64) -> bool {
+    high >= 0.1 && high - low >= 0.3
+}
+
+/// "0–1.2", "0.4–2.1" (no unit; the chart's amounts have none).
+fn rain_range(units: Units, low: f64, high: f64) -> String {
+    let low = units.rain(low, false);
+    let low = if low.is_empty() { "0".to_string() } else { low };
+    format!("{low}–{}", units.rain(high, false))
 }
 
 /// "0.4 mm" / "2.5 mm" / "12 mm" (without " mm" if `unit` is false);
@@ -525,6 +561,16 @@ mod tests {
             ],
             condition: Condition::Rain,
         }
+    }
+
+    #[test]
+    fn models_rain_range() {
+        assert!(!rain_differs(0.0, 0.05), "all dry");
+        assert!(!rain_differs(1.0, 1.2), "close enough");
+        assert!(rain_differs(0.0, 1.2));
+        assert_eq!(rain_range(Units::Metric, 0.0, 1.2), "0–1.2");
+        assert_eq!(rain_range(Units::Metric, 0.4, 12.3), "0.4–12");
+        assert_eq!(rain_range(Units::Imperial, 2.54, 25.4), "0.10–1.00");
     }
 
     #[test]

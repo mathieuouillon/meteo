@@ -104,6 +104,10 @@ export struct DayHour {
     precipitation: string,
     rain: string,
     rain-height: float,
+    // The models' range of rain ("0.4–2.1") and its heights; empty when they agree.
+    rain-range: string,
+    range-low: float,
+    range-high: float,
     is-now: bool,
     x: float,
     y: float,
@@ -130,6 +134,7 @@ export struct DayItem {
     /// Several models' range around the curve, and how much they agree.
     band-path: string,
     agreement: string,
+    has-range: bool,
 }
 
 export struct CloudItem {
@@ -443,7 +448,9 @@ component DayChart inherits Rectangle {
     property <length> chance-y: root.curve + 36px;
     property <length> rain-top: root.curve + (root.day.has-chance ? 54px : 38px);
     // Room for the amount label above the tallest bar (none on a dry day).
-    property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + 16px : 3px;
+    // Room for the amount label above the tallest bar (none on a dry day),
+    // and a second line for the models' range.
+    property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + (root.day.has-range ? 30px : 16px) : 3px;
     property <length> rain-base: root.rain-top + root.rain-room;
     // Room for "Models agree 82%" above the chart.
     property <length> head: root.day.agreement != "" ? 22px : 0px;
@@ -505,6 +512,8 @@ component DayChart inherits Rectangle {
             width: root.step;
             height: parent.height;
             property <length> bar: h.rain == "" ? 3px : max(4px, h.rain-height * root.bar-max);
+            // Top of what's drawn for this hour: the bar or the models' range.
+            property <length> top: h.rain-range == "" ? self.bar : max(self.bar, h.range-high * root.bar-max);
             property <bool> now: h.is-now;
             Text {
                 y: h.y * 1px - 24px;
@@ -535,9 +544,27 @@ component DayChart inherits Rectangle {
                 text: h.precipitation; color: root.theme.on-surface-variant; font-size: 11px;
                 horizontal-alignment: center;
             }
-            // Rain: the amount above a bar growing up from the baseline.
+            // Rain: the amount above a bar growing up from the baseline, and
+            // above that, the range the models give.
+            if h.rain-range != "": Text {
+                y: root.rain-base - parent.top - (h.rain == "" ? 16px : 30px);
+                width: parent.width;
+                text: h.rain-range; color: root.theme.on-surface-variant.transparentize(25%); font-size: 10px;
+                horizontal-alignment: center;
+            }
+            // The models' range: a faint wider bar behind the forecast's.
+            if h.rain-range != "": Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: root.rain-base - h.range-high * root.bar-max;
+                width: 28px;
+                height: max(4px, (h.range-high - h.range-low) * root.bar-max);
+                border-radius: 8px;
+                background: #3d8fe0.transparentize(80%);
+                border-width: 1px;
+                border-color: #3d8fe0.transparentize(55%);
+            }
             Text {
-                y: root.rain-base - parent.bar - 16px;
+                y: root.rain-base - parent.top - 16px;
                 width: parent.width;
                 text: h.rain; color: root.theme.on-surface-variant; font-size: 11px; font-weight: 500;
                 horizontal-alignment: center;

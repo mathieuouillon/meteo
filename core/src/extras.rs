@@ -32,6 +32,11 @@ pub struct Spread {
     /// How many models have data for this hour, and how many expect rain.
     pub models: u8,
     pub wet: u8,
+    /// Least and most rain the models expect this hour, mm.
+    #[serde(default)]
+    pub r_min: f64,
+    #[serde(default)]
+    pub r_max: f64,
 }
 
 /// Air quality and pollen now.
@@ -92,31 +97,49 @@ pub fn parse_spread(json: &[u8]) -> Result<Vec<Spread>, Error> {
                 t_max: ts.iter().copied().fold(f64::NEG_INFINITY, f64::max),
                 models: ts.len() as u8,
                 wet: rs.iter().filter(|&&r| r >= 0.1).count() as u8,
+                r_min: if rs.is_empty() { 0.0 } else { rs.iter().copied().fold(f64::INFINITY, f64::min).max(0.0) },
+                r_max: rs.iter().copied().fold(0.0, f64::max),
             })
         })
         .collect())
 }
 
-/// How much the models agree over some hours, 0–100: half from how close
-/// their temperatures are, half from whether they agree on rain.
-pub fn agreement(hours: &[&Spread]) -> Option<u8> {
+/// How closely the models agree on temperature over some hours, 0–100:
+/// 100 when they're within a degree, 0 when 8° or more apart on average.
+pub fn temperature_agreement(hours: &[&Spread]) -> Option<u8> {
     if hours.is_empty() {
         return None;
     }
-    let n = hours.len() as f64;
-    let mean_spread = hours.iter().map(|s| s.t_max - s.t_min).sum::<f64>() / n;
-    let temp_score = 1.0 - (mean_spread / 8.0).clamp(0.0, 1.0);
-    let rain_score = hours
+    let mean_spread = hours.iter().map(|s| s.t_max - s.t_min).sum::<f64>() / hours.len() as f64;
+    let score = 1.0 - ((mean_spread - 1.0) / 7.0).clamp(0.0, 1.0);
+    Some((score * 100.0).round() as u8)
+}
+
+/// How closely the models agree on rain over some hours, 0–100: whether it
+/// rains each hour (all saying the same is full marks, an even split none),
+/// and when most say it rains, how close their amounts are.
+pub fn rain_agreement(hours: &[&Spread]) -> Option<u8> {
+    if hours.is_empty() {
+        return None;
+    }
+    let score = hours
         .iter()
         .map(|s| {
             let m = f64::from(s.models.max(1));
-            f64::from(s.wet).max(m - f64::from(s.wet)) / m
+            let wet = f64::from(s.wet.min(s.models));
+            // Majority share is at least half; stretch it to 0–1.
+            let consensus = ((wet.max(m - wet) / m - 0.5) * 2.0).clamp(0.0, 1.0);
+            if wet * 2.0 > m && s.r_max > 0.0 {
+                // 1 mm against 4 mm counts as half agreeing on the amount.
+                let closeness = 1.0 - ((s.r_max - s.r_min) / (s.r_max + 1.0)).clamp(0.0, 1.0);
+                consensus * (0.5 + 0.5 * closeness)
+            } else {
+                consensus
+            }
         })
         .sum::<f64>()
-        / n;
-    // Rain agreement is at least 0.5 by construction; stretch it to 0–1.
-    let rain_score = ((rain_score - 0.5) * 2.0).clamp(0.0, 1.0);
-    Some(((temp_score * 0.5 + rain_score * 0.5) * 100.0).round() as u8)
+        / hours.len() as f64;
+    Some((score * 100.0).round() as u8)
 }
 
 // ── Air ────────────────────────────────────────────────────────────────
@@ -290,12 +313,22 @@ mod tests {
         let s = parse_spread(json).unwrap();
         assert_eq!(s.len(), 2);
         assert_eq!((s[0].t_min, s[0].t_max, s[0].models, s[0].wet), (10.0, 12.0, 3, 1));
-        assert_eq!((s[1].models, s[1].wet), (2, 2));
-        // Perfect agreement → 100; split on rain and far apart → low.
-        let same = Spread { time: String::new(), t_min: 10.0, t_max: 10.0, models: 4, wet: 4 };
-        let split = Spread { time: String::new(), t_min: 5.0, t_max: 13.0, models: 4, wet: 2 };
-        assert_eq!(agreement(&[&same]), Some(100));
-        assert_eq!(agreement(&[&split]), Some(0));
+        assert_eq!((s[0].r_min, s[0].r_max), (0.0, 0.5));
+        assert_eq!((s[1].models, s[1].wet, s[1].r_min, s[1].r_max), (2, 2, 0.8, 1.0));
+    }
+
+    #[test]
+    fn agreement_on_temperature_and_rain() {
+        let hour = |t_min, t_max, wet, r_min, r_max| Spread { time: String::new(), t_min, t_max, models: 4, wet, r_min, r_max };
+        let dry = hour(10.0, 10.5, 0, 0.0, 0.0);
+        assert_eq!((temperature_agreement(&[&dry]), rain_agreement(&[&dry])), (Some(100), Some(100)));
+        // Far apart, and split on whether it rains.
+        let split = hour(5.0, 13.0, 2, 0.0, 2.0);
+        assert_eq!((temperature_agreement(&[&split]), rain_agreement(&[&split])), (Some(0), Some(0)));
+        // All say rain, same amount; then all say rain, 1 mm against 4 mm.
+        assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 2.0, 2.0)]), Some(100));
+        assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 1.0, 4.0)]), Some(70));
+        assert_eq!(rain_agreement(&[]), None);
     }
 
     #[test]

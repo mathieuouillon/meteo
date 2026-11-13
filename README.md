@@ -201,9 +201,12 @@ example, has no UV index.
 Above the list:
 
 - **Next 2 hours:** rain in 15-minute steps, with a sentence like "Rain stopping in 45 min".
-- **Models agree:** each day of the 7-day forecast says how closely five weather models
-  (ECMWF, ICON, GFS, Météo-France, UK Met Office) agree, and the temperature curve shows
-  their spread as a band.
+- **Models agree:** each day of the 7-day forecast compares five weather models (ECMWF,
+  ICON, GFS, Météo-France, UK Met Office): "5 models agree · temperature 84% · rain 56%".
+  Temperature counts how far apart they are; rain counts whether they agree it rains
+  each hour and, when it does, how close their amounts are. In the day's chart, the
+  temperature curve shows their spread as a band, and each hour where the models'
+  rain differs shows their range ("0–2.4") as a faint bar behind the rain bar.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
 

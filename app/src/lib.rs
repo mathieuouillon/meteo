@@ -661,6 +661,7 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
             area_path: d.chart.area.as_str().into(),
             band_path: d.chart.band.as_str().into(),
             agreement: d.agreement.as_str().into(),
+            has_range: d.has_range,
             hours: ModelRc::from(Rc::new(VecModel::from(
                 d.hours
                     .iter()
@@ -672,6 +673,9 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
                         precipitation: h.precipitation.as_str().into(),
                         rain: h.rain.as_str().into(),
                         rain_height: h.rain_height as f32,
+                        rain_range: h.rain_range.as_str().into(),
+                        range_low: h.range_low as f32,
+                        range_high: h.range_high as f32,
                         is_now: h.is_now,
                         x: h.x as f32,
                         y: h.y as f32,
