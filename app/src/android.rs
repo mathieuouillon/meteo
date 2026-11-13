@@ -458,6 +458,47 @@ fn heading_from_rotation_vector(x: f32, y: f32, z: f32) -> f32 {
     (r1.atan2(r4).to_degrees() + 360.0) % 360.0
 }
 
+/// A short click from the vibration motor (Android 10+ uses the system's
+/// crisp predefined click; older versions a 15 ms pulse).
+pub fn haptic_click(app: &AndroidApp) {
+    let _ = with_activity(app, |env, activity| {
+        let name = env.new_string("vibrator")?;
+        let vibrator = env
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[JValue::Object(&name)],
+            )?
+            .l()?;
+        if vibrator.is_null() {
+            return Ok(());
+        }
+        let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
+        let effect = if sdk >= 29 {
+            const EFFECT_CLICK: i32 = 0;
+            env.call_static_method(
+                "android/os/VibrationEffect",
+                "createPredefined",
+                "(I)Landroid/os/VibrationEffect;",
+                &[JValue::Int(EFFECT_CLICK)],
+            )?
+            .l()?
+        } else {
+            const DEFAULT_AMPLITUDE: i32 = -1;
+            env.call_static_method(
+                "android/os/VibrationEffect",
+                "createOneShot",
+                "(JI)Landroid/os/VibrationEffect;",
+                &[JValue::Long(15), JValue::Int(DEFAULT_AMPLITUDE)],
+            )?
+            .l()?
+        };
+        env.call_method(&vibrator, "vibrate", "(Landroid/os/VibrationEffect;)V", &[JValue::Object(&effect)])?;
+        Ok(())
+    });
+}
+
 /// Opens `url` in the browser (an ACTION_VIEW intent).
 pub fn open_url(app: &AndroidApp, url: &str) {
     let _ = with_activity(app, |env, activity| {

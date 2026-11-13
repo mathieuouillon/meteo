@@ -157,6 +157,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         move || app.refresh()
     });
     ui.on_open_url(|url| open_url(&url));
+    ui.on_haptic(|| {
+        #[cfg(target_os = "android")]
+        if let Some(app) = ANDROID_APP.get() {
+            android::haptic_click(app);
+        }
+    });
     ui.on_select_city({
         let app = app.clone();
         move |i| app.change_places(|p| p.select(i as usize))

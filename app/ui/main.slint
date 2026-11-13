@@ -1162,6 +1162,8 @@ export component MainWindow inherits Window {
     in property <int> city-index;
     /// Swiped to the next (1) or previous (-1) saved city.
     callback swipe-city(int);
+    /// A short vibration (pull-to-refresh reached).
+    callback haptic();
     // Which day's hour-by-hour chart is open (-1: none); Today by default.
     in-out property <int> open-day: 0;
     /// The open day's hours are being swiped (see DayChart.panning).
@@ -1335,6 +1337,16 @@ export component MainWindow inherits Window {
     property <length> pull-zone: 72px;
     property <length> pull: max(0px, content-flick.content-y + root.pull-zone);
     property <length> last-pull;
+    // A small tick when the pull goes far enough to refresh.
+    property <bool> pull-armed;
+    changed pull => {
+        if (self.pull > self.pull-zone - 16px && !self.pull-armed) {
+            self.pull-armed = true;
+            root.haptic();
+        } else if (self.pull < 4px) {
+            self.pull-armed = false;
+        }
+    }
     pull-timer := Timer {
         interval: 200ms;
         running: root.pull > 1px;

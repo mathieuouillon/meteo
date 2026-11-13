@@ -232,7 +232,7 @@ Above the list:
 
 The footer shows the data source (tap it to change) and when the forecast was updated,
 with a Refresh button. "Updated 3 min ago" keeps counting while the app is open, and
-pulling the page down refreshes it.
+pulling the page down refreshes it, with a small click when the pull goes far enough.
 
 ## Weather warnings
 
