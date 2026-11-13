@@ -13,6 +13,8 @@ import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dev.meteo.app.widget.MeteoWidget
+import dev.meteo.app.widget.RainWidget
+import dev.meteo.app.widget.RoundWidget
 import dev.meteo.app.widget.RustBridge
 import org.json.JSONArray
 
@@ -32,6 +34,8 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (!RustBridge.notificationsEnabled(dir)) return Result.success()
         RustBridge.refresh(dir)
         MeteoWidget().updateAll(applicationContext)
+        RainWidget().updateAll(applicationContext)
+        RoundWidget().updateAll(applicationContext)
 
         val allowed = ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED

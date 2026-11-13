@@ -48,6 +48,11 @@ pub struct WidgetView {
     pub ink_soft: u32,
     pub accent: u32,
     pub hours: Vec<WidgetHour>,
+    /// The next 2 hours: summary, and 15-minute bars (height 0–1, wet).
+    pub nowcast_summary: String,
+    pub nowcast: Vec<(f64, bool)>,
+    /// "Next 2 hours", in the widget's language.
+    pub nowcast_title: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -87,6 +92,9 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
             ink: s.palette.ink,
             ink_soft: s.palette.ink_soft,
             accent: s.palette.accent,
+            nowcast_summary: s.nowcast.summary.clone(),
+            nowcast: s.nowcast.bars.iter().map(|b| (b.height, b.wet)).collect(),
+            nowcast_title: lang.labels().next_hours.into(),
             hours: s
                 .hours
                 .into_iter()

@@ -42,6 +42,10 @@ data class WidgetView(
     val inkSoft: Int,
     val accent: Int,
     val hours: List<WidgetHour>,
+    val nowcastTitle: String,
+    val nowcastSummary: String,
+    /** 15-minute bars: height 0–1, and whether it rains. */
+    val nowcast: List<Pair<Double, Boolean>>,
 )
 
 data class WidgetState(val needsRefresh: Boolean, val view: WidgetView?)
@@ -72,6 +76,11 @@ fun parseWidgetState(json: String): WidgetState {
                 val h = hours.getJSONObject(i)
                 WidgetHour(h.getString("label"), h.getString("icon_kind"), h.getString("temperature"))
             },
+            nowcastTitle = it.optString("nowcast_title"),
+            nowcastSummary = it.optString("nowcast_summary"),
+            nowcast = it.optJSONArray("nowcast")?.let { bars ->
+                (0 until bars.length()).map { i -> bars.getJSONArray(i).let { b -> b.getDouble(0) to b.getBoolean(1) } }
+            } ?: emptyList(),
         )
     }
     return WidgetState(o.getBoolean("needs_refresh"), view)

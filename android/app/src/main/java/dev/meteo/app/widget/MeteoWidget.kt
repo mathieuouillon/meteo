@@ -49,6 +49,7 @@ import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
@@ -64,8 +65,13 @@ import kotlinx.coroutines.withContext
 /** Bumped on every update so a widget session that's already running reloads the cache. */
 private val REVISION = longPreferencesKey("revision")
 
-class MeteoWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = MeteoWidget()
+class MeteoWidgetReceiver : RustWidgetReceiver(MeteoWidget())
+class RainWidgetReceiver : RustWidgetReceiver(RainWidget())
+class RoundWidgetReceiver : RustWidgetReceiver(RoundWidget())
+
+/** Shared by the widgets' receivers. */
+abstract class RustWidgetReceiver(widget: GlanceAppWidget) : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = widget
 
     // Sent by the 30-minute timer and by the app after each download (Rust,
     // location_android::notify_widgets). Glance's default handling only
@@ -88,16 +94,13 @@ class MeteoWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 /**
- * Shows the cached forecast of the city selected in the app. Everything it
- * displays comes from Rust (RustBridge); this file only lays it out.
+ * A widget showing the cached forecast of the city selected in the app.
+ * Everything it displays comes from Rust (RustBridge); subclasses only lay
+ * it out in `Body`.
  */
-class MeteoWidget : GlanceAppWidget() {
-    companion object {
-        private val SMALL = DpSize(110.dp, 110.dp)
-        private val WIDE = DpSize(250.dp, 110.dp)
-    }
-
-    override val sizeMode = SizeMode.Responsive(setOf(SMALL, WIDE))
+abstract class RustWidget : GlanceAppWidget() {
+    @Composable
+    abstract fun Body(view: WidgetView?)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val dir = context.filesDir.absolutePath
@@ -113,10 +116,108 @@ class MeteoWidget : GlanceAppWidget() {
                     if (ok) state = withContext(Dispatchers.IO) { parseWidgetState(RustBridge.state(dir, language)) }
                 }
             }
-            Content(state.view)
+            Body(state.view)
         }
     }
 }
+
+/** Current weather; in its wide size also the next hours. */
+class MeteoWidget : RustWidget() {
+    companion object {
+        private val SMALL = DpSize(110.dp, 110.dp)
+        private val WIDE = DpSize(250.dp, 110.dp)
+    }
+
+    override val sizeMode = SizeMode.Responsive(setOf(SMALL, WIDE))
+
+    @Composable
+    override fun Body(view: WidgetView?) = Content(view)
+}
+
+/** Rain over the next 2 hours: the summary and 15-minute bars. */
+class RainWidget : RustWidget() {
+    override val sizeMode = SizeMode.Exact
+
+    @Composable
+    override fun Body(view: WidgetView?) {
+        val ink = view?.ink ?: 0xFF3B2A12.toInt()
+        val inkSoft = view?.inkSoft ?: 0xFF7D6446.toInt()
+        Box(
+            modifier = GlanceModifier
+                .fillMaxSize()
+                .cornerRadius(24.dp)
+                .background(ImageProvider(skyBitmap(view?.top ?: 0xFFE4EDF8.toInt(), view?.bottom ?: 0xFFC7D7EC.toInt())), ContentScale.FillBounds)
+                .clickable(openApp(LocalContext.current))
+                .padding(14.dp),
+        ) {
+            if (view == null) return@Box
+            Column(modifier = GlanceModifier.fillMaxSize()) {
+                Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                    Image(
+                        ImageProvider(weatherIcon(if (view.nowcast.any { it.second }) "rain" else "cloudy", view.dark)),
+                        contentDescription = null, modifier = GlanceModifier.size(22.dp),
+                    )
+                    Spacer(GlanceModifier.width(6.dp))
+                    Text(view.nowcastTitle + " · " + view.city, style = style(12.sp, inkSoft, FontWeight.Medium), maxLines = 1)
+                }
+                Spacer(GlanceModifier.height(4.dp))
+                Text(view.nowcastSummary, style = style(14.sp, ink, FontWeight.Bold), maxLines = 2)
+                Spacer(GlanceModifier.defaultWeight())
+                // Eight 15-minute bars, growing from the bottom.
+                Row(modifier = GlanceModifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.Vertical.Bottom) {
+                    view.nowcast.forEach { (height, wet) ->
+                        Box(modifier = GlanceModifier.defaultWeight().fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
+                            Box(
+                                modifier = GlanceModifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp)
+                                    .height(if (wet) (4 + 32 * height).dp else 3.dp)
+                                    .cornerRadius(4.dp)
+                                    .background(ColorProvider(Color(if (wet) 0xFF3D8BEA.toInt() else (inkSoft and 0x55FFFFFF)))),
+                            ) {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A round widget: the icon and the temperature in a circle. */
+class RoundWidget : RustWidget() {
+    override val sizeMode = SizeMode.Exact
+
+    @Composable
+    override fun Body(view: WidgetView?) {
+        val size = LocalSize.current
+        val side = minOf(size.width, size.height)
+        Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = GlanceModifier
+                    .size(side)
+                    .cornerRadius(side / 2)
+                    .background(ImageProvider(skyBitmap(view?.top ?: 0xFFF8E9D2.toInt(), view?.bottom ?: 0xFFF2D3A6.toInt())), ContentScale.FillBounds)
+                    .clickable(openApp(LocalContext.current)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (view != null) {
+                    Column(horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
+                        Image(
+                            ImageProvider(weatherIcon(view.iconKind, view.dark)),
+                            contentDescription = view.condition,
+                            modifier = GlanceModifier.size(side * 0.3f),
+                        )
+                        Text(view.temperature, style = style((side.value * 0.22f).sp, view.ink, FontWeight.Bold))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openApp(context: Context) = actionStartActivity(
+    Intent().setComponent(ComponentName(context.packageName, "android.app.NativeActivity")),
+)
 
 private fun style(size: TextUnit, color: Int, weight: FontWeight = FontWeight.Normal) =
     TextStyle(color = ColorProvider(Color(color)), fontSize = size, fontWeight = weight)
