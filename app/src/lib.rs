@@ -437,7 +437,12 @@ impl App {
                     Err(e) => {
                         ui.set_refreshing(false);
                         match shown_at.load(Ordering::Relaxed) {
-                            NOTHING_SHOWN => ui.set_error(lang().load_failed(&e.to_string()).into()),
+                            NOTHING_SHOWN => {
+                                eprintln!("forecast download failed: {e}");
+                                // Not "Loading…" any more: the message says what happened.
+                                ui.set_condition(SharedString::new());
+                                ui.set_error(lang().load_failed(e.problem()).into())
+                            }
                             t => ui.set_status(lang().offline(unix_now() - t).into()),
                         }
                     }
@@ -504,7 +509,10 @@ impl App {
                 let (status, places) = match found {
                     Ok(p) if p.is_empty() => (lang().no_city().to_string(), p),
                     Ok(p) => (String::new(), p),
-                    Err(e) => (lang().search_failed(&e.to_string()), Vec::new()),
+                    Err(e) => {
+                        eprintln!("city search failed: {e}");
+                        (lang().search_failed(e.problem()).to_string(), Vec::new())
+                    }
                 };
                 let items: Vec<CityItem> = places.iter().map(|c| city_item(c, false)).collect();
                 ui.set_results(ModelRc::from(Rc::new(VecModel::from(items))));

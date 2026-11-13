@@ -23,7 +23,7 @@ mod units;
 mod view;
 mod widget;
 
-pub use api::{Error, fetch_forecast, parse_forecast};
+pub use api::{Error, Problem, fetch_forecast, parse_forecast};
 pub use cache::{CachedForecast, unix_now};
 pub use chart::{ChartGeometry, ChartPoint, temperature_chart};
 pub use condition::{Condition, Sky};

@@ -24,6 +24,28 @@ pub enum Error {
     Cache(#[from] std::io::Error),
 }
 
+/// What went wrong, in terms a person can act on (the details stay in logs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Problem {
+    /// No connection, or it timed out.
+    NoConnection,
+    /// Open-Meteo answered with an error (busy, down, too many requests).
+    ServerBusy,
+    /// Anything else (an answer we couldn't read, storage…).
+    Other,
+}
+
+impl Error {
+    pub fn problem(&self) -> Problem {
+        match self {
+            Error::Network(e) if e.is_connect() || e.is_timeout() || e.is_request() => Problem::NoConnection,
+            Error::Network(e) if e.status().is_some() => Problem::ServerBusy,
+            Error::Network(_) => Problem::NoConnection,
+            _ => Problem::Other,
+        }
+    }
+}
+
 /// Fetches the forecast for `location` from Open-Meteo (no API key needed),
 /// using the weather model of `source`.
 pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forecast, Error> {

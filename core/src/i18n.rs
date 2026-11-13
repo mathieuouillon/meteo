@@ -306,10 +306,22 @@ impl Lang {
     pub fn loading(self) -> &'static str {
         self.pick("Loading…", "Chargement…")
     }
-    pub fn load_failed(self, error: &str) -> String {
-        match self {
-            Lang::En => format!("Couldn’t load the forecast: {error}"),
-            Lang::Fr => format!("Impossible de charger la météo : {error}"),
+    /// Why the forecast couldn't be downloaded, and what to do.
+    pub fn load_failed(self, problem: crate::Problem) -> &'static str {
+        use crate::Problem::*;
+        match problem {
+            NoConnection => self.pick(
+                "No connection. Check your internet, then pull down to try again.",
+                "Pas de connexion. Vérifiez votre accès à Internet, puis tirez vers le bas pour réessayer.",
+            ),
+            ServerBusy => self.pick(
+                "Open-Meteo isn’t answering right now. Try again in a minute.",
+                "Open-Meteo ne répond pas pour l’instant. Réessayez dans une minute.",
+            ),
+            Other => self.pick(
+                "Couldn’t load the forecast. Try again later.",
+                "Impossible de charger la météo. Réessayez plus tard.",
+            ),
         }
     }
     pub fn searching(self) -> &'static str {
@@ -318,10 +330,15 @@ impl Lang {
     pub fn no_city(self) -> &'static str {
         self.pick("No matching city", "Aucune ville trouvée")
     }
-    pub fn search_failed(self, error: &str) -> String {
-        match self {
-            Lang::En => format!("Search failed: {error}"),
-            Lang::Fr => format!("La recherche a échoué : {error}"),
+    pub fn search_failed(self, problem: crate::Problem) -> &'static str {
+        use crate::Problem::*;
+        match problem {
+            NoConnection => self.pick("No connection, can’t search.", "Pas de connexion, recherche impossible."),
+            ServerBusy => self.pick(
+                "The search isn’t answering right now. Try again in a minute.",
+                "La recherche ne répond pas pour l’instant. Réessayez dans une minute.",
+            ),
+            Other => self.pick("The search failed. Try again later.", "La recherche a échoué. Réessayez plus tard."),
         }
     }
     pub fn finding_location(self) -> &'static str {
