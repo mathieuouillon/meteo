@@ -453,6 +453,8 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
             bar_end: d.bar_end as f32,
             rain_total: d.rain_total.as_str().into(),
             first_hour: d.first_hour as i32,
+            rain_peak: d.rain_peak as f32,
+            has_chance: d.has_chance,
             chart_width: d.chart.width as f32,
             chart_height: d.chart.height as f32,
             line_path: d.chart.line.as_str().into(),

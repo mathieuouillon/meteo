@@ -240,6 +240,11 @@ pub struct DayView {
     pub hours: Vec<DayHourView>,
     /// Hour the chart opens at: now for today, 06h for other days.
     pub first_hour: usize,
+    /// The tallest rain bar of the day (0–1), so the chart only reserves
+    /// the room that day needs.
+    pub rain_peak: f64,
+    /// Whether any hour shows a chance of rain (some sources have none).
+    pub has_chance: bool,
 }
 
 /// One hour of a day's chart.
@@ -283,7 +288,7 @@ impl DayView {
             .map(|(day_index, d)| {
                 let chart = temperature_chart(&d.hours, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
-                let hours = d
+                let hours: Vec<DayHourView> = d
                     .hours
                     .iter()
                     .zip(&chart.points)
@@ -316,6 +321,8 @@ impl DayView {
                     bar_start: (d.min - lo) / range,
                     bar_end: (d.max - lo) / range,
                     rain_total: rain_amount(d.precipitation_sum, true),
+                    rain_peak: hours.iter().map(|h: &DayHourView| if h.rain.is_empty() { 0.0 } else { h.rain_height }).fold(0.0, f64::max),
+                    has_chance: hours.iter().any(|h: &DayHourView| !h.precipitation.is_empty()),
                     chart,
                     hours,
                 }
@@ -401,6 +408,9 @@ mod tests {
         assert_eq!(rows[0].hours[1].rain_height, 1.0);
         assert_eq!(rows[0].hours[2].rain_height, 0.25);
         assert_eq!(rows[0].hours[0].rain, "");
+        // The chart's rain area follows the day's wettest hour.
+        assert_eq!(rows[0].rain_peak, 1.0);
+        assert_eq!(rows[1].rain_peak, 0.25, "1 mm on a 4 mm scale");
         // The curve: one point per hour, the warmest hour highest.
         assert_eq!(rows[0].chart.points.len(), 3);
         assert!(rows[0].hours[1].y < rows[0].hours[0].y);
