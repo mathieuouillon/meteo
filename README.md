@@ -68,6 +68,25 @@ Slint, so `scripts/gen-widget-icons.py` writes the icons as Android vector drawa
 - After every download, the app tells the widget to redraw (`notify_widgets`, a JNI
   broadcast), so switching city in the app updates the widget straight away.
 
+Two more widgets share the same Rust state:
+
+- **Météo · Rain** (3×2): the next two hours of rain, a sentence ("Rain in 30 min") and
+  eight quarter-hour bars.
+- **Météo · Round** (1×1): the icon and temperature in a circle.
+
+## Notifications
+
+Two optional notifications, switched on in the settings (Android asks for permission the
+first time):
+
+- **Morning summary:** once a day between 7 and 10 am: condition, day and night
+  temperatures, rain expected.
+- **Rain alert:** when rain should start within the hour, at most once every 3 hours.
+
+`MeteoApp.kt` schedules a WorkManager job every 15 minutes. `NotifyWorker` refreshes the
+forecast and asks Rust what to post (`meteo_core::notify::due`). What was already sent is
+kept in `notify-state.json`, so nothing repeats.
+
 ## Tests
 
 ```bash
@@ -123,6 +142,9 @@ clouds, fog, twinkling stars at night, and lightning in storms.
   drops are drawn with a single element. The rest is
   [app/src/animation.rs](app/src/animation.rs) (a timer) and the `Sky` component in
   `main.slint`.
+- **Rain follows the forecast:** the number of drops and their size follow the current
+  mm per hour, and drops that land on a card splash on its top edge (the UI passes the
+  cards' positions to the simulation each frame).
 - It runs at 60 fps when something falls and 30 fps for clouds, fog and stars. It
   pauses behind the city picker and when the app is in the background.
 
@@ -160,17 +182,39 @@ on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and
 Six tiles, each with a value and a short explanation:
 
 - **Wind:** speed, where it comes from, gusts, and a compass arrow pointing where it blows.
+  On a phone the dial turns with the phone (rotation vector sensor), so its N points north.
 - **Sun:** sunrise and sunset, the sun on its arc, and hours of daylight.
 - **Feels like:** with why it differs, for example wind chill.
 - **Humidity:** with the dew point and a gauge.
 - **UV index:** its level and a coloured scale.
 - **Pressure:** in hPa, with low (unsettled) or high (settled).
+- **Air quality:** the European AQI and its level.
+- **Pollen:** the strongest pollen today (Europe only).
+
+Above them:
+
+- **Next 2 hours:** rain in 15-minute steps, with a sentence like "Rain stopping in 45 min".
+- **Models agree:** each day of the 7-day forecast says how closely five weather models
+  (ECMWF, ICON, GFS, Météo-France, UK Met Office) agree, and the temperature curve shows
+  their spread as a band.
+- **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
+  date (Open-Meteo archive, downloaded once per city and cached).
 
 A source that lacks a value shows "Not available with this source"; Météo-France, for
 example, has no UV index.
 
 The footer shows the data source (tap it to change) and when the forecast was updated,
-with a Refresh button.
+with a Refresh button. "Updated 3 min ago" keeps counting while the app is open, and
+pulling the page down refreshes it.
+
+## Settings
+
+The tune button next to the city opens the settings, saved in `settings.json`:
+
+- **Units:** metric (°C, km/h, mm, hPa) or imperial (°F, mph, in, inHg).
+- **Colours:** the weather's palettes, or the wallpaper's (Material You, Android 12+).
+- **Language:** the phone's, English or French.
+- **Data source** and the two **notifications**.
 
 ## Languages
 
