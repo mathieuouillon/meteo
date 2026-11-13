@@ -175,6 +175,8 @@ export struct AirInfo {
     aqi-level: string,
     pollen: string,
     pollen-level: string,
+    /// "Sat moderate · Sun high · Mon low"; empty when nothing's coming.
+    pollen-outlook: string,
 }
 
 /// One silhouette of the landscape (core/src/landscape.rs), far to near.
@@ -1521,7 +1523,7 @@ export component MainWindow inherits Window {
                             DetailRow { theme: root.theme; icon: RowIcons.uv; label: root.labels.uv-index; note: root.details.uv-level; value: root.details.uv; }
                             DetailRow { theme: root.theme; icon: RowIcons.pressure; label: root.labels.pressure; note: root.details.pressure-note; value: root.details.pressure; }
                             DetailRow { theme: root.theme; icon: RowIcons.leaf; label: root.labels.air-quality; note: root.air.aqi-level; value: root.air.aqi; }
-                            DetailRow { theme: root.theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-level; value: root.air.pollen; }
+                            DetailRow { theme: root.theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-outlook == "" ? root.air.pollen-level : root.air.pollen-level + "\n" + root.air.pollen-outlook; value: root.air.pollen; }
                             DetailRow {
                                 theme: root.theme; icon: RowIcons.sun; label: root.labels.sun;
                                 note: root.details.daylight;

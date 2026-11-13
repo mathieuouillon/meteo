@@ -612,6 +612,7 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
         aqi_level: a.aqi_level.as_str().into(),
         pollen: a.pollen.as_str().into(),
         pollen_level: a.pollen_level.as_str().into(),
+        pollen_outlook: a.pollen_outlook.as_str().into(),
     });
     ui.set_error(SharedString::new());
     ui.set_city(s.city.as_str().into());

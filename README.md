@@ -208,7 +208,8 @@ One list, a line each, with a line icon, a short explanation and the value:
 - **UV index** and its level.
 - **Pressure:** in hPa, with low (unsettled) or high (settled).
 - **Air quality:** the European AQI and its level.
-- **Pollen:** the strongest pollen today (Europe only).
+- **Pollen:** the strongest pollen today, and the next three days at a glance
+  ("Sat moderate · Sun high · Mon low"; Europe only).
 - **Sun:** sunrise and sunset, and hours of daylight.
 
 A source that lacks a value shows "Not available with this source"; Météo-France, for

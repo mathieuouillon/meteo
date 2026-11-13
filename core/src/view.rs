@@ -84,6 +84,9 @@ pub struct AirView {
     /// The strongest pollen ("Birch"), or a note when there's none.
     pub pollen: String,
     pub pollen_level: String,
+    /// The next days at a glance, "Sat moderate · Sun high · Mon low"; empty
+    /// when no pollen is expected or there's no forecast.
+    pub pollen_outlook: String,
 }
 
 impl NowcastView {
@@ -139,6 +142,7 @@ impl AirView {
                 pollen: "--".into(),
                 pollen_level: lang.not_here().into(),
                 aqi_level: lang.not_here().into(),
+                pollen_outlook: String::new(),
             };
         };
         let (aqi, aqi_level) = match air.european_aqi {
@@ -155,7 +159,29 @@ impl AirView {
             (None, false) => ("–".into(), lang.no_pollen().into()),
             (Some((kind, v)), false) => (lang.pollen_name(kind).into(), lang.pollen_level(level(kind, *v)).into()),
         };
-        Self { aqi, aqi_level, pollen, pollen_level }
+        // The coming days (after today): each day's strongest pollen level.
+        let days: Vec<(String, Option<usize>)> = air
+            .pollen_days
+            .iter()
+            .skip(1)
+            .map(|d| {
+                let label = weekday_index(&d.date).map_or_else(|| d.date.clone(), |w| lang.weekday(w).to_string());
+                let strongest = d.pollen.iter().filter(|(_, v)| *v >= 1.0).map(|(k, v)| level(k, *v)).max();
+                (label, strongest)
+            })
+            .collect();
+        let pollen_outlook = if days.iter().any(|(_, l)| l.is_some()) {
+            days.iter()
+                .map(|(day, l)| {
+                    let word = l.map_or(lang.no_pollen_short(), |l| lang.pollen_level(l));
+                    format!("{day} {}", word.to_lowercase())
+                })
+                .collect::<Vec<_>>()
+                .join(" · ")
+        } else {
+            String::new()
+        };
+        Self { aqi, aqi_level, pollen, pollen_level, pollen_outlook }
     }
 }
 
@@ -582,6 +608,30 @@ mod tests {
             ],
             condition: Condition::Rain,
         }
+    }
+
+    #[test]
+    fn pollen_outlook_for_the_next_days() {
+        use crate::extras::{Air, PollenDay};
+        let day = |date: &str, birch: f64| PollenDay { date: date.into(), pollen: vec![("birch".into(), birch)] };
+        let air = Air {
+            european_aqi: Some(20.0),
+            pm2_5: None,
+            pollen: vec![("birch".into(), 5.0)],
+            // Fri (today), Sat, Sun, Mon.
+            pollen_days: vec![
+                day("2026-11-13", 5.0),
+                day("2026-11-14", 30.0),
+                day("2026-11-15", 0.0),
+                day("2026-11-16", 250.0),
+            ],
+        };
+        let v = AirView::new(Some(&air), Lang::En);
+        assert_eq!(v.pollen_level, "Low");
+        assert_eq!(v.pollen_outlook, "Sat moderate · Sun none · Mon very high");
+        // Nothing coming: no outlook.
+        let quiet = Air { pollen_days: vec![day("2026-11-13", 0.0), day("2026-11-14", 0.0)], ..air };
+        assert_eq!(AirView::new(Some(&quiet), Lang::Fr).pollen_outlook, "");
     }
 
     #[test]

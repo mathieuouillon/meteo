@@ -49,6 +49,17 @@ pub struct Air {
     /// Grains/m³ per kind ("birch", "grass", …); empty where there is no
     /// pollen forecast (outside Europe).
     pub pollen: Vec<(String, f64)>,
+    /// Each day's peak per kind, today first (4 days; Europe only).
+    #[serde(default)]
+    pub pollen_days: Vec<PollenDay>,
+}
+
+/// One day's pollen: the highest count of each kind.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PollenDay {
+    /// "2026-11-13".
+    pub date: String,
+    pub pollen: Vec<(String, f64)>,
 }
 
 /// The average high and low for each day of the year (index 0 = 1 January,
@@ -151,10 +162,10 @@ pub async fn fetch_air(location: &Location) -> Result<Air, Error> {
     let pollen: Vec<String> = POLLEN.iter().map(|p| format!("{p}_pollen")).collect();
     let url = format!(
         "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={}&longitude={}\
-         &current=european_aqi,pm2_5,{}&timezone=auto",
+         &current=european_aqi,pm2_5,{pollen}&hourly={pollen}&forecast_days=4&timezone=auto",
         location.latitude,
         location.longitude,
-        pollen.join(",")
+        pollen = pollen.join(",")
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
     parse_air(&body)
@@ -168,7 +179,31 @@ pub fn parse_air(json: &[u8]) -> Result<Air, Error> {
         european_aqi: num("european_aqi"),
         pm2_5: num("pm2_5"),
         pollen: POLLEN.iter().filter_map(|p| Some((p.to_string(), num(&format!("{p}_pollen"))?))).collect(),
+        pollen_days: v.get("hourly").map(pollen_days).unwrap_or_default(),
     })
+}
+
+/// Hourly pollen grouped into days, keeping each kind's peak.
+fn pollen_days(hourly: &Value) -> Vec<PollenDay> {
+    let Some(times) = hourly.get("time").and_then(Value::as_array) else { return Vec::new() };
+    let mut days: Vec<PollenDay> = Vec::new();
+    for (i, t) in times.iter().enumerate() {
+        let Some(date) = t.as_str().and_then(|t| t.get(..10)) else { continue };
+        if days.last().is_none_or(|d| d.date != date) {
+            days.push(PollenDay { date: date.to_string(), pollen: Vec::new() });
+        }
+        let day = days.last_mut().expect("just pushed");
+        for p in POLLEN {
+            let Some(v) = hourly.get(format!("{p}_pollen")).and_then(|s| s.get(i)).and_then(Value::as_f64) else {
+                continue;
+            };
+            match day.pollen.iter_mut().find(|(k, _)| k == p) {
+                Some((_, peak)) => *peak = peak.max(v),
+                None => day.pollen.push((p.to_string(), v)),
+            }
+        }
+    }
+    days
 }
 
 // ── Normals ────────────────────────────────────────────────────────────
@@ -353,6 +388,15 @@ mod tests {
         let a = parse_air(json).unwrap();
         assert_eq!(a.european_aqi, Some(28.0));
         assert_eq!(a.pollen, vec![("birch".to_string(), 12.0)]);
+        // Days keep each kind's peak.
+        let json = br#"{"current": {"birch_pollen": 1.0},
+            "hourly": {"time": ["2026-04-10T00:00", "2026-04-10T12:00", "2026-04-11T00:00"],
+                       "birch_pollen": [3.0, 80.0, 5.0], "grass_pollen": [null, 2.0, 30.0]}}"#;
+        let days = parse_air(json).unwrap().pollen_days;
+        assert_eq!(days.len(), 2);
+        assert_eq!(days[0].date, "2026-04-10");
+        assert_eq!(days[0].pollen, vec![("birch".to_string(), 80.0), ("grass".to_string(), 2.0)]);
+        assert_eq!(days[1].pollen, vec![("birch".to_string(), 5.0), ("grass".to_string(), 30.0)]);
     }
 
     #[test]

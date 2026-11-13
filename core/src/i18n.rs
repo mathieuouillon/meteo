@@ -268,6 +268,10 @@ impl Lang {
             _ => self.pick("Very high", "Très élevé"),
         }
     }
+    /// No pollen on a day of the outlook.
+    pub fn no_pollen_short(self) -> &'static str {
+        self.pick("none", "aucun")
+    }
     pub fn no_pollen(self) -> &'static str {
         self.pick("No pollen right now", "Pas de pollen en ce moment")
     }
