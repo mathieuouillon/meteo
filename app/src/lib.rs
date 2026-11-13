@@ -9,7 +9,7 @@ use meteo_core::{
     ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units, cache,
     extras, search_cities, unix_now,
 };
-use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
+use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
@@ -259,6 +259,8 @@ fn open_url(url: &str) {
 }
 
 thread_local! {
+    /// The landscape's layers, kept so their colours can change in place.
+    static LAND_LAYERS: Rc<VecModel<LandLayer>> = Rc::new(VecModel::default());
     static UPDATED_TIMER: slint::Timer = slint::Timer::default();
 }
 
@@ -674,7 +676,18 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     ui.set_ground(rgb(land.ground));
     let layers: Vec<LandLayer> =
         land.layers.iter().map(|l| LandLayer { path: l.path.as_str().into(), color: rgb(l.color) }).collect();
-    ui.set_land_layers(ModelRc::from(Rc::new(VecModel::from(layers))));
+    // Updated in place (same number of layers), so the hills' colours fade
+    // rather than the layers being rebuilt.
+    LAND_LAYERS.with(|model| {
+        if model.row_count() == layers.len() {
+            for (i, layer) in layers.into_iter().enumerate() {
+                model.set_row_data(i, layer);
+            }
+        } else {
+            model.set_vec(layers);
+            ui.set_land_layers(ModelRc::from(model.clone()));
+        }
+    });
 
     let days: Vec<DayItem> = s
         .days

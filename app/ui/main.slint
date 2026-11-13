@@ -252,12 +252,15 @@ component Landscape inherits Rectangle {
         fit: fill;
         commands: layer.path == "" ? "M 0 0" : layer.path;
         fill: layer.color;
+        // The layers are updated in place, so their colours fade.
+        animate fill { duration: 800ms; easing: ease-in-out; }
         stroke-width: 0px;
     }
     Rectangle {
         y: root.horizon - 1px;
         height: root.height - root.horizon + 1px;
         background: root.ground;
+        animate background { duration: 800ms; easing: ease-in-out; }
     }
 }
 
@@ -1201,6 +1204,48 @@ export component MainWindow inherits Window {
         bg-top: #f8e9d2, bg-bottom: #f2d3a6, particle: #3d7bd9, cloud: #ffffff,
     };
 
+    // The theme as shown: each colour fades to the new one (another city,
+    // or the weather or time of day changing) instead of snapping.
+    property <color> t-primary: root.theme.primary;
+    property <color> t-on-primary: root.theme.on-primary;
+    property <color> t-primary-container: root.theme.primary-container;
+    property <color> t-on-primary-container: root.theme.on-primary-container;
+    property <color> t-secondary-container: root.theme.secondary-container;
+    property <color> t-on-secondary-container: root.theme.on-secondary-container;
+    property <color> t-tertiary-container: root.theme.tertiary-container;
+    property <color> t-on-tertiary-container: root.theme.on-tertiary-container;
+    property <color> t-surface: root.theme.surface;
+    property <color> t-surface-container: root.theme.surface-container;
+    property <color> t-surface-container-high: root.theme.surface-container-high;
+    property <color> t-on-surface: root.theme.on-surface;
+    property <color> t-on-surface-variant: root.theme.on-surface-variant;
+    property <color> t-outline-variant: root.theme.outline-variant;
+    property <color> t-bg-top: root.theme.bg-top;
+    property <color> t-bg-bottom: root.theme.bg-bottom;
+    property <color> t-particle: root.theme.particle;
+    property <color> t-cloud: root.theme.cloud;
+    animate t-primary, t-on-primary, t-primary-container, t-on-primary-container, t-secondary-container, t-on-secondary-container, t-tertiary-container, t-on-tertiary-container, t-surface, t-surface-container, t-surface-container-high, t-on-surface, t-on-surface-variant, t-outline-variant, t-bg-top, t-bg-bottom, t-particle, t-cloud { duration: 800ms; easing: ease-in-out; }
+    property <Theme> shown-theme: {
+        primary: root.t-primary,
+        on-primary: root.t-on-primary,
+        primary-container: root.t-primary-container,
+        on-primary-container: root.t-on-primary-container,
+        secondary-container: root.t-secondary-container,
+        on-secondary-container: root.t-on-secondary-container,
+        tertiary-container: root.t-tertiary-container,
+        on-tertiary-container: root.t-on-tertiary-container,
+        surface: root.t-surface,
+        surface-container: root.t-surface-container,
+        surface-container-high: root.t-surface-container-high,
+        on-surface: root.t-on-surface,
+        on-surface-variant: root.t-on-surface-variant,
+        outline-variant: root.t-outline-variant,
+        bg-top: root.t-bg-top,
+        bg-bottom: root.t-bg-bottom,
+        particle: root.t-particle,
+        cloud: root.t-cloud,
+    };
+
     // The quiet landscape (core/src/landscape.rs), coloured by the palette.
     in property <[LandLayer]> land-layers;
     in property <color> ground: #d0c8b8;
@@ -1241,17 +1286,14 @@ export component MainWindow inherits Window {
     property <length> horizon: root.height * 0.56;
     property <length> land-height: root.width * 0.75;
 
-    // Animated copies, so condition and time changes fade smoothly.
-    property <color> top: root.theme.bg-top;
-    property <color> bottom: root.theme.bg-bottom;
-    animate top, bottom { duration: 800ms; easing: ease-in-out; }
-    background: @linear-gradient(180deg, root.top 0%, root.bottom 100%);
+    // The theme's colours fade on a change (see shown-theme).
+    background: @linear-gradient(180deg, root.shown-theme.bg-top 0%, root.shown-theme.bg-bottom 100%);
 
     // ── Behind: stars (at night), clouds ──
     Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
     Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
     Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
-    for c in root.clouds: Cloud { cloud: c; tint: root.theme.cloud; }
+    for c in root.clouds: Cloud { cloud: c; tint: root.shown-theme.cloud; }
 
     // ── The land, tone on tone ──
     Landscape {
@@ -1265,13 +1307,13 @@ export component MainWindow inherits Window {
         x: f.x * 1px; y: f.y * 1px;
         width: f.width * 1px; height: f.height * 1px;
         border-radius: self.height / 2;
-        background: root.theme.cloud;
+        background: root.shown-theme.cloud;
         opacity: f.opacity;
     }
-    Particles { d: root.rain-far; stroke: root.theme.particle.transparentize(70%); stroke-width: 1px; }
-    Particles { d: root.rain-near; stroke: root.theme.particle.transparentize(40%); stroke-width: 1.6px; }
-    Particles { d: root.snow-small; stroke: root.theme.particle.transparentize(25%); stroke-width: 4px; }
-    Particles { d: root.snow-large; stroke: root.theme.particle; stroke-width: 7px; }
+    Particles { d: root.rain-far; stroke: root.shown-theme.particle.transparentize(70%); stroke-width: 1px; }
+    Particles { d: root.rain-near; stroke: root.shown-theme.particle.transparentize(40%); stroke-width: 1.6px; }
+    Particles { d: root.snow-small; stroke: root.shown-theme.particle.transparentize(25%); stroke-width: 4px; }
+    Particles { d: root.snow-large; stroke: root.shown-theme.particle; stroke-width: 7px; }
     Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
     Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
     if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
@@ -1334,7 +1376,7 @@ export component MainWindow inherits Window {
                     viewbox-width: 24; viewbox-height: 24;
                     fit: fill;
                     commands: "M 19 12 A 7 7 0 1 1 16.5 6.6 M 16.5 2.5 L 16.5 6.6 L 12.4 6.6";
-                    stroke: root.pull > root.pull-zone - 16px ? root.theme.primary : root.theme.on-surface-variant;
+                    stroke: root.pull > root.pull-zone - 16px ? root.shown-theme.primary : root.shown-theme.on-surface-variant;
                     stroke-width: 2.4px;
                     stroke-line-cap: round;
                     stroke-line-join: round;
@@ -1376,12 +1418,12 @@ export component MainWindow inherits Window {
                             height: 36px;
                             width: city-row.preferred-width;
                             border-radius: 18px;
-                            background: city-touch.pressed ? root.theme.surface-container-high : root.theme.surface-container.transparentize(35%);
+                            background: city-touch.pressed ? root.shown-theme.surface-container-high : root.shown-theme.surface-container.transparentize(35%);
                             city-row := HorizontalLayout {
                                 padding-left: 16px;
                                 padding-right: 14px;
                                 spacing: 8px;
-                                Text { text: root.city; color: root.theme.on-surface; font-size: 16px; font-weight: 600; vertical-alignment: center; }
+                                Text { text: root.city; color: root.shown-theme.on-surface; font-size: 16px; font-weight: 600; vertical-alignment: center; }
                                 // Chevron drawn as a path ("▾" is missing from Android's font).
                                 VerticalLayout {
                                     alignment: center;
@@ -1390,7 +1432,7 @@ export component MainWindow inherits Window {
                                         viewbox-width: 14; viewbox-height: 8;
                                         fit: fill;
                                         commands: "M 1 1 L 7 7 L 13 1";
-                                        stroke: root.theme.on-surface-variant;
+                                        stroke: root.shown-theme.on-surface-variant;
                                         stroke-width: 2px;
                                     }
                                 }
@@ -1403,13 +1445,13 @@ export component MainWindow inherits Window {
                         Rectangle {
                             width: 48px; height: 36px;
                             border-radius: 18px;
-                            background: gear-touch.pressed ? root.theme.surface-container-high : transparent;
+                            background: gear-touch.pressed ? root.shown-theme.surface-container-high : transparent;
                             Path {
                                 width: 20px; height: 20px;
                                 viewbox-width: 20; viewbox-height: 20;
                                 fit: fill;
                                 commands: "M 3 6 L 17 6 M 3 14 L 17 14 M 7 3.5 L 7 8.5 M 13 11.5 L 13 16.5";
-                                stroke: root.theme.on-surface;
+                                stroke: root.shown-theme.on-surface;
                                 stroke-width: 2px;
                                 stroke-line-cap: round;
                             }
@@ -1423,7 +1465,7 @@ export component MainWindow inherits Window {
                         spacing: 6px;
                         for i in root.city-count: Rectangle {
                             width: 6px; height: 6px; border-radius: 3px;
-                            background: i == root.city-index ? root.theme.on-surface : root.theme.on-surface.transparentize(70%);
+                            background: i == root.city-index ? root.shown-theme.on-surface : root.shown-theme.on-surface.transparentize(70%);
                         }
                     }
                     if root.status != "": HorizontalLayout {
@@ -1433,8 +1475,8 @@ export component MainWindow inherits Window {
                             height: 26px;
                             width: status-text.preferred-width + 20px;
                             border-radius: 13px;
-                            background: root.theme.surface-container-high;
-                            status-text := Text { text: root.status; color: root.theme.on-surface-variant; font-size: 12px; }
+                            background: root.shown-theme.surface-container-high;
+                            status-text := Text { text: root.status; color: root.shown-theme.on-surface-variant; font-size: 12px; }
                         }
                     }
                     Rectangle { height: 14px; }
@@ -1443,23 +1485,23 @@ export component MainWindow inherits Window {
                         WeatherIcon {
                             width: 76px; height: 76px;
                             kind: root.icon-kind;
-                            ink: root.theme.on-surface-variant;
-                            cloud-fill: root.theme.bg-top;
+                            ink: root.shown-theme.on-surface-variant;
+                            cloud-fill: root.shown-theme.bg-top;
                         }
                     }
                     Text {
                         text: root.temperature;
-                        color: root.theme.on-surface; font-size: 104px; font-weight: 700;
+                        color: root.shown-theme.on-surface; font-size: 104px; font-weight: 700;
                         horizontal-alignment: center;
                     }
                     Text {
                         text: root.condition;
-                        color: root.theme.on-surface; font-size: 20px; font-weight: 600;
+                        color: root.shown-theme.on-surface; font-size: 20px; font-weight: 600;
                         horizontal-alignment: center;
                     }
                     Text {
                         text: root.subline;
-                        color: root.theme.on-surface-variant; font-size: 14px;
+                        color: root.shown-theme.on-surface-variant; font-size: 14px;
                         horizontal-alignment: center;
                     }
                     if root.vs-normal != "": HorizontalLayout {
@@ -1469,12 +1511,12 @@ export component MainWindow inherits Window {
                             height: 26px;
                             width: normal-text.preferred-width + 20px;
                             border-radius: 13px;
-                            background: root.theme.surface-container.transparentize(35%);
-                            normal-text := Text { text: root.vs-normal; color: root.theme.on-surface; font-size: 12px; font-weight: 500; }
+                            background: root.shown-theme.surface-container.transparentize(35%);
+                            normal-text := Text { text: root.vs-normal; color: root.shown-theme.on-surface; font-size: 12px; font-weight: 500; }
                         }
                     }
                     if root.error != "": Text {
-                        text: root.error; color: root.theme.on-surface; font-size: 13px; wrap: word-wrap;
+                        text: root.error; color: root.shown-theme.on-surface; font-size: 13px; wrap: word-wrap;
                         horizontal-alignment: center;
                     }
                 }
@@ -1500,12 +1542,12 @@ export component MainWindow inherits Window {
                     if root.nowcast.summary != "": NowcastCard {
                         nowcast: root.nowcast;
                         title: root.labels.next-hours;
-                        theme: root.theme;
+                        theme: root.shown-theme;
                     }
 
                     // 7-day forecast; a day opens hour by hour.
                     forecast-card := Rectangle {
-                        background: root.theme.surface-container;
+                        background: root.shown-theme.surface-container;
                         border-radius: 28px;
                         VerticalLayout {
                             padding: 10px;
@@ -1514,18 +1556,18 @@ export component MainWindow inherits Window {
                             Text {
                                 x: 10px;
                                 text: root.labels.forecast;
-                                color: root.theme.on-surface; font-size: 18px; font-weight: 600;
+                                color: root.shown-theme.on-surface; font-size: 18px; font-weight: 600;
                             }
                             Rectangle { height: 6px; }
                             for d[i] in root.days: VerticalLayout {
                                 DayRow {
                                     day: d;
-                                    theme: root.theme;
+                                    theme: root.shown-theme;
                                     open: root.open-day == i;
                                     clicked => { root.open-day = root.open-day == i ? -1 : i; }
                                 }
                                 if root.open-day == i: DayChart {
-                                    day: d; theme: root.theme;
+                                    day: d; theme: root.shown-theme;
                                     changed panning => { root.chart-panning = self.panning; }
                                 }
                             }
@@ -1537,27 +1579,27 @@ export component MainWindow inherits Window {
                         // Drawn once into an image and reused while other parts move.
                         cache-rendering-hint: true;
                         border-radius: 28px;
-                        background: root.theme.surface-container;
+                        background: root.shown-theme.surface-container;
                         VerticalLayout {
                             padding-left: 16px;
                             padding-right: 18px;
                             padding-top: 2px;
                             padding-bottom: 2px;
                             DetailRow {
-                                theme: root.theme; label: root.labels.wind;
+                                theme: root.shown-theme; label: root.labels.wind;
                                 note: root.details.wind-gusts == "" ? root.details.wind-from : root.details.wind-from + " · " + root.details.wind-gusts;
                                 value: root.details.wind-speed + " " + root.details.wind-unit;
                                 arrow: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
                                 heading: root.compass-heading;
                             }
-                            DetailRow { theme: root.theme; icon: RowIcons.thermometer; label: root.labels.feels-like; note: root.details.feels-note; value: root.details.feels-like; }
-                            DetailRow { theme: root.theme; icon: RowIcons.droplet; label: root.labels.humidity; note: root.details.dew-point; value: root.details.humidity; }
-                            DetailRow { theme: root.theme; icon: RowIcons.uv; label: root.labels.uv-index; note: root.details.uv-level; value: root.details.uv; }
-                            DetailRow { theme: root.theme; icon: RowIcons.pressure; label: root.labels.pressure; note: root.details.pressure-note; value: root.details.pressure; }
-                            DetailRow { theme: root.theme; icon: RowIcons.leaf; label: root.labels.air-quality; note: root.air.aqi-level; value: root.air.aqi; }
-                            DetailRow { theme: root.theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-outlook == "" ? root.air.pollen-level : root.air.pollen-level + "\n" + root.air.pollen-outlook; value: root.air.pollen; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.thermometer; label: root.labels.feels-like; note: root.details.feels-note; value: root.details.feels-like; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.droplet; label: root.labels.humidity; note: root.details.dew-point; value: root.details.humidity; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.uv; label: root.labels.uv-index; note: root.details.uv-level; value: root.details.uv; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.pressure; label: root.labels.pressure; note: root.details.pressure-note; value: root.details.pressure; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.leaf; label: root.labels.air-quality; note: root.air.aqi-level; value: root.air.aqi; }
+                            DetailRow { theme: root.shown-theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-outlook == "" ? root.air.pollen-level : root.air.pollen-level + "\n" + root.air.pollen-outlook; value: root.air.pollen; }
                             DetailRow {
-                                theme: root.theme; icon: RowIcons.sun; label: root.labels.sun;
+                                theme: root.shown-theme; icon: RowIcons.sun; label: root.labels.sun;
                                 note: root.details.daylight;
                                 value: root.details.sunrise + " – " + root.details.sunset;
                                 last: true;
@@ -1570,7 +1612,7 @@ export component MainWindow inherits Window {
                         // Drawn once into an image and reused while other parts move.
                         cache-rendering-hint: true;
                         border-radius: 22px;
-                        background: root.theme.surface-container;
+                        background: root.shown-theme.surface-container;
                         VerticalLayout {
                             padding: 4px;
                             spacing: 0px;
@@ -1578,20 +1620,20 @@ export component MainWindow inherits Window {
                             Rectangle {
                                 height: 48px;
                                 border-radius: 18px;
-                                background: source-touch.pressed ? root.theme.surface-container-high : transparent;
+                                background: source-touch.pressed ? root.shown-theme.surface-container-high : transparent;
                                 HorizontalLayout {
                                     padding-left: 12px;
                                     padding-right: 12px;
                                     VerticalLayout {
                                         alignment: center;
-                                        Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 11px; }
-                                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 14px; font-weight: 500; }
+                                        Text { text: root.labels.data-source; color: root.shown-theme.on-surface-variant; font-size: 11px; }
+                                        Text { text: root.source-name + " · Open-Meteo"; color: root.shown-theme.on-surface; font-size: 14px; font-weight: 500; }
                                     }
-                                    Text { text: "›"; color: root.theme.primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
+                                    Text { text: "›"; color: root.shown-theme.primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
                                 }
                                 source-touch := TouchArea { clicked => { root.source-open = true; } }
                             }
-                            Rectangle { height: 1px; background: root.theme.outline-variant; }
+                            Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
                             // When it was updated, and refresh.
                             HorizontalLayout {
                                 padding: 4px;
@@ -1599,12 +1641,12 @@ export component MainWindow inherits Window {
                                 spacing: 8px;
                                 Text {
                                     text: root.updated;
-                                    color: root.theme.on-surface-variant; font-size: 12px;
+                                    color: root.shown-theme.on-surface-variant; font-size: 12px;
                                     vertical-alignment: center; overflow: elide;
                                 }
                                 TonalButton {
                                     width: 104px; height: 36px; font-size: 14px;
-                                    text: root.labels.refresh; theme: root.theme;
+                                    text: root.labels.refresh; theme: root.shown-theme;
                                     clicked => { root.refresh(); }
                                 }
                             }
@@ -1613,7 +1655,7 @@ export component MainWindow inherits Window {
                                 height: 30px;
                                 Text {
                                     text: root.labels.data-credit;
-                                    color: credit-touch.pressed ? root.theme.on-surface : root.theme.on-surface-variant;
+                                    color: credit-touch.pressed ? root.shown-theme.on-surface : root.shown-theme.on-surface-variant;
                                     font-size: 11px;
                                     horizontal-alignment: center;
                                 }
@@ -1631,7 +1673,7 @@ export component MainWindow inherits Window {
 
 
     // Splashes land on the cards, so they're drawn in front of them.
-    Particles { d: root.splashes; stroke: root.theme.particle.transparentize(20%); stroke-width: 2.5px; }
+    Particles { d: root.splashes; stroke: root.shown-theme.particle.transparentize(20%); stroke-width: 2.5px; }
 
     // While a pull-started refresh runs: a pill with the arrow.
     if root.refreshing: Rectangle {
@@ -1639,7 +1681,7 @@ export component MainWindow inherits Window {
         y: 92px;
         width: 44px; height: 44px;
         border-radius: 22px;
-        background: root.theme.surface-container;
+        background: root.shown-theme.surface-container;
         drop-shadow-color: #0000002a;
         drop-shadow-blur: 8px;
         Path {
@@ -1648,7 +1690,7 @@ export component MainWindow inherits Window {
             fit: fill;
             // A circular arrow.
             commands: "M 19 12 A 7 7 0 1 1 16.5 6.6 M 16.5 2.5 L 16.5 6.6 L 12.4 6.6";
-            stroke: root.theme.primary;
+            stroke: root.shown-theme.primary;
             stroke-width: 2.4px;
             stroke-line-cap: round;
             stroke-line-join: round;
@@ -1658,7 +1700,7 @@ export component MainWindow inherits Window {
     if root.settings-open: SettingsScreen {
         width: root.width;
         height: root.height;
-        theme: root.theme;
+        theme: root.shown-theme;
         labels: root.labels;
         units-index: root.units-index;
         colors-index: root.colors-index;
@@ -1685,7 +1727,7 @@ export component MainWindow inherits Window {
         results: root.results;
         search-status: root.search-status;
         can-locate: root.can-locate;
-        theme: root.theme;
+        theme: root.shown-theme;
         labels: root.labels;
         locate => { root.locate(); }
         close => { root.picker-open = false; root.search(""); }
@@ -1699,7 +1741,7 @@ export component MainWindow inherits Window {
         width: root.width;
         height: root.height;
         sources: root.sources;
-        theme: root.theme;
+        theme: root.shown-theme;
         labels: root.labels;
         close => { root.source-open = false; }
         select(i) => { root.select-source(i); root.source-open = false; }

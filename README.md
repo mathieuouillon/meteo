@@ -191,6 +191,9 @@ blue at night. Inspired by Gradient Weather.
   pines (each city its own skyline), drawn tone-on-tone in the palette's colours at the
   bottom of the hero. Clouds pass behind them; rain and snow fall in front.
 
+When the city, the weather or the time of day changes, every colour fades to the
+new one (0.8 s): the sky, the hills, the cards and the text.
+
 To preview a weather or time of day: `METEO_WEATHER=snow METEO_TIME=dusk cargo run -p meteo`
 on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and
 `adb shell setprop debug.meteo.time dusk`, then restart the app.
