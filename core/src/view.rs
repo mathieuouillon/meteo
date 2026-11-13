@@ -4,9 +4,11 @@
 
 use serde::Serialize;
 
-use crate::chart::{ChartGeometry, temperature_chart};
+use crate::chart::{ChartGeometry, temperature_chart_with_band};
+use crate::extras::{Air, agreement, spread_by_time};
 use crate::date::weekday_index;
 use crate::i18n::Lang;
+use crate::units::Units;
 use crate::model::{Day, Forecast};
 use crate::landscape::{Landscape, Phase, landscape, seed_for};
 use crate::palette::{Palette, icon_kind};
@@ -44,6 +46,121 @@ pub struct MainScreen {
     pub landscape: Landscape,
     /// The UI's colours, from the weather and time of day.
     pub palette: Palette,
+    pub nowcast: NowcastView,
+    pub air: AirView,
+    /// "3° warmer than usual"; empty without normals.
+    pub vs_normal: String,
+    /// Current rain rate, mm/h, for the animation.
+    pub rain_rate: f64,
+}
+
+/// Rain over the next 2 hours, in 15-minute bars.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct NowcastView {
+    pub summary: String,
+    pub bars: Vec<NowBar>,
+    /// Any rain in the next 2 hours.
+    pub wet: bool,
+    /// Minutes until rain starts (0 if raining now); None if dry.
+    pub starts_in: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NowBar {
+    /// "Now", "+30 min", … on every other bar; empty otherwise.
+    pub label: String,
+    /// 0–1 (8 mm/h fills it).
+    pub height: f64,
+    pub wet: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct AirView {
+    /// "28"; "--" if unknown.
+    pub aqi: String,
+    pub aqi_level: String,
+    /// 0–1 on the 0–100 scale.
+    pub aqi_position: f64,
+    pub aqi_known: bool,
+    /// The strongest pollen ("Birch"), or a note when there's none.
+    pub pollen: String,
+    pub pollen_level: String,
+    /// 0–1 (very high = 1).
+    pub pollen_position: f64,
+    pub pollen_known: bool,
+}
+
+impl NowcastView {
+    fn new(f: &Forecast, lang: Lang) -> Self {
+        let q = &f.nowcast;
+        if q.is_empty() {
+            return Self::default();
+        }
+        const WET: f64 = 0.03; // mm in 15 min
+        let rate = |mm: f64| mm * 4.0;
+        let bars = q
+            .iter()
+            .enumerate()
+            .map(|(i, step)| NowBar {
+                label: if i % 2 == 0 { lang.in_minutes(i as u32 * 15) } else { String::new() },
+                height: (rate(step.precipitation) / 8.0).clamp(0.0, 1.0),
+                wet: step.precipitation >= WET,
+            })
+            .collect();
+        let first_wet = q.iter().position(|s| s.precipitation >= WET);
+        let peak = q.iter().map(|s| rate(s.precipitation)).fold(0.0, f64::max);
+        let word = lang.rain_word(peak);
+        let summary = match first_wet {
+            None => lang.no_rain_soon().to_string(),
+            Some(0) => match q.iter().position(|s| s.precipitation < WET) {
+                Some(dry) => lang.rain_stopping(word, &clock(&q[dry].time)),
+                None => lang.rain_lasting(word),
+            },
+            Some(k) => lang.rain_starting(word, k as u32 * 15),
+        };
+        Self { summary, bars, wet: first_wet.is_some(), starts_in: first_wet.map(|k| k as u32 * 15) }
+    }
+}
+
+/// "10:15" from "…T10:15".
+fn clock(time: &str) -> String {
+    time.get(11..16).unwrap_or("").to_string()
+}
+
+/// Pollen thresholds (grains/m³) for moderate, high, very high.
+fn pollen_thresholds(kind: &str) -> [f64; 3] {
+    match kind {
+        "grass" | "ragweed" | "mugwort" => [5.0, 20.0, 50.0],
+        _ => [10.0, 50.0, 200.0],
+    }
+}
+
+impl AirView {
+    fn new(air: Option<&Air>, lang: Lang) -> Self {
+        let Some(air) = air else {
+            return Self { aqi: "--".into(), pollen: "--".into(), pollen_level: lang.not_here().into(), aqi_level: lang.not_here().into(), ..Self::default() };
+        };
+        let (aqi, aqi_level, aqi_position) = match air.european_aqi {
+            Some(a) => (format!("{a:.0}"), lang.aqi_level(a).to_string(), (a / 100.0).clamp(0.0, 1.0)),
+            None => ("--".into(), lang.not_here().into(), 0.0),
+        };
+        // The pollen with the highest level (relative to its own scale).
+        let level = |kind: &str, v: f64| pollen_thresholds(kind).iter().filter(|&&t| v >= t).count();
+        let top = air
+            .pollen
+            .iter()
+            .filter(|(_, v)| *v >= 1.0)
+            .max_by(|a, b| (level(&a.0, a.1), a.1).partial_cmp(&(level(&b.0, b.1), b.1)).unwrap_or(std::cmp::Ordering::Equal));
+        let (pollen, pollen_level, pollen_position, pollen_known) = match (top, air.pollen.is_empty()) {
+            (_, true) => ("--".into(), lang.not_here().into(), 0.0, false),
+            (None, false) => ("–".into(), lang.no_pollen().into(), 0.0, false),
+            (Some((kind, v)), false) => {
+                let l = level(kind, *v);
+                (lang.pollen_name(kind).into(), lang.pollen_level(l).into(), (l as f64 + 0.5) / 4.0, true)
+            }
+        };
+        Self { aqi_known: air.european_aqi.is_some(), aqi, aqi_level, aqi_position, pollen, pollen_level, pollen_position, pollen_known }
+    }
 }
 
 /// One of the next hours, for the widgets.
@@ -100,7 +217,7 @@ pub struct DetailsView {
 }
 
 impl MainScreen {
-    pub fn from_forecast(f: &Forecast, lang: Lang) -> Self {
+    pub fn from_forecast(f: &Forecast, lang: Lang, units: Units) -> Self {
         let c = &f.current;
         let sky = c.condition.sky(c.is_day);
         let hours = f
@@ -110,7 +227,7 @@ impl MainScreen {
             .enumerate()
             .map(|(i, h)| HourView {
                 label: if i == 0 { lang.now().into() } else { h.label.clone() },
-                temperature: temp(h.temperature),
+                temperature: units.temp(h.temperature),
                 icon: h.condition.icon(h.is_day).into(),
                 icon_kind: icon_kind(h.condition, h.is_day).into(),
             })
@@ -131,28 +248,38 @@ impl MainScreen {
 
         Self {
             city: f.location.clone(),
-            temperature: temp(c.temperature),
+            temperature: units.temp(c.temperature),
             condition: lang.condition(c.condition).into(),
             icon: c.condition.icon(c.is_day).into(),
             icon_kind: icon_kind(c.condition, c.is_day).into(),
-            high_low: lang.day_night(&temp(f.today_max), &temp(f.today_min)),
-            feels_like: lang.feels_like(&temp(c.apparent_temperature)),
+            high_low: lang.day_night(&units.temp(f.today_max), &units.temp(f.today_min)),
+            feels_like: lang.feels_like(&units.temp(c.apparent_temperature)),
             sky_top: sky.top,
             sky_bottom: sky.bottom,
             sky_top_css: sky.top_css(),
             sky_bottom_css: sky.bottom_css(),
             hours,
-            days: DayView::list(&f.days, now.as_deref(), lang),
-            details: DetailsView::new(f, rise, set, progress, lang),
-            scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction),
+            days: DayView::list(&f.days, &f.spread, now.as_deref(), lang, units),
+            details: DetailsView::new(f, rise, set, progress, lang, units),
+            scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction)
+                .with_rain_rate(c.precipitation.map_or(0.0, |mm| mm * 4.0)),
             landscape: land,
             palette,
+            nowcast: NowcastView::new(f, lang),
+            air: AirView::new(f.air.as_ref(), lang),
+            vs_normal: f
+                .days
+                .first()
+                .and_then(|d| Some(d.max - d.normal_max?))
+                .map(|diff| lang.vs_normal(diff, &units.temp_delta(diff)))
+                .unwrap_or_default(),
+            rain_rate: c.precipitation.map_or(0.0, |mm| mm * 4.0),
         }
     }
 }
 
 impl DetailsView {
-    fn new(f: &Forecast, rise: Option<&str>, set: Option<&str>, progress: f64, lang: Lang) -> Self {
+    fn new(f: &Forecast, rise: Option<&str>, set: Option<&str>, progress: f64, lang: Lang, units: Units) -> Self {
         let c = &f.current;
         let clock = |t: Option<&str>| t.and_then(|t| t.get(11..16)).unwrap_or("").to_string();
         let minutes = |t: &str| -> Option<i64> { Some(t.get(11..13)?.parse::<i64>().ok()? * 60 + t.get(14..16)?.parse::<i64>().ok()?) };
@@ -161,14 +288,14 @@ impl DetailsView {
             _ => String::new(),
         };
         Self {
-            feels_like: temp(c.apparent_temperature),
+            feels_like: units.temp(c.apparent_temperature),
             feels_note: lang.feels_note(c.temperature, c.apparent_temperature).into(),
             humidity: format!("{:.0}%", c.humidity),
             humidity_fraction: (c.humidity / 100.0).clamp(0.0, 1.0),
-            dew_point: c.dew_point.map(|d| lang.dew_point(&temp(d))).unwrap_or_default(),
-            wind_speed: format!("{:.0}", c.wind_speed),
-            wind_unit: "km/h".into(),
-            wind_gusts: c.wind_gusts.map(|g| lang.gusts(&format!("{g:.0} km/h"))).unwrap_or_default(),
+            dew_point: c.dew_point.map(|d| lang.dew_point(&units.temp(d))).unwrap_or_default(),
+            wind_speed: units.wind(c.wind_speed).0,
+            wind_unit: units.wind(c.wind_speed).1.into(),
+            wind_gusts: c.wind_gusts.map(|g| lang.gusts(&units.wind_text(g))).unwrap_or_default(),
             wind_from: lang.wind_from(c.wind_direction),
             wind_arrow: (c.wind_direction + 180.0).rem_euclid(360.0),
             wind_arrow_path: arrow_path((c.wind_direction + 180.0).rem_euclid(360.0)),
@@ -183,7 +310,7 @@ impl DetailsView {
             uv_level: c.uv_index.map_or_else(|| lang.not_available().to_string(), |u| lang.uv_level(u).to_string()),
             uv_known: c.uv_index.is_some(),
             uv_position: c.uv_index.map_or(0.0, |u| (u / 11.0).clamp(0.0, 1.0)),
-            pressure: c.pressure.map_or("--".into(), |p| format!("{p:.0} hPa")),
+            pressure: c.pressure.map_or("--".into(), |p| units.pressure(p)),
             pressure_note: c.pressure.map_or_else(|| lang.not_available().to_string(), |p| lang.pressure_level(p).to_string()),
         }
     }
@@ -245,6 +372,8 @@ pub struct DayView {
     pub rain_peak: f64,
     /// Whether any hour shows a chance of rain (some sources have none).
     pub has_chance: bool,
+    /// "Models agree 82% · 5 models"; empty without the models' data.
+    pub agreement: String,
 }
 
 /// One hour of a day's chart.
@@ -275,7 +404,8 @@ const MORNING: usize = 6;
 
 impl DayView {
     /// `now`: the current hour's time ("2026-11-12T15:00"), marked "Now".
-    fn list(days: &[Day], now: Option<&str>, lang: Lang) -> Vec<Self> {
+    fn list(days: &[Day], spread: &[crate::extras::Spread], now: Option<&str>, lang: Lang, units: Units) -> Vec<Self> {
+        let by_time = spread_by_time(spread);
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
         let range = (hi - lo).max(1.0);
@@ -286,7 +416,12 @@ impl DayView {
         days.iter()
             .enumerate()
             .map(|(day_index, d)| {
-                let chart = temperature_chart(&d.hours, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
+                let day_spread: Vec<_> = d.hours.iter().map(|h| by_time.get(h.time.as_str()).copied()).collect();
+                let band: Vec<_> = day_spread.iter().map(|s| s.map(|s| (s.t_min, s.t_max))).collect();
+                let chart = temperature_chart_with_band(&d.hours, &band, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
+                let known: Vec<_> = day_spread.iter().flatten().copied().collect();
+                let models = known.iter().map(|s| s.models as usize).max().unwrap_or(0);
+                let agreement = agreement(&known).map(|p| lang.models_agree(p, models)).unwrap_or_default();
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
                 let hours: Vec<DayHourView> = d
                     .hours
@@ -296,11 +431,11 @@ impl DayView {
                     .map(|(i, (h, p))| DayHourView {
                         label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
                         is_now: Some(i) == now_index,
-                        temperature: temp(h.temperature),
+                        temperature: units.temp(h.temperature),
                         icon: h.condition.icon(h.is_day).into(),
                         icon_kind: icon_kind(h.condition, h.is_day).into(),
                         precipitation: rain_chance(h.precipitation_probability),
-                        rain: rain_amount(h.precipitation, false),
+                        rain: units.rain(h.precipitation, false),
                         rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
                         x: p.x,
                         y: p.y,
@@ -316,13 +451,14 @@ impl DayView {
                     icon: d.condition.icon(true).into(),
                     icon_kind: icon_kind(d.condition, true).into(),
                     precipitation: rain_chance(d.precipitation_probability),
-                    min: temp(d.min),
-                    max: temp(d.max),
+                    min: units.temp(d.min),
+                    max: units.temp(d.max),
                     bar_start: (d.min - lo) / range,
                     bar_end: (d.max - lo) / range,
-                    rain_total: rain_amount(d.precipitation_sum, true),
+                    rain_total: units.rain(d.precipitation_sum, true),
                     rain_peak: hours.iter().map(|h: &DayHourView| if h.rain.is_empty() { 0.0 } else { h.rain_height }).fold(0.0, f64::max),
                     has_chance: hours.iter().any(|h: &DayHourView| !h.precipitation.is_empty()),
+                    agreement,
                     chart,
                     hours,
                 }
@@ -380,6 +516,8 @@ mod tests {
             precipitation_sum: rain / 10.0,
             sunrise: None,
             sunset: None,
+            normal_max: None,
+            normal_min: None,
             hours: vec![
                 hour(&format!("{date}T00:00"), min, 0.0),
                 hour(&format!("{date}T01:00"), max, rain / 20.0),
@@ -393,8 +531,10 @@ mod tests {
     fn days_share_the_week_scales() {
         let rows = DayView::list(
             &[day("2026-11-12", 5.0, 10.0, 80.0), day("2026-11-13", 0.0, 20.0, 5.0)],
+            &[],
             Some("2026-11-12T01:00"),
             Lang::En,
+            Units::Metric,
         );
         // Temperature bars on the week's range.
         assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
@@ -430,6 +570,34 @@ mod tests {
         let tip: Vec<f64> = east.split_whitespace().skip(1).take(2).map(|v| v.parse().unwrap()).collect();
         assert_eq!(tip, vec![52.0, 32.0]);
         assert!(arrow_path(0.0).starts_with("M 32.0 12.0"));
+    }
+
+    #[test]
+    fn next_two_hours() {
+        use crate::model::Quarter;
+        let q = |mm: &[f64]| -> Vec<Quarter> {
+            mm.iter().enumerate().map(|(i, &p)| Quarter { time: format!("2026-11-13T{:02}:{:02}", 9 + i / 4, i % 4 * 15), precipitation: p }).collect()
+        };
+        let view = |mm: &[f64]| {
+            let mut f = crate::api::parse_forecast("X", br#"{"current":{"time":"2026-11-13T09:00","temperature_2m":1,"apparent_temperature":1,"relative_humidity_2m":1,"is_day":1,"weather_code":0,"wind_speed_10m":1},"hourly":{"time":["2026-11-13T09:00"],"temperature_2m":[1],"weather_code":[0],"is_day":[1]},"daily":{"time":["2026-11-13"],"weather_code":[0],"temperature_2m_max":[1],"temperature_2m_min":[0]}}"#).unwrap();
+            f.nowcast = q(mm);
+            NowcastView::new(&f, Lang::En)
+        };
+        assert_eq!(view(&[0.0; 8]).summary, "No rain expected in the next 2 hours");
+        let soon = view(&[0.0, 0.0, 0.1, 0.2, 0.2, 0.0, 0.0, 0.0]);
+        assert_eq!(soon.summary, "Light rain starting in about 30 min");
+        assert_eq!(soon.starts_in, Some(30));
+        assert_eq!(view(&[1.5, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).summary, "Heavy rain, stopping around 09:30");
+        assert_eq!(view(&[0.5; 8]).summary, "Rain for at least 2 hours");
+        assert_eq!(soon.bars[2].label, "+30 min");
+        assert!(view(&[]).summary.is_empty());
+    }
+
+    #[test]
+    fn compared_with_normal() {
+        assert_eq!(Lang::En.vs_normal(3.2, &Units::Metric.temp_delta(3.2)), "3° warmer than usual");
+        assert_eq!(Lang::Fr.vs_normal(-2.0, &Units::Metric.temp_delta(-2.0)), "2° de moins que la normale");
+        assert_eq!(Lang::En.vs_normal(0.4, "0°"), "Normal for the date");
     }
 
     #[test]

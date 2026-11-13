@@ -30,6 +30,9 @@ pub struct SceneSpec {
     pub lightning: bool,
     /// Horizontal wind on screen in px/s (positive = to the right).
     pub wind: f64,
+    /// Measured rain rate (mm/h) when known: sets how dense and fast the
+    /// drops are; 0 leaves the condition's default.
+    pub rain_rate: f64,
 }
 
 impl SceneSpec {
@@ -39,7 +42,7 @@ impl SceneSpec {
         // Wind from the west (270°) blows to the east, i.e. to the right.
         let toward_right = -wind_from_deg.to_radians().sin();
         let wind = (wind_kmh * 4.0 * toward_right).clamp(-160.0, 160.0);
-        let none = Self { rain: 0.0, snow: 0.0, clouds: 0, dark_clouds: false, fog: false, stars: false, lightning: false, wind };
+        let none = Self { rain: 0.0, snow: 0.0, clouds: 0, dark_clouds: false, fog: false, stars: false, lightning: false, wind, rain_rate: 0.0 };
         use Condition::*;
         match condition {
             Clear => Self { clouds: u8::from(is_day), stars: !is_day, ..none },
@@ -51,6 +54,18 @@ impl SceneSpec {
             Snow => Self { snow: 0.7, clouds: 4, ..none },
             Thunderstorm => Self { rain: 1.0, clouds: 6, dark_clouds: true, lightning: true, ..none },
         }
+    }
+
+    /// Uses the measured rain rate: drizzle (0.2 mm/h) is a few slow, fine
+    /// drops; a downpour (8+ mm/h) is dense and fast. Rain starts even if the
+    /// condition code didn't say so.
+    pub fn with_rain_rate(mut self, mm_per_h: f64) -> Self {
+        if mm_per_h >= 0.1 && self.snow == 0.0 {
+            self.rain = (0.12 + (mm_per_h / 8.0).sqrt() * 0.9).clamp(0.12, 1.1);
+            self.rain_rate = mm_per_h;
+            self.clouds = self.clouds.max(3);
+        }
+        self
     }
 }
 
@@ -317,7 +332,9 @@ impl Scene {
         // the drop's size (depth), pushed sideways toward the wind speed.
         for i in 0..self.drops.len() {
             let d = &mut self.drops[i];
-            let terminal = 900.0 + 500.0 * d.z;
+            // Heavier rain has bigger drops, which fall faster.
+            let size = if self.spec.rain_rate > 0.0 { (0.6 + (self.spec.rain_rate / 6.0).sqrt() * 0.5).clamp(0.6, 1.25) } else { 1.0 };
+            let terminal = (900.0 + 500.0 * d.z) * size;
             d.vy += GRAVITY * (1.0 - (d.vy / terminal).powi(2)) * dt;
             d.vx += (wind * d.z - d.vx) * 3.0 * dt;
             d.x += d.vx * dt;

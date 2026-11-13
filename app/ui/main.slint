@@ -48,6 +48,23 @@ export struct Labels {
     done: string,
     use-location: string,
     saved-cities: string,
+    next-hours: string,
+    air-quality: string,
+    pollen: string,
+    settings: string,
+    units: string,
+    metric: string,
+    imperial: string,
+    colors: string,
+    colors-weather: string,
+    colors-wallpaper: string,
+    language: string,
+    language-system: string,
+    notifications: string,
+    morning-summary: string,
+    morning-summary-help: string,
+    rain-alerts: string,
+    rain-alerts-help: string,
 }
 
 /// The details tiles (DetailsView in core/src/view.rs).
@@ -108,6 +125,9 @@ export struct DayItem {
     chart-height: float,
     line-path: string,
     area-path: string,
+    /// Several models' range around the curve, and how much they agree.
+    band-path: string,
+    agreement: string,
 }
 
 export struct CloudItem {
@@ -124,6 +144,31 @@ export struct FogItem {
     width: float,
     height: float,
     opacity: float,
+}
+
+/// Rain over the next 2 hours (NowcastView in core/src/view.rs).
+export struct NowBar {
+    label: string,
+    height: float,
+    wet: bool,
+}
+
+export struct Nowcast {
+    summary: string,
+    wet: bool,
+    bars: [NowBar],
+}
+
+/// Air quality and pollen (AirView in core/src/view.rs).
+export struct AirInfo {
+    aqi: string,
+    aqi-level: string,
+    aqi-position: float,
+    aqi-known: bool,
+    pollen: string,
+    pollen-level: string,
+    pollen-position: float,
+    pollen-known: bool,
 }
 
 /// One silhouette of the landscape (core/src/landscape.rs), far to near.
@@ -459,15 +504,36 @@ component DayChart inherits Rectangle {
     // Room for the amount label above the tallest bar (none on a dry day).
     property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + 16px : 3px;
     property <length> rain-base: root.rain-top + root.rain-room;
-    height: root.rain-base + 32px;
+    // Room for "Models agree 82%" above the chart.
+    property <length> head: root.day.agreement != "" ? 22px : 0px;
+    height: root.head + root.rain-base + 32px;
+
+    if root.day.agreement != "": Text {
+        x: 10px; y: 2px;
+        text: root.day.agreement;
+        color: root.theme.on-surface-variant; font-size: 12px;
+    }
 
     Flickable {
+        y: root.head;
+        height: parent.height - root.head;
         content-width: root.day.chart-width * 1px;
         content-height: self.height;
         // Open with the hour before `first-hour` at the left edge.
         content-x: -max(0, min(root.day.first-hour - 1, root.day.hours.length - floor(self.width / root.step))) * root.step;
 
-        // Area under the curve, then the curve.
+        // The models' range, then the area under the curve, then the curve.
+        if root.day.band-path != "": Path {
+            x: 0; y: 0;
+            width: root.day.chart-width * 1px;
+            height: root.curve;
+            viewbox-width: root.day.chart-width;
+            viewbox-height: root.day.chart-height;
+            fit: fill;
+            commands: root.day.band-path;
+            fill: root.theme.primary.transparentize(82%);
+            stroke-width: 0px;
+        }
         Path {
             x: 0; y: 0;
             width: root.day.chart-width * 1px;
@@ -556,6 +622,208 @@ component DayChart inherits Rectangle {
                     color: column.now ? root.theme.on-primary : root.theme.on-surface-variant;
                     font-size: 12px;
                     font-weight: column.now ? 600 : 400;
+                }
+            }
+        }
+    }
+}
+
+/// Rain over the next 2 hours: a summary, and 15-minute bars when wet.
+component NowcastCard inherits Rectangle {
+    in property <Nowcast> nowcast;
+    in property <string> title;
+    in property <Theme> theme;
+    border-radius: 28px;
+    background: root.theme.surface-container;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 10px;
+            WeatherIcon {
+                width: 28px; height: 28px;
+                kind: root.nowcast.wet ? "rain" : "cloudy";
+                ink: root.theme.on-surface-variant;
+                cloud-fill: root.theme.surface-container;
+            }
+            VerticalLayout {
+                alignment: center;
+                Text { text: root.title; color: root.theme.on-surface-variant; font-size: 12px; font-weight: 500; }
+                Text { text: root.nowcast.summary; color: root.theme.on-surface; font-size: 15px; font-weight: 600; wrap: word-wrap; }
+            }
+        }
+        if root.nowcast.wet: HorizontalLayout {
+            spacing: 6px;
+            height: 64px;
+            for bar in root.nowcast.bars: Rectangle {
+                Rectangle {
+                    y: 44px - self.height;
+                    height: bar.wet ? max(4px, bar.height * 44px) : 3px;
+                    border-radius: 5px;
+                    background: bar.wet ? @linear-gradient(180deg, #8fd0ff 0%, #3d8fe0 100%) : root.theme.outline-variant;
+                }
+                Text {
+                    y: 48px;
+                    width: parent.width * 2;
+                    text: bar.label;
+                    color: root.theme.on-surface-variant; font-size: 11px;
+                }
+            }
+        }
+    }
+}
+
+/// A row of choices, one selected (Material 3 segmented button).
+component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> selected;
+    in property <Theme> theme;
+    callback chosen(int);
+    height: 44px;
+    border-radius: 22px;
+    border-width: 1px;
+    border-color: root.theme.outline-variant;
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+        for option[i] in root.options: Rectangle {
+            border-radius: 19px;
+            background: i == root.selected ? root.theme.primary : (option-touch.pressed ? root.theme.surface-container-high : transparent);
+            Text {
+                text: option;
+                color: i == root.selected ? root.theme.on-primary : root.theme.on-surface;
+                font-size: 13px; font-weight: i == root.selected ? 600 : 400;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            option-touch := TouchArea { clicked => { root.chosen(i); } }
+        }
+    }
+}
+
+/// A labelled on/off switch.
+component SwitchRow inherits Rectangle {
+    in property <string> title;
+    in property <string> help;
+    in property <bool> on;
+    in property <Theme> theme;
+    callback toggled(bool);
+    min-height: 60px;
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Text { text: root.title; color: root.theme.on-surface; font-size: 16px; }
+            Text { text: root.help; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap; }
+        }
+        // The switch: a track with a sliding thumb.
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 52px; height: 32px;
+                border-radius: 16px;
+                background: root.on ? root.theme.primary : root.theme.surface-container-high;
+                border-width: root.on ? 0px : 2px;
+                border-color: root.theme.on-surface-variant;
+                Rectangle {
+                    x: root.on ? parent.width - self.width - 4px : 6px;
+                    animate x { duration: 150ms; easing: ease-out; }
+                    width: root.on ? 24px : 18px; height: self.width; border-radius: self.width / 2;
+                    background: root.on ? root.theme.on-primary : root.theme.on-surface-variant;
+                }
+            }
+        }
+    }
+    TouchArea { clicked => { root.toggled(!root.on); } }
+}
+
+/// The settings screen.
+component SettingsScreen inherits Rectangle {
+    in property <Theme> theme;
+    in property <Labels> labels;
+    in property <int> units-index;
+    in property <int> colors-index;
+    in property <int> language-index;
+    in property <bool> morning-summary;
+    in property <bool> rain-alerts;
+    in property <bool> can-use-wallpaper;
+    in property <string> source-name;
+    callback close();
+    callback open-sources();
+    callback set-units(int);
+    callback set-colors(int);
+    callback set-language(int);
+    callback set-morning-summary(bool);
+    callback set-rain-alerts(bool);
+    background: root.theme.surface;
+    TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 44px;
+        spacing: 8px;
+        HorizontalLayout {
+            padding-left: 8px;
+            Text { text: root.labels.settings; color: root.theme.on-surface; font-size: 26px; font-weight: 600; vertical-alignment: center; }
+            Rectangle {
+                width: 72px; height: 48px;
+                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                TouchArea { clicked => { root.close(); } }
+            }
+        }
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: settings-list.preferred-height;
+            settings-list := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                spacing: 10px;
+                padding: 8px;
+                Text { text: root.labels.units; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                Segmented {
+                    theme: root.theme;
+                    options: [root.labels.metric, root.labels.imperial];
+                    selected: root.units-index;
+                    chosen(i) => { root.set-units(i); }
+                }
+                if root.can-use-wallpaper: Text { text: root.labels.colors; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                if root.can-use-wallpaper: Segmented {
+                    theme: root.theme;
+                    options: [root.labels.colors-weather, root.labels.colors-wallpaper];
+                    selected: root.colors-index;
+                    chosen(i) => { root.set-colors(i); }
+                }
+                Text { text: root.labels.language; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                Segmented {
+                    theme: root.theme;
+                    options: [root.labels.language-system, "English", "Français"];
+                    selected: root.language-index;
+                    chosen(i) => { root.set-language(i); }
+                }
+                Text { text: root.labels.notifications; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                SwitchRow {
+                    theme: root.theme;
+                    title: root.labels.morning-summary; help: root.labels.morning-summary-help;
+                    on: root.morning-summary;
+                    toggled(on) => { root.set-morning-summary(on); }
+                }
+                SwitchRow {
+                    theme: root.theme;
+                    title: root.labels.rain-alerts; help: root.labels.rain-alerts-help;
+                    on: root.rain-alerts;
+                    toggled(on) => { root.set-rain-alerts(on); }
+                }
+                Text { text: root.labels.data-source; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                Rectangle {
+                    height: 56px;
+                    border-radius: 20px;
+                    background: src-touch.pressed ? root.theme.surface-container-high : root.theme.surface-container;
+                    HorizontalLayout {
+                        padding-left: 16px; padding-right: 16px;
+                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 15px; vertical-alignment: center; }
+                        Text { text: "›"; color: root.theme.primary; font-size: 22px; vertical-alignment: center; horizontal-alignment: right; }
+                    }
+                    src-touch := TouchArea { clicked => { root.open-sources(); } }
                 }
             }
         }
@@ -793,6 +1061,20 @@ export component MainWindow inherits Window {
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
     in property <bool> can-locate;
+    in property <Nowcast> nowcast;
+    in property <AirInfo> air;
+    // "3° warmer than usual"; empty if unknown.
+    in property <string> vs-normal;
+    // Settings (see app/src/lib.rs).
+    in-out property <bool> settings-open;
+    in property <int> units-index;
+    in property <int> colors-index;
+    in property <int> language-index;
+    in property <bool> morning-summary;
+    in property <bool> rain-alerts;
+    in property <bool> can-use-wallpaper;
+    // Pull to refresh: true while a refresh started that way is running.
+    in-out property <bool> refreshing;
     in property <Labels> labels: {
         forecast: "7-day forecast", details: "Details", feels-like: "Feels like", humidity: "Humidity",
         wind: "Wind", sun: "Sun", sunrise: "Sunrise", sunset: "Sunset", uv-index: "UV index",
@@ -837,6 +1119,11 @@ export component MainWindow inherits Window {
     callback select-city(int);
     callback remove-city(int);
     callback select-source(int);
+    callback set-units(int);
+    callback set-colors(int);
+    callback set-language(int);
+    callback set-morning-summary(bool);
+    callback set-rain-alerts(bool);
 
     // Where the landscape meets the content cards.
     property <length> horizon: root.height * 0.56;
@@ -879,17 +1166,60 @@ export component MainWindow inherits Window {
     if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
 
     // ── Content: scrolls over the scene ──
+    // Pull to refresh with plain scrolling: the content starts with a strip
+    // (`pull-zone`) scrolled just out of view. Pulling down from the top
+    // reveals it; once it's fully shown and has stopped moving, the timer
+    // refreshes and scrolls it away again. (Slint's Flickable has no
+    // overscroll, and a gesture handler around it delays its touches.)
+    property <length> pull-zone: 72px;
+    property <length> pull: max(0px, content-flick.content-y + root.pull-zone);
+    property <length> last-pull;
+    pull-timer := Timer {
+        interval: 200ms;
+        running: root.pull > 1px;
+        triggered => {
+            // Still moving: wait. Settled: refresh if fully pulled, then hide the strip.
+            if (abs(root.pull - root.last-pull) > 1px) {
+                root.last-pull = root.pull;
+            } else {
+                if (root.pull > root.pull-zone - 16px && !root.refreshing) {
+                    root.refreshing = true;
+                    root.refresh();
+                }
+                content-flick.content-y = -root.pull-zone;
+                root.last-pull = 0px;
+            }
+        }
+    }
     // Explicit size, so the content's height (which depends on the window's)
     // doesn't feed back into the window's own size constraints.
-    Flickable {
+    content-flick := Flickable {
         x: 0; y: 0;
         width: root.width;
         height: root.height;
         content-width: self.width;
         content-height: content.preferred-height;
+        // Start with the pull strip hidden above the top.
+        init => { self.content-y = -root.pull-zone; }
         content := VerticalLayout {
             width: parent.width;
             spacing: 0px;
+
+            // The pull strip: an arrow that turns to the accent once pulled far enough.
+            Rectangle {
+                height: root.pull-zone;
+                Path {
+                    y: parent.height - 36px;
+                    width: 24px; height: 24px;
+                    viewbox-width: 24; viewbox-height: 24;
+                    fit: fill;
+                    commands: "M 19 12 A 7 7 0 1 1 16.5 6.6 M 16.5 2.5 L 16.5 6.6 L 12.4 6.6";
+                    stroke: root.pull > root.pull-zone - 16px ? root.theme.primary : root.theme.on-surface-variant;
+                    stroke-width: 2.4px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                }
+            }
 
             // Hero: city, icon, big temperature, condition — centred.
             Rectangle {
@@ -903,6 +1233,9 @@ export component MainWindow inherits Window {
                     // City pill: tap to switch or add cities.
                     HorizontalLayout {
                         alignment: center;
+                        // Balances the settings button on the right.
+                        Rectangle { width: 44px; }
+                        Rectangle { horizontal-stretch: 1; }
                         Rectangle {
                             height: 36px;
                             width: city-row.preferred-width;
@@ -927,6 +1260,23 @@ export component MainWindow inherits Window {
                                 }
                             }
                             city-touch := TouchArea { clicked => { root.picker-open = true; } }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        // Settings: a "tune" icon (two sliders).
+                        Rectangle {
+                            width: 44px; height: 36px;
+                            border-radius: 18px;
+                            background: gear-touch.pressed ? root.theme.surface-container-high : transparent;
+                            Path {
+                                width: 20px; height: 20px;
+                                viewbox-width: 20; viewbox-height: 20;
+                                fit: fill;
+                                commands: "M 3 6 L 17 6 M 3 14 L 17 14 M 7 3.5 L 7 8.5 M 13 11.5 L 13 16.5";
+                                stroke: root.theme.on-surface;
+                                stroke-width: 2px;
+                                stroke-line-cap: round;
+                            }
+                            gear-touch := TouchArea { clicked => { root.settings-open = true; } }
                         }
                     }
                     if root.status != "": HorizontalLayout {
@@ -965,6 +1315,17 @@ export component MainWindow inherits Window {
                         color: root.theme.on-surface-variant; font-size: 14px;
                         horizontal-alignment: center;
                     }
+                    if root.vs-normal != "": HorizontalLayout {
+                        alignment: center;
+                        padding-top: 8px;
+                        Rectangle {
+                            height: 26px;
+                            width: normal-text.preferred-width + 20px;
+                            border-radius: 13px;
+                            background: root.theme.surface-container.transparentize(35%);
+                            normal-text := Text { text: root.vs-normal; color: root.theme.on-surface; font-size: 12px; font-weight: 500; }
+                        }
+                    }
                     if root.error != "": Text {
                         text: root.error; color: root.theme.on-surface; font-size: 13px; wrap: word-wrap;
                         horizontal-alignment: center;
@@ -982,6 +1343,12 @@ export component MainWindow inherits Window {
                     padding-bottom: 40px;
                     spacing: 12px;
                     alignment: start;
+                    if root.nowcast.summary != "": NowcastCard {
+                        nowcast: root.nowcast;
+                        title: root.labels.next-hours;
+                        theme: root.theme;
+                    }
+
                     // 7-day forecast; a day opens hour by hour.
                     Rectangle {
                         background: root.theme.surface-container;
@@ -1058,6 +1425,30 @@ export component MainWindow inherits Window {
                         }
                     }
 
+                    HorizontalLayout {
+                        spacing: 12px;
+                        DetailCard {
+                            title: root.labels.air-quality; theme: root.theme;
+                            VerticalLayout {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                spacing: 10px;
+                                ValueNote { value: root.air.aqi; note: root.air.aqi-level; theme: root.theme; }
+                                Gauge { value: root.air.aqi-position; uv-scale: true; known: root.air.aqi-known; theme: root.theme; }
+                            }
+                        }
+                        DetailCard {
+                            title: root.labels.pollen; theme: root.theme;
+                            VerticalLayout {
+                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
+                                alignment: end;
+                                spacing: 10px;
+                                ValueNote { value: root.air.pollen; note: root.air.pollen-level; value-size: 22px; theme: root.theme; }
+                                Gauge { value: root.air.pollen-position; uv-scale: true; known: root.air.pollen-known && root.air.pollen-level != ""; theme: root.theme; }
+                            }
+                        }
+                    }
+
                     // Footer: where the data comes from, and when it was updated.
                     Rectangle {
                         border-radius: 28px;
@@ -1104,6 +1495,50 @@ export component MainWindow inherits Window {
                 }
             }
         }
+    }
+
+
+    // While a pull-started refresh runs: a pill with the arrow.
+    if root.refreshing: Rectangle {
+        x: (root.width - self.width) / 2;
+        y: 92px;
+        width: 44px; height: 44px;
+        border-radius: 22px;
+        background: root.theme.surface-container;
+        drop-shadow-color: #0000002a;
+        drop-shadow-blur: 8px;
+        Path {
+            width: 22px; height: 22px;
+            viewbox-width: 24; viewbox-height: 24;
+            fit: fill;
+            // A circular arrow.
+            commands: "M 19 12 A 7 7 0 1 1 16.5 6.6 M 16.5 2.5 L 16.5 6.6 L 12.4 6.6";
+            stroke: root.theme.primary;
+            stroke-width: 2.4px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
+    }
+
+    if root.settings-open: SettingsScreen {
+        width: root.width;
+        height: root.height;
+        theme: root.theme;
+        labels: root.labels;
+        units-index: root.units-index;
+        colors-index: root.colors-index;
+        language-index: root.language-index;
+        morning-summary: root.morning-summary;
+        rain-alerts: root.rain-alerts;
+        can-use-wallpaper: root.can-use-wallpaper;
+        source-name: root.source-name;
+        close => { root.settings-open = false; }
+        open-sources => { root.source-open = true; }
+        set-units(i) => { root.set-units(i); }
+        set-colors(i) => { root.set-colors(i); }
+        set-language(i) => { root.set-language(i); }
+        set-morning-summary(on) => { root.set-morning-summary(on); }
+        set-rain-alerts(on) => { root.set-rain-alerts(on); }
     }
 
     if root.picker-open: CityPicker {

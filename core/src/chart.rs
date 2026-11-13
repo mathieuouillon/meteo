@@ -14,6 +14,9 @@ pub struct ChartGeometry {
     pub line: String,
     /// Same line closed down to the bottom edge, for a filled area.
     pub area: String,
+    /// The range several models give (coldest to warmest), as a closed
+    /// shape around the curve; empty without that data.
+    pub band: String,
     pub points: Vec<ChartPoint>,
 }
 
@@ -33,10 +36,27 @@ pub fn temperature_chart(
     top_pad: f64,
     bottom_pad: f64,
 ) -> ChartGeometry {
+    temperature_chart_with_band(hours, &[], step, height, top_pad, bottom_pad)
+}
+
+/// Like [`temperature_chart`], plus a band from `band[i]` = (coldest,
+/// warmest) for hour `i`. The band covers the first hours that have a range
+/// (models run out before the forecast does), and the vertical scale fits it.
+pub fn temperature_chart_with_band(
+    hours: &[Hour],
+    band: &[Option<(f64, f64)>],
+    step: f64,
+    height: f64,
+    top_pad: f64,
+    bottom_pad: f64,
+) -> ChartGeometry {
     let width = step * hours.len() as f64;
-    let (min, max) = hours.iter().fold((f64::MAX, f64::MIN), |(lo, hi), h| {
-        (lo.min(h.temperature), hi.max(h.temperature))
-    });
+    let ranges: Vec<(f64, f64)> = band.iter().take(hours.len()).map_while(|r| *r).collect();
+    let (min, max) = hours
+        .iter()
+        .map(|h| (h.temperature, h.temperature))
+        .chain(ranges.iter().copied())
+        .fold((f64::MAX, f64::MIN), |(lo, hi), (a, b)| (lo.min(a), hi.max(b)));
     let range = (max - min).max(1.0);
     let usable = height - top_pad - bottom_pad;
 
@@ -67,11 +87,28 @@ pub fn temperature_chart(
         _ => (String::new(), String::new()),
     };
 
+    // Band: along the warm edge, then back along the cold edge.
+    let y = |t: f64| top_pad + (max - t) / range * usable;
+    let band = if ranges.len() >= 2 {
+        let x = |i: usize| step * (i as f64 + 0.5);
+        let mut d = String::new();
+        for (i, (_, hi)) in ranges.iter().enumerate() {
+            d += &format!("{} {:.1},{:.1} ", if i == 0 { "M" } else { "L" }, x(i), y(*hi));
+        }
+        for (i, (lo, _)) in ranges.iter().enumerate().rev() {
+            d += &format!("L {:.1},{:.1} ", x(i), y(*lo));
+        }
+        d + "Z"
+    } else {
+        String::new()
+    };
+
     ChartGeometry {
         width,
         height,
         line,
         area,
+        band,
         points,
     }
 }

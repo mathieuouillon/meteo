@@ -187,6 +187,104 @@ impl Lang {
         }
     }
 
+    // ── Next 2 hours ───────────────────────────────────────────────────
+
+    /// "Light rain" / "Rain" / "Heavy rain" for a rate in mm/h.
+    pub fn rain_word(self, mm_per_h: f64) -> &'static str {
+        match mm_per_h {
+            r if r < 1.0 => self.pick("Light rain", "Pluie faible"),
+            r if r < 4.0 => self.pick("Rain", "Pluie modérée"),
+            _ => self.pick("Heavy rain", "Forte pluie"),
+        }
+    }
+    pub fn no_rain_soon(self) -> &'static str {
+        self.pick("No rain expected in the next 2 hours", "Pas de pluie prévue dans les 2 prochaines heures")
+    }
+    pub fn rain_starting(self, word: &str, minutes: u32) -> String {
+        match self {
+            Lang::En => format!("{word} starting in about {minutes} min"),
+            Lang::Fr => format!("{word} dans environ {minutes} min"),
+        }
+    }
+    pub fn rain_stopping(self, word: &str, clock: &str) -> String {
+        match self {
+            Lang::En => format!("{word}, stopping around {clock}"),
+            Lang::Fr => format!("{word}, jusqu’à {clock} environ"),
+        }
+    }
+    pub fn rain_lasting(self, word: &str) -> String {
+        match self {
+            Lang::En => format!("{word} for at least 2 hours"),
+            Lang::Fr => format!("{word} pendant au moins 2 heures"),
+        }
+    }
+    /// Label under the 15-minute bars: "+30 min", "+1 h", "+1 h 30".
+    pub fn in_minutes(self, minutes: u32) -> String {
+        match (minutes / 60, minutes % 60) {
+            (0, 0) => self.now().into(),
+            (0, m) => format!("+{m} min"),
+            (h, 0) => format!("+{h} h"),
+            (h, m) => format!("+{h} h {m}"),
+        }
+    }
+
+    // ── Models, air, normals ───────────────────────────────────────────
+
+    pub fn models_agree(self, percent: u8, models: usize) -> String {
+        match self {
+            Lang::En => format!("Models agree {percent}% · {models} models"),
+            Lang::Fr => format!("Accord des modèles {percent} % · {models} modèles"),
+        }
+    }
+
+    /// European AQI levels.
+    pub fn aqi_level(self, aqi: f64) -> &'static str {
+        match aqi {
+            a if a < 20.0 => self.pick("Good", "Bon"),
+            a if a < 40.0 => self.pick("Fair", "Correct"),
+            a if a < 60.0 => self.pick("Moderate", "Moyen"),
+            a if a < 80.0 => self.pick("Poor", "Mauvais"),
+            a if a < 100.0 => self.pick("Very poor", "Très mauvais"),
+            _ => self.pick("Extremely poor", "Extrêmement mauvais"),
+        }
+    }
+    pub fn pollen_name(self, kind: &str) -> &'static str {
+        match kind {
+            "alder" => self.pick("Alder", "Aulne"),
+            "birch" => self.pick("Birch", "Bouleau"),
+            "grass" => self.pick("Grass", "Graminées"),
+            "mugwort" => self.pick("Mugwort", "Armoise"),
+            "olive" => self.pick("Olive", "Olivier"),
+            _ => self.pick("Ragweed", "Ambroisie"),
+        }
+    }
+    /// 0 low, 1 moderate, 2 high, 3 very high.
+    pub fn pollen_level(self, level: usize) -> &'static str {
+        match level {
+            0 => self.pick("Low", "Faible"),
+            1 => self.pick("Moderate", "Modéré"),
+            2 => self.pick("High", "Élevé"),
+            _ => self.pick("Very high", "Très élevé"),
+        }
+    }
+    pub fn no_pollen(self) -> &'static str {
+        self.pick("No pollen right now", "Pas de pollen en ce moment")
+    }
+    pub fn not_here(self) -> &'static str {
+        self.pick("Not available here", "Non disponible ici")
+    }
+    /// "3° warmer than usual for the date", from a signed difference.
+    pub fn vs_normal(self, diff_c: f64, delta: &str) -> String {
+        let d = delta.trim_start_matches(['+', '-']);
+        match (self, diff_c) {
+            (_, x) if x.abs() < 1.0 => self.pick("Normal for the date", "Normal pour la saison").into(),
+            (Lang::En, x) if x > 0.0 => format!("{d} warmer than usual"),
+            (Lang::En, _) => format!("{d} colder than usual"),
+            (Lang::Fr, x) if x > 0.0 => format!("{d} de plus que la normale"),
+            (Lang::Fr, _) => format!("{d} de moins que la normale"),
+        }
+    }
+
     // ── App messages ───────────────────────────────────────────────────
 
     pub fn loading(self) -> &'static str {
@@ -249,6 +347,23 @@ impl Lang {
             done: self.pick("Done", "OK"),
             use_location: self.pick("Use my location", "Utiliser ma position"),
             saved_cities: self.pick("Saved cities", "Villes enregistrées"),
+            next_hours: self.pick("Next 2 hours", "2 prochaines heures"),
+            air_quality: self.pick("Air quality", "Qualité de l’air"),
+            pollen: self.pick("Pollen", "Pollens"),
+            settings: self.pick("Settings", "Réglages"),
+            units: self.pick("Units", "Unités"),
+            metric: self.pick("Metric (°C, km/h)", "Métrique (°C, km/h)"),
+            imperial: self.pick("Imperial (°F, mph)", "Impériales (°F, mph)"),
+            colors: self.pick("Colours", "Couleurs"),
+            colors_weather: self.pick("From the weather", "Selon la météo"),
+            colors_wallpaper: self.pick("From the wallpaper", "Selon le fond d’écran"),
+            language: self.pick("Language", "Langue"),
+            language_system: self.pick("Phone’s language", "Langue du téléphone"),
+            notifications: self.pick("Notifications", "Notifications"),
+            morning_summary: self.pick("Morning summary", "Résumé du matin"),
+            morning_summary_help: self.pick("The day’s weather around 7:30", "La météo du jour vers 7 h 30"),
+            rain_alerts: self.pick("Rain alerts", "Alertes pluie"),
+            rain_alerts_help: self.pick("When rain is about to start", "Quand la pluie va commencer"),
         }
     }
 }
@@ -273,6 +388,23 @@ pub struct Labels {
     pub done: &'static str,
     pub use_location: &'static str,
     pub saved_cities: &'static str,
+    pub next_hours: &'static str,
+    pub air_quality: &'static str,
+    pub pollen: &'static str,
+    pub settings: &'static str,
+    pub units: &'static str,
+    pub metric: &'static str,
+    pub imperial: &'static str,
+    pub colors: &'static str,
+    pub colors_weather: &'static str,
+    pub colors_wallpaper: &'static str,
+    pub language: &'static str,
+    pub language_system: &'static str,
+    pub notifications: &'static str,
+    pub morning_summary: &'static str,
+    pub morning_summary_help: &'static str,
+    pub rain_alerts: &'static str,
+    pub rain_alerts_help: &'static str,
 }
 
 #[cfg(test)]

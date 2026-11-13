@@ -1,18 +1,20 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use meteo_core::{
-    Lang, Location, MainScreen, Places, Settings, Source, cache, fetch_forecast, search_cities, unix_now,
+    ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units,
+    cache, extras, search_cities, unix_now,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
 mod animation;
+mod theme;
 
 #[cfg(target_os = "android")]
 mod android;
@@ -38,11 +40,13 @@ fn data_dir() -> Option<PathBuf> {
     Some(home.join(".cache/meteo"))
 }
 
-/// The language of the UI, detected at startup.
-static LANG: OnceLock<Lang> = OnceLock::new();
+/// The phone's language, detected once.
+static SYSTEM_LANG: OnceLock<Lang> = OnceLock::new();
+/// The UI's language: the phone's or the one chosen in the settings.
+static CURRENT_LANG: AtomicU8 = AtomicU8::new(0);
 
-fn lang() -> Lang {
-    *LANG.get_or_init(|| {
+fn system_lang() -> Lang {
+    *SYSTEM_LANG.get_or_init(|| {
         #[cfg(target_os = "android")]
         if let Some(code) = ANDROID_APP.get().and_then(android::language) {
             return Lang::from_code(&code);
@@ -51,6 +55,15 @@ fn lang() -> Lang {
         let code = std::env::var("METEO_LANG").or_else(|_| std::env::var("LANG")).unwrap_or_default();
         Lang::from_code(&code)
     })
+}
+
+fn lang() -> Lang {
+    if CURRENT_LANG.load(Ordering::Relaxed) == 1 { Lang::Fr } else { Lang::En }
+}
+
+fn set_lang(settings: &Settings) {
+    let l = settings.lang(system_lang());
+    CURRENT_LANG.store(u8::from(l == Lang::Fr), Ordering::Relaxed);
 }
 
 /// No forecast on screen yet.
@@ -74,6 +87,8 @@ struct App {
     search_gen: Arc<AtomicU64>,
     /// The last search results, as places `add_city` can save.
     results: Arc<Mutex<Vec<Location>>>,
+    /// The forecast on screen, to redraw it when a setting changes.
+    shown: RefCell<Option<Forecast>>,
 }
 
 /// Builds the window, shows the selected city and runs the event loop.
@@ -93,10 +108,18 @@ pub fn run() -> Result<(), slint::PlatformError> {
         fetch_gen: Arc::default(),
         search_gen: Arc::default(),
         results: Arc::default(),
+        shown: RefCell::new(None),
     });
     APP.with(|a| a.set(app.clone()).ok());
+    set_lang(&app.settings.borrow());
     animation::start(&ui);
     ui.set_labels(ui_labels(&lang().labels()));
+    app.update_settings_ui();
+    // "Updated 3 min ago" keeps counting while the app is open.
+    UPDATED_TIMER.with(|t| {
+        let app = app.clone();
+        t.start(slint::TimerMode::Repeated, Duration::from_secs(30), move || app.update_updated());
+    });
     ui.set_can_locate(can_locate());
     app.show_selected();
     // Following the device: update the position quietly at startup if
@@ -142,10 +165,120 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let app = app.clone();
         move |text| app.search(text.to_string())
     });
+    ui.on_set_units({
+        let app = app.clone();
+        move |i| app.change_settings(|s| s.units = if i == 1 { Units::Imperial } else { Units::Metric })
+    });
+    ui.on_set_colors({
+        let app = app.clone();
+        move |i| app.change_settings(|s| s.colors = if i == 1 { ColorMode::Wallpaper } else { ColorMode::Weather })
+    });
+    ui.on_set_language({
+        let app = app.clone();
+        move |i| {
+            app.change_settings(|s| {
+                s.language = match i {
+                    1 => LanguageChoice::English,
+                    2 => LanguageChoice::French,
+                    _ => LanguageChoice::System,
+                }
+            })
+        }
+    });
+    ui.on_set_morning_summary({
+        let app = app.clone();
+        move |on| {
+            app.change_settings(|s| s.morning_summary = on);
+            if on {
+                request_notifications();
+            }
+        }
+    });
+    ui.on_set_rain_alerts({
+        let app = app.clone();
+        move |on| {
+            app.change_settings(|s| s.rain_alerts = on);
+            if on {
+                request_notifications();
+            }
+        }
+    });
     ui.run()
 }
 
+thread_local! {
+    static UPDATED_TIMER: slint::Timer = slint::Timer::default();
+}
+
+/// Asks for permission to post notifications (Android 13+).
+fn request_notifications() {
+    #[cfg(target_os = "android")]
+    if let Some(app) = ANDROID_APP.get() {
+        let app = app.clone();
+        std::thread::spawn(move || android::request_notification_permission(&app));
+    }
+}
+
 impl App {
+    /// Applies a change to the settings, saves them, and redraws.
+    fn change_settings(&self, change: impl FnOnce(&mut Settings)) {
+        change(&mut self.settings.borrow_mut());
+        if let Some(dir) = &self.dir {
+            if let Err(e) = self.settings.borrow().save(dir) {
+                eprintln!("couldn't save settings: {e}");
+            }
+        }
+        set_lang(&self.settings.borrow());
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_labels(ui_labels(&lang().labels()));
+        }
+        self.update_settings_ui();
+        self.update_source_list();
+        self.render();
+    }
+
+    fn update_settings_ui(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let s = self.settings.borrow();
+        ui.set_units_index(i32::from(s.units == Units::Imperial));
+        ui.set_colors_index(i32::from(s.colors == ColorMode::Wallpaper));
+        ui.set_language_index(match s.language {
+            LanguageChoice::System => 0,
+            LanguageChoice::English => 1,
+            LanguageChoice::French => 2,
+        });
+        ui.set_morning_summary(s.morning_summary);
+        ui.set_rain_alerts(s.rain_alerts);
+        ui.set_can_use_wallpaper(cfg!(target_os = "android"));
+    }
+
+    /// Draws the forecast on screen again (after a setting changed).
+    fn render(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let settings = self.settings.borrow();
+        if let Some(f) = self.shown.borrow().as_ref() {
+            apply(&ui, &MainScreen::from_forecast(f, lang(), settings.units), settings.colors);
+        }
+        drop(settings);
+        self.update_updated();
+    }
+
+    /// "Updated 3 min ago", from when the forecast on screen was downloaded.
+    fn update_updated(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        match self.shown_at.load(Ordering::Relaxed) {
+            NOTHING_SHOWN => {}
+            t => ui.set_updated(lang().updated_ago(unix_now() - t).into()),
+        }
+    }
+
+    /// Shows a forecast (from the cache or just downloaded).
+    fn show(&self, forecast: Forecast, fetched_at: i64) {
+        *self.shown.borrow_mut() = Some(forecast);
+        self.shown_at.store(fetched_at, Ordering::Relaxed);
+        self.render();
+    }
+
     /// Applies a change to the saved cities, saves them, and switches the
     /// screen if the selected city changed.
     fn change_places(&self, change: impl FnOnce(&mut Places)) {
@@ -202,12 +335,11 @@ impl App {
         self.shown_at.store(NOTHING_SHOWN, Ordering::Relaxed);
         ui.set_open_day(0); // Today open, also after switching city
         match self.dir.as_deref().and_then(|d| cache::load(d, &city, source, unix_now())) {
-            Some(cached) => {
-                apply(&ui, &MainScreen::from_forecast(&cached.forecast, lang()));
-                ui.set_updated(lang().updated_ago(unix_now() - cached.fetched_at).into());
-                self.shown_at.store(cached.fetched_at, Ordering::Relaxed);
+            Some(cached) => self.show(cached.forecast, cached.fetched_at),
+            None => {
+                *self.shown.borrow_mut() = None;
+                show_loading(&ui, &city);
             }
-            None => show_loading(&ui, &city),
         }
         self.update_city_list();
         self.update_source_list();
@@ -238,7 +370,8 @@ impl App {
             self.fetch_gen.clone(),
         );
         std::thread::spawn(move || {
-            let result = block_on(fetch_forecast(&city, source));
+            // The forecast, with several models, air quality and normals.
+            let result = block_on(extras::download(dir.as_deref(), &city, source));
             let fetched_at = unix_now();
             if let (Ok(forecast), Some(dir)) = (&result, &dir) {
                 if let Err(e) = cache::save(dir, &city, source, forecast, fetched_at) {
@@ -256,15 +389,21 @@ impl App {
                 }
                 match result {
                     Ok(forecast) => {
-                        apply(&ui, &MainScreen::from_forecast(&forecast, lang()));
-                        ui.set_updated(lang().updated_ago(0).into());
                         ui.set_status(SharedString::new());
-                        shown_at.store(fetched_at, Ordering::Relaxed);
+                        ui.set_refreshing(false);
+                        APP.with(|a| {
+                            if let Some(app) = a.get() {
+                                app.show(forecast, fetched_at);
+                            }
+                        });
                     }
-                    Err(e) => match shown_at.load(Ordering::Relaxed) {
-                        NOTHING_SHOWN => ui.set_error(lang().load_failed(&e.to_string()).into()),
-                        t => ui.set_status(lang().offline(unix_now() - t).into()),
-                    },
+                    Err(e) => {
+                        ui.set_refreshing(false);
+                        match shown_at.load(Ordering::Relaxed) {
+                            NOTHING_SHOWN => ui.set_error(lang().load_failed(&e.to_string()).into()),
+                            t => ui.set_status(lang().offline(unix_now() - t).into()),
+                        }
+                    }
                 }
             });
         });
@@ -400,8 +539,31 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     ui.set_days(ModelRc::default());
 }
 
-fn apply(ui: &MainWindow, s: &MainScreen) {
+fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     animation::set_weather(s.scene);
+    ui.set_vs_normal(s.vs_normal.as_str().into());
+    ui.set_nowcast(Nowcast {
+        summary: s.nowcast.summary.as_str().into(),
+        wet: s.nowcast.wet,
+        bars: ModelRc::from(Rc::new(VecModel::from(
+            s.nowcast
+                .bars
+                .iter()
+                .map(|b| NowBar { label: b.label.as_str().into(), height: b.height as f32, wet: b.wet })
+                .collect::<Vec<_>>(),
+        ))),
+    });
+    let a = &s.air;
+    ui.set_air(AirInfo {
+        aqi: a.aqi.as_str().into(),
+        aqi_level: a.aqi_level.as_str().into(),
+        aqi_position: a.aqi_position as f32,
+        aqi_known: a.aqi_known,
+        pollen: a.pollen.as_str().into(),
+        pollen_level: a.pollen_level.as_str().into(),
+        pollen_position: a.pollen_position as f32,
+        pollen_known: a.pollen_known,
+    });
     ui.set_error(SharedString::new());
     ui.set_city(s.city.as_str().into());
     ui.set_temperature(s.temperature.as_str().into());
@@ -426,10 +588,24 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
         }
     };
     let (palette, land, icon) = match &forced {
-        Some((p, l, i)) => (p, l, *i),
-        None => (&s.palette, &s.landscape, s.icon_kind.as_str()),
+        Some((p, l, i)) => (*p, l.clone(), *i),
+        None => (s.palette, s.landscape.clone(), s.icon_kind.as_str()),
     };
-    ui.set_theme(ui_theme(palette));
+    // Colours from the wallpaper instead: Material You roles, with the hills
+    // redone in those tones.
+    let (palette, land) = match colors {
+        ColorMode::Wallpaper => {
+            let p = wallpaper_palette(&palette);
+            let mut land = land;
+            for (layer, color) in land.layers.iter_mut().zip(p.hills()) {
+                layer.color = color;
+            }
+            land.ground = p.hills()[3];
+            (p, land)
+        }
+        ColorMode::Weather => (palette, land),
+    };
+    ui.set_theme(ui_theme(&palette));
     ui.set_icon_kind(icon.into());
     ui.set_ground(rgb(land.ground));
     let layers: Vec<LandLayer> = land
@@ -459,6 +635,8 @@ fn apply(ui: &MainWindow, s: &MainScreen) {
             chart_height: d.chart.height as f32,
             line_path: d.chart.line.as_str().into(),
             area_path: d.chart.area.as_str().into(),
+            band_path: d.chart.band.as_str().into(),
+            agreement: d.agreement.as_str().into(),
             hours: ModelRc::from(Rc::new(VecModel::from(
                 d.hours
                     .iter()
@@ -527,6 +705,44 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         done: l.done.into(),
         use_location: l.use_location.into(),
         saved_cities: l.saved_cities.into(),
+        next_hours: l.next_hours.into(),
+        air_quality: l.air_quality.into(),
+        pollen: l.pollen.into(),
+        settings: l.settings.into(),
+        units: l.units.into(),
+        metric: l.metric.into(),
+        imperial: l.imperial.into(),
+        colors: l.colors.into(),
+        colors_weather: l.colors_weather.into(),
+        colors_wallpaper: l.colors_wallpaper.into(),
+        language: l.language.into(),
+        language_system: l.language_system.into(),
+        notifications: l.notifications.into(),
+        morning_summary: l.morning_summary.into(),
+        morning_summary_help: l.morning_summary_help.into(),
+        rain_alerts: l.rain_alerts.into(),
+        rain_alerts_help: l.rain_alerts_help.into(),
+    }
+}
+
+/// Material You's roles (from the wallpaper) as a palette; rain/snow and
+/// clouds keep the weather's light or dark look.
+fn wallpaper_palette(weather: &Palette) -> Palette {
+    static SCHEME: OnceLock<theme::Scheme> = OnceLock::new();
+    let t = SCHEME.get_or_init(theme::system);
+    let dark = (t.surface >> 16 & 0xFF) + (t.surface >> 8 & 0xFF) + (t.surface & 0xFF) < 3 * 128;
+    Palette {
+        top: t.primary_container,
+        bottom: t.surface,
+        card: t.surface_container,
+        card_strong: t.surface_container_high,
+        ink: t.on_surface,
+        ink_soft: t.on_surface_variant,
+        accent: t.primary,
+        on_accent: t.on_primary,
+        particle: if dark { 0xFFFFFF } else { t.primary },
+        cloud: if dark { weather.cloud } else { t.surface_container },
+        dark,
     }
 }
 

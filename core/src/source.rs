@@ -10,6 +10,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
+use crate::units::Units;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -100,6 +101,50 @@ impl Source {
 pub struct Settings {
     #[serde(default)]
     pub source: Source,
+    #[serde(default)]
+    pub units: Units,
+    #[serde(default)]
+    pub colors: ColorMode,
+    #[serde(default)]
+    pub language: LanguageChoice,
+    /// Notifications: a summary each morning, and a warning when rain is
+    /// about to start. Off until the user turns them on.
+    #[serde(default)]
+    pub morning_summary: bool,
+    #[serde(default)]
+    pub rain_alerts: bool,
+}
+
+/// Where the UI's colours come from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorMode {
+    /// From the weather (palette.rs).
+    #[default]
+    Weather,
+    /// Material You, from the wallpaper (Android 12+).
+    Wallpaper,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageChoice {
+    /// Follow the phone.
+    #[default]
+    System,
+    English,
+    French,
+}
+
+impl Settings {
+    /// The language to use, given the phone's.
+    pub fn lang(&self, system: Lang) -> Lang {
+        match self.language {
+            LanguageChoice::System => system,
+            LanguageChoice::English => Lang::En,
+            LanguageChoice::French => Lang::Fr,
+        }
+    }
 }
 
 const FILE_NAME: &str = "settings.json";
@@ -127,7 +172,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("meteo-settings-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(Settings::load(&dir).source, Source::BestMatch);
-        Settings { source: Source::MeteoFrance }.save(&dir).unwrap();
+        Settings { source: Source::MeteoFrance, ..Settings::default() }.save(&dir).unwrap();
         assert_eq!(Settings::load(&dir).source, Source::MeteoFrance);
         std::fs::remove_dir_all(&dir).unwrap();
     }

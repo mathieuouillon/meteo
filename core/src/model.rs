@@ -48,6 +48,23 @@ pub struct Forecast {
     pub hours: Vec<Hour>,
     /// Today and the following days (7 in total).
     pub days: Vec<Day>,
+    /// Rain in 15-minute steps over the next 2 hours.
+    #[serde(default)]
+    pub nowcast: Vec<Quarter>,
+    /// Several models' hourly temperatures and rain (extras.rs).
+    #[serde(default)]
+    pub spread: Vec<crate::extras::Spread>,
+    #[serde(default)]
+    pub air: Option<crate::extras::Air>,
+}
+
+/// Rain during one 15-minute step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Quarter {
+    /// Local time the step starts, "2026-11-13T09:15".
+    pub time: String,
+    /// mm in those 15 minutes.
+    pub precipitation: f64,
 }
 
 impl Forecast {
@@ -58,6 +75,11 @@ impl Forecast {
         let now = crate::date::local_iso_minute(unix_now, self.utc_offset_seconds);
         let (this_hour, today) = (&now[..13], &now[..10]);
 
+        // Keep 15-minute steps from the current quarter hour ("…T09:30") on.
+        let minute: u32 = now.get(14..16).and_then(|m| m.parse().ok()).unwrap_or(0);
+        let quarter = format!("{}{:02}", &now[..14], minute / 15 * 15);
+        self.nowcast.retain(|q| q.time >= quarter);
+        self.spread.retain(|s| s.time.get(..13).is_some_and(|t| t >= this_hour));
         self.hours.retain(|h| h.time.get(..13).is_some_and(|t| t >= this_hour));
         for (i, h) in self.hours.iter_mut().enumerate() {
             h.label = if i == 0 {
@@ -103,6 +125,9 @@ pub struct Current {
     pub pressure: Option<f64>,
     #[serde(default)]
     pub uv_index: Option<f64>,
+    /// Rain in the last 15 minutes, mm.
+    #[serde(default)]
+    pub precipitation: Option<f64>,
     pub condition: Condition,
     pub is_day: bool,
 }
@@ -146,5 +171,10 @@ pub struct Day {
     pub sunrise: Option<String>,
     #[serde(default)]
     pub sunset: Option<String>,
+    /// The 1991–2020 average high and low for this date (extras.rs).
+    #[serde(default)]
+    pub normal_max: Option<f64>,
+    #[serde(default)]
+    pub normal_min: Option<f64>,
     pub condition: Condition,
 }

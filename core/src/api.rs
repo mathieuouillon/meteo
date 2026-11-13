@@ -30,9 +30,10 @@ pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forec
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\
          ?latitude={}&longitude={}\
-         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,uv_index\
+         &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,uv_index,precipitation\
          &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day\
          &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset\
+         &minutely_15=precipitation&forecast_minutely_15=8\
          &timezone=auto&forecast_days={}&models={}",
         location.latitude,
         location.longitude,
@@ -126,11 +127,28 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                 hours: day_hours,
                 sunrise: d.sunrise.get(i).cloned().flatten(),
                 sunset: d.sunset.get(i).cloned().flatten(),
+                normal_max: None,
+                normal_min: None,
                 date,
             })
         })
         .collect();
     let today = days.first().ok_or(Error::MissingData)?;
+
+    // Rain in 15-minute steps from the current one on (some models have none).
+    let nowcast = raw
+        .minutely_15
+        .as_ref()
+        .map(|m| {
+            let current_quarter = c.time.get(..16).unwrap_or("");
+            m.time
+                .iter()
+                .zip(&m.precipitation)
+                .filter(|(t, _)| t.as_str() >= current_quarter || current_quarter.is_empty())
+                .filter_map(|(t, p)| Some(crate::model::Quarter { time: t.clone(), precipitation: (*p)? }))
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(Forecast {
         location: location_name.to_owned(),
@@ -148,11 +166,15 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
             dew_point: c.dew_point_2m,
             pressure: c.pressure_msl,
             uv_index: c.uv_index,
+            precipitation: c.precipitation,
         },
         today_min: today.min,
         today_max: today.max,
         hours,
         days,
+        nowcast,
+        spread: Vec::new(),
+        air: None,
     })
 }
 
@@ -161,6 +183,8 @@ struct RawResponse {
     #[serde(default)]
     utc_offset_seconds: i64,
     current: RawCurrent,
+    #[serde(default)]
+    minutely_15: Option<RawMinutely>,
     hourly: RawHourly,
     daily: RawDaily,
 }
@@ -184,6 +208,15 @@ struct RawCurrent {
     pressure_msl: Option<f64>,
     #[serde(default)]
     uv_index: Option<f64>,
+    #[serde(default)]
+    precipitation: Option<f64>,
+}
+
+#[derive(Deserialize)]
+struct RawMinutely {
+    time: Vec<String>,
+    #[serde(default)]
+    precipitation: Vec<Option<f64>>,
 }
 
 /// The value at `i`, if present and not null.
@@ -298,6 +331,12 @@ mod tests {
         assert_eq!(f.hours.len(), HOURS_KEPT);
         assert_eq!(f.days.len(), DAYS_SHOWN);
         // A shorter-range model still parses, with fewer days.
+        // With the extras: several models, air quality, 15-minute rain.
+        let dir = std::env::temp_dir().join(format!("meteo-live-{}", std::process::id()));
+        let all = crate::extras::download(Some(&dir), &Location::paris(), Source::BestMatch).await.unwrap();
+        assert!(all.spread.len() > 100 && all.air.is_some() && all.nowcast.len() == 8);
+        assert!(all.days[0].normal_max.is_some(), "normals downloaded and attached");
+        let _ = std::fs::remove_dir_all(&dir);
         let mf = fetch_forecast(&Location::paris(), Source::MeteoFrance).await.unwrap();
         assert!((3..=DAYS_SHOWN).contains(&mf.days.len()));
     }

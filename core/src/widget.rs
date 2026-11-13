@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::api::{Error, fetch_forecast};
+use crate::api::Error;
 use crate::cache::{self, unix_now};
 use crate::places::Places;
 use crate::source::Settings;
@@ -66,7 +66,9 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
         return WidgetState { needs_refresh: true, view: None };
     };
     let age = unix_now - cached.fetched_at;
-    let s = MainScreen::from_forecast(&cached.forecast, lang);
+    let settings = Settings::load(dir);
+    let lang = settings.lang(lang);
+    let s = MainScreen::from_forecast(&cached.forecast, lang, settings.units);
     WidgetState {
         needs_refresh: age > MAX_AGE_SECS,
         view: Some(WidgetView {
@@ -100,7 +102,7 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
 pub async fn refresh_selected(dir: &Path) -> Result<(), Error> {
     let city = Places::load(dir).selected().clone();
     let source = Settings::load(dir).source;
-    let forecast = fetch_forecast(&city, source).await?;
+    let forecast = crate::extras::download(Some(dir), &city, source).await?;
     cache::save(dir, &city, source, &forecast, unix_now()).map_err(Error::Cache)
 }
 
