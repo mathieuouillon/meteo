@@ -13,12 +13,12 @@ use jni::objects::{JObject, JString, JValue};
 use jni::{JNIEnv, JavaVM};
 use slint::android::AndroidApp;
 
-const PERMISSIONS: [&str; 2] = [
-    "android.permission.ACCESS_COARSE_LOCATION",
-    "android.permission.ACCESS_FINE_LOCATION",
-];
-/// Most precise first. "fused" exists from Android 12; unknown providers are skipped.
-const PROVIDERS: [&str; 3] = ["fused", "gps", "network"];
+/// Approximate location is plenty for the weather (and what Android's
+/// guidelines ask an app like this to request).
+const PERMISSIONS: [&str; 1] = ["android.permission.ACCESS_COARSE_LOCATION"];
+/// Providers that work with approximate location. "fused" exists from
+/// Android 12; unknown providers are skipped.
+const PROVIDERS: [&str; 2] = ["fused", "network"];
 /// A last known position this recent is used straight away.
 const FRESH_ENOUGH: Duration = Duration::from_secs(15 * 60);
 
@@ -363,6 +363,24 @@ fn heading_from_rotation_vector(x: f32, y: f32, z: f32) -> f32 {
     let r1 = 2.0 * (x * y - z * w);
     let r4 = 1.0 - 2.0 * (x * x + z * z);
     (r1.atan2(r4).to_degrees() + 360.0) % 360.0
+}
+
+/// Opens `url` in the browser (an ACTION_VIEW intent).
+pub fn open_url(app: &AndroidApp, url: &str) {
+    let _ = with_activity(app, |env, activity| {
+        let s = env.new_string(url)?;
+        let uri = env
+            .call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&s)])?
+            .l()?;
+        let action = env.new_string("android.intent.action.VIEW")?;
+        let intent = env.new_object(
+            "android/content/Intent",
+            "(Ljava/lang/String;Landroid/net/Uri;)V",
+            &[JValue::Object(&action), JValue::Object(&uri)],
+        )?;
+        env.call_method(activity, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+        Ok(())
+    });
 }
 
 /// Asks the Kotlin side to run the notification check now

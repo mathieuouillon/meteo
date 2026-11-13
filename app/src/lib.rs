@@ -156,6 +156,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let app = app.clone();
         move || app.refresh()
     });
+    ui.on_open_url(|url| open_url(&url));
     ui.on_select_city({
         let app = app.clone();
         move |i| app.change_places(|p| p.select(i as usize))
@@ -224,6 +225,18 @@ pub fn run() -> Result<(), slint::PlatformError> {
         }
     });
     ui.run()
+}
+
+/// Opens a web page in the phone's browser (the desktop's on the desktop).
+fn open_url(url: &str) {
+    #[cfg(target_os = "android")]
+    if let Some(app) = ANDROID_APP.get() {
+        android::open_url(app, url);
+    }
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 thread_local! {
@@ -518,6 +531,10 @@ fn device_location(quiet: bool) -> Result<Location, String> {
     }
     let (lat, lon) = loc::current_position(app, Duration::from_secs(15))
         .ok_or(lang().no_fix())?;
+    // About 1 km is plenty for the weather, and that's all that leaves the
+    // phone (see docs/privacy-policy.md).
+    let round = |x: f64| (x * 100.0).round() / 100.0;
+    let (lat, lon) = (round(lat), round(lon));
     let (name, detail) = loc::place_name(app, lat, lon).unwrap_or_else(|| (lang().my_location().into(), String::new()));
     Ok(Location::new(name, detail, lat, lon))
 }
@@ -727,6 +744,7 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         uv_index: l.uv_index.into(),
         pressure: l.pressure.into(),
         refresh: l.refresh.into(),
+        data_credit: l.data_credit.into(),
         data_source: l.data_source.into(),
         data_source_help: l.data_source_help.into(),
         search: l.search.into(),

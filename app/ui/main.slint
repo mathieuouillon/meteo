@@ -44,6 +44,7 @@ export struct Labels {
     uv-index: string,
     pressure: string,
     refresh: string,
+    data-credit: string,
     data-source: string,
     data-source-help: string,
     search: string,
@@ -272,7 +273,12 @@ component TonalButton inherits Rectangle {
     background: touch.pressed ? root.theme.secondary-container.darker(8%) : root.theme.secondary-container;
     in property <length> font-size: 16px;
     Text { text: root.text; color: root.theme.on-secondary-container; font-size: root.font-size; font-weight: 500; }
-    touch := TouchArea { clicked => { root.clicked(); } }
+    // At least 48px to tap (Material), however small it's drawn.
+    touch := TouchArea {
+        y: min(0px, (root.height - 48px) / 2);
+        height: max(root.height, 48px);
+        clicked => { root.clicked(); }
+    }
 }
 
 /// One line of the details list: an icon, what it is with a short
@@ -664,7 +670,8 @@ component Segmented inherits Rectangle {
                 horizontal-alignment: center;
                 overflow: elide;
             }
-            option-touch := TouchArea { clicked => { root.chosen(i); } }
+            // Reaches past the outline so the target is 48px tall.
+            option-touch := TouchArea { y: -5px; height: parent.height + 10px; clicked => { root.chosen(i); } }
         }
     }
 }
@@ -834,7 +841,7 @@ component CityRow inherits Rectangle {
         }
         if root.city.selected: Text { text: "✓"; color: root.theme.primary; font-size: 18px; font-weight: 600; vertical-alignment: center; }
         if root.removable: Rectangle {
-            width: 44px;
+            width: 48px;
             // Drawn rather than a "✕" glyph, which Android's font lacks.
             Path {
                 width: 12px; height: 12px;
@@ -882,6 +889,16 @@ component CityPicker inherits Rectangle {
                 background: root.theme.surface-container-high;
                 border-width: input.has-focus ? 2px : 0px;
                 border-color: root.theme.primary;
+                // Back while typing closes the picker too (keys go to the
+                // focused field first, then up to here).
+                FocusScope {
+                    key-pressed(e) => {
+                        if (e.text == Key.Back || e.text == Key.Escape) {
+                            root.close();
+                            return accept;
+                        }
+                        return reject;
+                    }
                 input := TextInput {
                     x: 22px;
                     width: parent.width - 44px;
@@ -891,6 +908,7 @@ component CityPicker inherits Rectangle {
                     single-line: true;
                     selection-background-color: root.theme.primary-container;
                     edited => { root.search(self.text); }
+                }
                 }
                 if input.text == "": Text {
                     x: 22px;
@@ -1007,6 +1025,32 @@ component SourcePicker inherits Rectangle {
 export component MainWindow inherits Window {
     title: "Météo";
     default-font-family: "Lexend";
+    // Back (Android's gesture or button; Escape on the desktop) closes what's
+    // open, one layer at a time; with nothing open it leaves the app.
+    forward-focus: back-keys;
+    back-keys := FocusScope {
+        key-pressed(e) => {
+            if (e.text != Key.Back && e.text != Key.Escape) {
+                return reject;
+            }
+            if (root.source-open) {
+                root.source-open = false;
+            } else if (root.picker-open) {
+                root.picker-open = false;
+            } else if (root.settings-open) {
+                root.settings-open = false;
+            } else {
+                return reject;
+            }
+            return accept;
+        }
+    }
+    // The city search field takes the focus; give it back when it closes.
+    changed picker-open => {
+        if (!self.picker-open) {
+            back-keys.focus();
+        }
+    }
     preferred-width: 400px;
     preferred-height: 820px;
 
@@ -1082,6 +1126,7 @@ export component MainWindow inherits Window {
     in property <[FogItem]> fog;
 
     callback refresh();
+    callback open-url(string);
     callback locate();
     callback search(string);
     callback add-city(int);
@@ -1235,12 +1280,13 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
-                            city-touch := TouchArea { clicked => { root.picker-open = true; } }
+                            // 48px tall to tap; the pill is drawn at 36px.
+                            city-touch := TouchArea { y: -6px; height: parent.height + 12px; clicked => { root.picker-open = true; } }
                         }
                         Rectangle { horizontal-stretch: 1; }
                         // Settings: a "tune" icon (two sliders).
                         Rectangle {
-                            width: 44px; height: 36px;
+                            width: 48px; height: 36px;
                             border-radius: 18px;
                             background: gear-touch.pressed ? root.theme.surface-container-high : transparent;
                             Path {
@@ -1252,7 +1298,7 @@ export component MainWindow inherits Window {
                                 stroke-width: 2px;
                                 stroke-line-cap: round;
                             }
-                            gear-touch := TouchArea { clicked => { root.settings-open = true; } }
+                            gear-touch := TouchArea { y: -6px; height: parent.height + 12px; clicked => { root.settings-open = true; } }
                         }
                     }
                     if root.status != "": HorizontalLayout {
@@ -1421,6 +1467,20 @@ export component MainWindow inherits Window {
                                     width: 104px; height: 36px; font-size: 14px;
                                     text: root.labels.refresh; theme: root.theme;
                                     clicked => { root.refresh(); }
+                                }
+                            }
+                            // The credit Open-Meteo's licence asks for, linking to them.
+                            Rectangle {
+                                height: 30px;
+                                Text {
+                                    text: root.labels.data-credit;
+                                    color: credit-touch.pressed ? root.theme.on-surface : root.theme.on-surface-variant;
+                                    font-size: 11px;
+                                    horizontal-alignment: center;
+                                }
+                                credit-touch := TouchArea {
+                                    y: -9px; height: parent.height + 18px;
+                                    clicked => { root.open-url("https://open-meteo.com/"); }
                                 }
                             }
                         }

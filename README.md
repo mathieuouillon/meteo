@@ -248,7 +248,8 @@ Tap the city name to open the city picker:
   result to save and show it.
 - **Saved cities** (`meteo_core::Places`) are stored in `places.json` next to the
   cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
-- **Use my location** asks for location permission, finds the device's position,
+- **Use my location** asks for approximate location permission, finds the device's
+  position (rounded to about 1 km),
   and names it with Android's `Geocoder`. It becomes a "📍" entry at
   the top of the list, refreshed each time the app opens. This is all JNI from Rust
   ([app/src/android.rs](app/src/android.rs)). A NativeActivity gets
@@ -268,6 +269,21 @@ forecast stays on screen with "Offline · updated 3 h ago".
 The files are in the app's internal files directory
 (`files/forecast-<lat>_<lon>.json`, plus the model name for sources other than Best
 match). The home-screen widget reads the same files.
+
+## Release
+
+- **On your phone:** turn on USB debugging, plug it in, then
+  `cd android && ./gradlew installRelease`.
+- **Signing:** release builds use the upload key described in
+  `android/keystore.properties` (never committed); without that file they're
+  signed with the debug key so they still install.
+- **Google Play:** `./gradlew bundleRelease`, then follow
+  [docs/play-store.md](docs/play-store.md) (listing texts, Data safety answers,
+  closed test). Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md).
+- **Guidelines met:** targets Android 16 (API 36) with the predictive back
+  gesture (back closes the settings, city or source picker, then leaves);
+  approximate location only, rounded to about 1 km; 48 dp touch targets;
+  16 KB page-aligned native libraries; R8 shrinking for the Kotlin side.
 
 ## Notes
 

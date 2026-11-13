@@ -3,3 +3,8 @@ build/
 local.properties
 .idea/
 *.iml
+
+# Release signing (your upload key): never commit.
+keystore.properties
+*.jks
+*.keystore
