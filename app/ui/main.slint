@@ -265,7 +265,8 @@ component TonalButton inherits Rectangle {
     height: 52px;
     border-radius: self.height / 2;
     background: touch.pressed ? root.theme.secondary-container.darker(8%) : root.theme.secondary-container;
-    Text { text: root.text; color: root.theme.on-secondary-container; font-size: 16px; font-weight: 500; }
+    in property <length> font-size: 16px;
+    Text { text: root.text; color: root.theme.on-secondary-container; font-size: root.font-size; font-weight: 500; }
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
@@ -1356,41 +1357,41 @@ export component MainWindow inherits Window {
 
                     // Footer: where the data comes from, and when it was updated.
                     footer-card := Rectangle {
-                        border-radius: 28px;
+                        border-radius: 22px;
                         background: root.theme.surface-container;
                         VerticalLayout {
-                            padding: 8px;
+                            padding: 4px;
                             spacing: 0px;
                             // Data source: opens the list of models.
                             Rectangle {
-                                height: 60px;
-                                border-radius: 20px;
+                                height: 48px;
+                                border-radius: 18px;
                                 background: source-touch.pressed ? root.theme.surface-container-high : transparent;
                                 HorizontalLayout {
                                     padding-left: 12px;
                                     padding-right: 12px;
                                     VerticalLayout {
                                         alignment: center;
-                                        Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 12px; }
-                                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 16px; font-weight: 500; }
+                                        Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 11px; }
+                                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 14px; font-weight: 500; }
                                     }
-                                    Text { text: "›"; color: root.theme.primary; font-size: 24px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
+                                    Text { text: "›"; color: root.theme.primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
                                 }
                                 source-touch := TouchArea { clicked => { root.source-open = true; } }
                             }
                             Rectangle { height: 1px; background: root.theme.outline-variant; }
                             // When it was updated, and refresh.
                             HorizontalLayout {
-                                padding: 12px;
-                                padding-right: 4px;
+                                padding: 4px;
+                                padding-left: 12px;
                                 spacing: 8px;
                                 Text {
                                     text: root.updated;
-                                    color: root.theme.on-surface-variant; font-size: 13px;
+                                    color: root.theme.on-surface-variant; font-size: 12px;
                                     vertical-alignment: center; overflow: elide;
                                 }
                                 TonalButton {
-                                    width: 132px; height: 44px;
+                                    width: 104px; height: 36px; font-size: 14px;
                                     text: root.labels.refresh; theme: root.theme;
                                     clicked => { root.refresh(); }
                                 }
