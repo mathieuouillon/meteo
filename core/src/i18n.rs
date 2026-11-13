@@ -364,13 +364,10 @@ impl Lang {
     pub fn labels(self) -> Labels {
         Labels {
             forecast: self.pick("7-day forecast", "Prévisions sur 7 jours"),
-            details: self.pick("Details", "Détails"),
             feels_like: self.pick("Feels like", "Ressenti"),
             humidity: self.pick("Humidity", "Humidité"),
             wind: self.pick("Wind", "Vent"),
             sun: self.pick("Sun", "Soleil"),
-            sunrise: self.pick("Sunrise", "Lever"),
-            sunset: self.pick("Sunset", "Coucher"),
             uv_index: self.pick("UV index", "Indice UV"),
             pressure: self.pick("Pressure", "Pression"),
             refresh: self.pick("Refresh", "Actualiser"),
@@ -409,13 +406,10 @@ impl Lang {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Labels {
     pub forecast: &'static str,
-    pub details: &'static str,
     pub feels_like: &'static str,
     pub humidity: &'static str,
     pub wind: &'static str,
     pub sun: &'static str,
-    pub sunrise: &'static str,
-    pub sunset: &'static str,
     pub uv_index: &'static str,
     pub pressure: &'static str,
     pub refresh: &'static str,

@@ -34,13 +34,10 @@ export struct Theme {
 /// Fixed texts, in the user's language (core/src/i18n.rs).
 export struct Labels {
     forecast: string,
-    details: string,
     feels-like: string,
     humidity: string,
     wind: string,
     sun: string,
-    sunrise: string,
-    sunset: string,
     uv-index: string,
     pressure: string,
     refresh: string,
@@ -536,6 +533,8 @@ component DayChart inherits Rectangle {
             y: 0;
             width: root.step;
             height: parent.height;
+            // Each hour drawn once and reused while the hours slide.
+            cache-rendering-hint: true;
             property <length> bar: h.rain == "" ? 3px : max(4px, h.rain-height * root.bar-max);
             // Top of what's drawn for this hour: the bar or the models' range.
             property <length> top: h.rain-range == "" ? self.bar : max(self.bar, h.range-high * root.bar-max);
@@ -1114,8 +1113,8 @@ export component MainWindow inherits Window {
     // Pull to refresh: true while a refresh started that way is running.
     in-out property <bool> refreshing;
     in property <Labels> labels: {
-        forecast: "7-day forecast", details: "Details", feels-like: "Feels like", humidity: "Humidity",
-        wind: "Wind", sun: "Sun", sunrise: "Sunrise", sunset: "Sunset", uv-index: "UV index",
+        forecast: "7-day forecast", feels-like: "Feels like", humidity: "Humidity",
+        wind: "Wind", sun: "Sun", uv-index: "UV index",
         pressure: "Pressure", refresh: "Refresh", data-source: "Data source", data-source-help: "",
         search: "Search for a city", done: "Done", use-location: "Use my location", saved-cities: "Saved cities",
     };

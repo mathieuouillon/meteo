@@ -712,13 +712,10 @@ fn ui_details(d: &meteo_core::DetailsView) -> Details {
 fn ui_labels(l: &meteo_core::Labels) -> Labels {
     Labels {
         forecast: l.forecast.into(),
-        details: l.details.into(),
         feels_like: l.feels_like.into(),
         humidity: l.humidity.into(),
         wind: l.wind.into(),
         sun: l.sun.into(),
-        sunrise: l.sunrise.into(),
-        sunset: l.sunset.into(),
         uv_index: l.uv_index.into(),
         pressure: l.pressure.into(),
         refresh: l.refresh.into(),

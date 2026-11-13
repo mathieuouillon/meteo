@@ -6,9 +6,9 @@ members = ["core", "app", "widget-ffi"]
 edition = "2024"
 version = "0.1.0"
 
-# Slint's core with one change (vendor/i-slint-core/items/flickable.rs, search
-# "Météo patch"): a one-axis Flickable only takes drags along its axis, so the
-# day chart's hours can be swiped sideways inside the vertical page. Drop this
-# when upgrading Slint if upstream does the same.
+# Slint 1.18.1 with small fixes (search "Météo patch" in vendor/): swiping the
+# day chart's hours inside the page on a real phone, and cached layers of
+# destroyed components. Drop them when upgrading Slint if upstream fixes these.
 [patch.crates-io]
 i-slint-core = { path = "vendor/i-slint-core" }
+i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }

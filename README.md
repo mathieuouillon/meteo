@@ -304,8 +304,12 @@ match). The home-screen widget reads the same files.
     drags mostly along that axis, so the page doesn't take a sideways swipe
     that drifts 8px.
 
-  It's wired in with `[patch.crates-io]` in `Cargo.toml`; re-apply or drop it
-  when upgrading Slint.
+  `vendor/i-slint-renderer-skia` (Skia renderer) has one more: `lib.rs` also
+  frees the cached layers (`cache-rendering-hint`) of a destroyed component.
+  Before, a rebuilt row of the 7-day list could show another row's image.
+
+  Both are wired in with `[patch.crates-io]` in `Cargo.toml`; re-apply or drop
+  them when upgrading Slint.
 
 - **Renderer:** the app uses Slint's Skia renderer. The default FemtoVG renderer
   drops large colour emoji.
