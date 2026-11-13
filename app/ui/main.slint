@@ -304,9 +304,8 @@ component WindCard inherits DetailCard {
     /// with real north; 0 where there's no compass sensor.
     in property <float> heading;
     VerticalLayout {
-        // Full width: the dial is above these lines, top right.
         x: 16px; y: 40px;
-        width: parent.width - 32px;
+        width: parent.width - 32px - 70px;
         height: parent.height - 52px;
         alignment: end;
         spacing: 2px;
@@ -316,9 +315,22 @@ component WindCard inherits DetailCard {
             Text { text: root.details.wind-speed; color: root.theme.on-surface; font-size: 34px; font-weight: 600; }
             Text { text: root.details.wind-unit; color: root.theme.on-surface-variant; font-size: 14px; vertical-alignment: bottom; }
         }
-        Text { text: root.details.wind-from; color: root.theme.on-surface-variant; font-size: 12px; }
-        if root.details.wind-gusts != "": Text { text: root.details.wind-gusts; color: root.theme.on-surface-variant; font-size: 12px; }
+        // Smaller type when a line is too long (French, imperial), so the
+        // unit always shows in full.
+        Text { text: root.details.wind-from; color: root.theme.on-surface-variant; font-size: root.small-size; }
+        if root.details.wind-gusts != "": Text { text: root.details.wind-gusts; color: root.theme.on-surface-variant; font-size: root.small-size; }
     }
+    // The two lines at 12px, measured off screen to pick the size above.
+    // (In a zero-sized box, so they don't widen the card.)
+    Rectangle {
+        width: 0; height: 0; visible: false;
+        from-measure := Text { text: root.details.wind-from; font-size: 12px; }
+        gusts-measure := Text { text: root.details.wind-gusts; font-size: 12px; }
+    }
+    /// The card's width, given by the row (not measured, which would loop).
+    in property <length> card-width;
+    property <length> text-width: root.card-width - 32px - 70px;
+    property <length> small-size: max(9px, min(12px, 12px * root.text-width / max(1px, max(from-measure.preferred-width, gusts-measure.preferred-width))));
     // Compass: a ring, north marked, the arrow pointing where the wind goes.
     Rectangle {
         x: parent.width - self.width - 14px;
@@ -1397,7 +1409,7 @@ export component MainWindow inherits Window {
                     // Details: two per row.
                     wind-row := HorizontalLayout {
                         spacing: 12px;
-                        WindCard { title: root.labels.wind; theme: root.theme; details: root.details; heading: root.compass-heading; }
+                        WindCard { width: self.card-width; card-width: (wind-row.width - 12px) / 2; title: root.labels.wind; theme: root.theme; details: root.details; heading: root.compass-heading; }
                         SunCard { title: root.labels.sun; theme: root.theme; details: root.details; labels: root.labels; }
                     }
                     HorizontalLayout {
