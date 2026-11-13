@@ -445,6 +445,21 @@ component DayRow inherits Rectangle {
 component DayChart inherits Rectangle {
     in property <DayItem> day;
     in property <Theme> theme;
+    /// True while a finger is moving the hours sideways. The page's vertical
+    /// scrolling pauses meanwhile: otherwise it takes the swipe over as soon
+    /// as the finger drifts 8px up or down, which a thumb almost always does.
+    out property <bool> panning;
+    property <duration> last-flick;
+    // Swipe over: no movement for a moment.
+    Timer {
+        interval: 150ms;
+        running: root.panning;
+        triggered => {
+            if (animation-tick() - root.last-flick > 250ms) {
+                root.panning = false;
+            }
+        }
+    }
     property <length> step: 56px;
     property <length> curve: root.day.chart-height * 1px;
     // Rows below the curve, only as tall as this day needs: the chance row
@@ -473,6 +488,10 @@ component DayChart inherits Rectangle {
         height: parent.height - root.head;
         content-width: root.day.chart-width * 1px;
         content-height: self.height;
+        flicked => {
+            root.last-flick = animation-tick();
+            root.panning = true;
+        }
         // Open with the hour before `first-hour` at the left edge.
         content-x: -max(0, min(root.day.first-hour - 1, root.day.hours.length - floor(self.width / root.step))) * root.step;
 
@@ -1070,6 +1089,10 @@ export component MainWindow inherits Window {
     in-out property <bool> picker-open;
     // Which day's hour-by-hour chart is open (-1: none); Today by default.
     in-out property <int> open-day: 0;
+    /// The open day's hours are being swiped (see DayChart.panning).
+    property <bool> chart-panning;
+    // A day closed mid-swipe mustn't leave the page unable to scroll.
+    changed open-day => { self.chart-panning = false; }
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
@@ -1216,6 +1239,7 @@ export component MainWindow inherits Window {
     // doesn't feed back into the window's own size constraints.
     content-flick := Flickable {
         x: 0; y: 0;
+        interactive: !root.chart-panning;
         width: root.width;
         height: root.height;
         content-width: self.width;
@@ -1392,7 +1416,10 @@ export component MainWindow inherits Window {
                                     open: root.open-day == i;
                                     clicked => { root.open-day = root.open-day == i ? -1 : i; }
                                 }
-                                if root.open-day == i: DayChart { day: d; theme: root.theme; }
+                                if root.open-day == i: DayChart {
+                                    day: d; theme: root.theme;
+                                    changed panning => { root.chart-panning = self.panning; }
+                                }
                             }
                         }
                     }
