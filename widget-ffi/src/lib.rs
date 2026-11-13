@@ -77,3 +77,42 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notifications<'l>(
     let json = serde_json::to_string(&due).unwrap_or_else(|_| "[]".into());
     env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
 }
+
+/// `external fun cities(dataDir: String): String` — the saved cities, as a
+/// JSON list of {key, name, detail}, for the launcher shortcuts.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_cities<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+) -> jstring {
+    let cities: Vec<serde_json::Value> = data_dir(&mut env, &dir)
+        .map(|d| {
+            meteo_core::Places::load(&d)
+                .cities()
+                .iter()
+                .map(|c| serde_json::json!({ "key": c.key(), "name": c.name, "detail": c.detail, "device": c.is_device }))
+                .collect()
+        })
+        .unwrap_or_default();
+    let json = serde_json::to_string(&cities).unwrap_or_else(|_| "[]".into());
+    env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
+}
+
+/// `external fun selectCity(dataDir: String, key: String): Boolean` — makes
+/// the saved city with that key the selected one (a launcher shortcut).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_selectCity<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+    key: JString<'l>,
+) -> jboolean {
+    let (Some(dir), Ok(key)) = (data_dir(&mut env, &dir), env.get_string(&key).map(String::from)) else {
+        return JNI_FALSE;
+    };
+    let mut places = meteo_core::Places::load(&dir);
+    let Some(i) = places.cities().iter().position(|c| c.key() == key) else { return JNI_FALSE };
+    places.select(i);
+    if places.save(&dir).is_ok() { JNI_TRUE } else { JNI_FALSE }
+}

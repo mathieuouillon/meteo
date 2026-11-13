@@ -29,10 +29,15 @@ class MeteoApp : Application() {
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork("meteo-notify-now", ExistingWorkPolicy.REPLACE, request)
         }
+
+        /** Rebuilds the launcher shortcuts (called from Rust when the cities change). */
+        @JvmStatic
+        fun updateShortcuts(context: Context) = Shortcuts.update(context)
     }
 
     override fun onCreate() {
         super.onCreate()
+        Shortcuts.update(this)
         val fr = resources.configuration.locales[0].language == "fr"
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(

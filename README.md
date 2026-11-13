@@ -78,6 +78,15 @@ Slint, so `scripts/gen-widget-icons.py` writes the icons as Android vector drawa
 - After every download, the app tells the widget to redraw (`notify_widgets`, a JNI
   broadcast), so switching city in the app updates the widget straight away.
 
+Also from the same Rust state:
+
+- **Quick Settings tile** (`WeatherTileService.kt`): "11° · Paris" and the
+  condition in the pull-down panel; tapping it opens the app.
+- **Launcher shortcuts** (`Shortcuts.kt`): long-press the app icon for up to 4
+  saved cities. The shortcut opens `ShortcutActivity`, which selects the city
+  through Rust (`RustBridge.selectCity`) and starts the app on it. Rust asks for
+  the list to be rebuilt whenever the cities change.
+
 Two more widgets share the same Rust state:
 
 - **Météo · Rain** (3×2): the next two hours of rain, a sentence ("Rain in 30 min") and

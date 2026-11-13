@@ -523,9 +523,21 @@ pub fn open_url(app: &AndroidApp, url: &str) {
 }
 
 /// Asks the Kotlin side to run the notification check now
-/// (`dev.meteo.app.MeteoApp.checkNow`). App classes aren't visible to
-/// `FindClass` from a native thread, so the activity's class loader loads it.
+/// (`dev.meteo.app.MeteoApp.checkNow`).
 pub fn check_notifications_now(app: &AndroidApp) {
+    call_meteo_app(app, "checkNow");
+}
+
+/// Asks the Kotlin side to rebuild the launcher shortcuts from the saved
+/// cities (`dev.meteo.app.MeteoApp.updateShortcuts`).
+pub fn update_shortcuts(app: &AndroidApp) {
+    call_meteo_app(app, "updateShortcuts");
+}
+
+/// Calls a static `(Context) -> Unit` method of `dev.meteo.app.MeteoApp`.
+/// App classes aren't visible to `FindClass` from a native thread, so the
+/// activity's class loader loads it.
+fn call_meteo_app(app: &AndroidApp, method: &str) {
     let _ = with_activity(app, |env, activity| {
         let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
         let name = env.new_string("dev.meteo.app.MeteoApp")?;
@@ -533,7 +545,7 @@ pub fn check_notifications_now(app: &AndroidApp) {
             .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
             .l()?;
         let class = jni::objects::JClass::from(class);
-        env.call_static_method(&class, "checkNow", "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
+        env.call_static_method(&class, method, "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
         Ok(())
     });
 }

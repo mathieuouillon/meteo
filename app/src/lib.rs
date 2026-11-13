@@ -354,6 +354,12 @@ impl App {
         {
             eprintln!("couldn't save cities: {e}");
         }
+        // The launcher shortcuts list the saved cities.
+        #[cfg(target_os = "android")]
+        if let Some(app) = ANDROID_APP.get() {
+            let app = app.clone();
+            std::thread::spawn(move || android::update_shortcuts(&app));
+        }
         if self.places.borrow().selected().key() != before {
             self.show_selected();
         } else {
