@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="use_location">Use my location</string>
+    <string name="add_tile">Add the Météo tile: swipe on the watch face and tap +.</string>
+</resources>

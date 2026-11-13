@@ -54,6 +54,8 @@ android {
 
     // The Rust libraries built by the cargoBuild task below.
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+    // RustBridge.kt (the JNI calls into libmeteo_widget.so), shared with the watch app.
+    sourceSets["main"].java.srcDir("../shared/kotlin")
 }
 
 dependencies {

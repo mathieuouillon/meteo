@@ -93,6 +93,20 @@ Two more widgets share the same Rust state:
   eight quarter-hour bars.
 - **Météo · Round** (1×1): the icon and temperature in a circle.
 
+## Wear OS
+
+A watch app (`android/wear`) with a tile: the city, the weather icon, the temperature,
+the condition and the day and night temperatures, refreshed every 30 minutes; tapping
+it opens the watch app. It works without the phone: the watch downloads its own
+forecast through the same Rust library as the widgets (`libmeteo_widget.so`, built
+for 64-bit and 32-bit watches), for its own approximate position once allowed on the
+watch app's screen, or the default city until then. The Kotlin bridge
+(`android/shared/kotlin`) is shared by both apps.
+
+```bash
+cd android && ./gradlew :wear:installRelease   # with a watch or Wear OS emulator connected
+```
+
 ## Notifications
 
 Two optional notifications, switched on in the settings (Android asks for permission the

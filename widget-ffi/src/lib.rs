@@ -116,3 +116,24 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_selectCity<'l>(
     places.select(i);
     if places.save(&dir).is_ok() { JNI_TRUE } else { JNI_FALSE }
 }
+
+/// `external fun setDevice(dataDir: String, name: String, latitude: Double,
+/// longitude: Double): Boolean` — the watch's own position as the selected
+/// "📍" place (rounded to about 1 km, as on the phone).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_setDevice<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+    name: JString<'l>,
+    latitude: jni::sys::jdouble,
+    longitude: jni::sys::jdouble,
+) -> jboolean {
+    let (Some(dir), Ok(name)) = (data_dir(&mut env, &dir), env.get_string(&name).map(String::from)) else {
+        return JNI_FALSE;
+    };
+    let round = |x: f64| (x * 100.0).round() / 100.0;
+    let mut places = meteo_core::Places::load(&dir);
+    places.set_device(meteo_core::Location::new(name, "", round(latitude), round(longitude)));
+    if places.save(&dir).is_ok() { JNI_TRUE } else { JNI_FALSE }
+}

@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Meteo"
 include(":app")
+include(":wear")

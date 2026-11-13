@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- For themed icons (Android 13+) and the notifications' small icon: the
+     system tints it. A shining sun over a mountain line, inside the safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF000000" android:pathData="M47,43 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M64.00,43.00 L68.50,43.00 M61.07,50.07 L64.25,53.25 M54.00,53.00 L54.00,57.50 M46.93,50.07 L43.75,53.25 M44.00,43.00 L39.50,43.00 M46.93,35.93 L43.75,32.75 M54.00,33.00 L54.00,28.50 M61.07,35.93 L64.25,32.75" />
+    <path android:fillColor="#FF000000"
+        android:pathData="M24,74 L36,64 L44,68 L54,59 L63,67 L71,62 L84,72 L84,78 L24,78 Z" />
+</vector>

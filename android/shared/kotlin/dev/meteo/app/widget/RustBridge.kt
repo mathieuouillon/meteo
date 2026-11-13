@@ -26,6 +26,9 @@ object RustBridge {
 
     /** Selects the saved city with that key; false if there's none. */
     external fun selectCity(dataDir: String, key: String): Boolean
+
+    /** The device's own position as the selected "📍" place (the watch). */
+    external fun setDevice(dataDir: String, name: String, latitude: Double, longitude: Double): Boolean
 }
 
 data class WidgetHour(val label: String, val iconKind: String, val temperature: String)

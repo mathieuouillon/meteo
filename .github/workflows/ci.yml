@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android, armv7-linux-androideabi
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-java@v5
         with:
@@ -58,4 +58,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: meteo-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/wear/build/outputs/apk/release/wear-release.apk
