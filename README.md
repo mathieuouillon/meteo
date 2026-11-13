@@ -100,7 +100,9 @@ the condition and the day and night temperatures, refreshed every 30 minutes; ta
 it opens the watch app. It works without the phone: the watch downloads its own
 forecast through the same Rust library as the widgets (`libmeteo_widget.so`, built
 for 64-bit and 32-bit watches), for its own approximate position once allowed on the
-watch app's screen, or the default city until then. The Kotlin bridge
+watch app's screen, or the default city until then.
+
+<img src="docs/screenshots/wear-tile.png" width="180" alt="Wear OS tile"> The Kotlin bridge
 (`android/shared/kotlin`) is shared by both apps.
 
 ```bash
