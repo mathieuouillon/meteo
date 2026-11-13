@@ -169,6 +169,9 @@ blue at night. Inspired by Gradient Weather.
 - **Weather icons** ([app/ui/icons.slint](app/ui/icons.slint)): our own line icons drawn
   as paths in one consistent style: sun, moon, partly cloudy (day and night), cloud,
   fog, drizzle, rain, snow and storm. Core picks which one to draw (`icon_kind`).
+- **Font:** [Lexend](https://github.com/googlefonts/lexend), a rounded sans-serif,
+  embedded in the app (`app/ui/fonts/`, SIL Open Font License in `OFL.txt`). The widgets
+  use the phone's font.
 - **Landscape** ([core/src/landscape.rs](core/src/landscape.rs)): mountains, hills and
   pines (each city its own skyline), drawn tone-on-tone in the palette's colours at the
   bottom of the hero. Clouds pass behind them; rain and snow fall in front.

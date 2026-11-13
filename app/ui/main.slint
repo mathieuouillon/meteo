@@ -2,6 +2,8 @@
 // landscape, with drawn line icons.
 
 import { WeatherIcon } from "icons.slint";
+// Lexend (SIL Open Font License, fonts/OFL.txt), embedded in the app.
+import "fonts/Lexend.ttf";
 //
 // All values (texts, colours, chart and landscape geometry) come ready-made
 // from Rust (meteo-core); this file only lays them out.
@@ -302,8 +304,9 @@ component WindCard inherits DetailCard {
     /// with real north; 0 where there's no compass sensor.
     in property <float> heading;
     VerticalLayout {
+        // Full width: the dial is above these lines, top right.
         x: 16px; y: 40px;
-        width: parent.width - 32px - 70px;
+        width: parent.width - 32px;
         height: parent.height - 52px;
         alignment: end;
         spacing: 2px;
@@ -1046,6 +1049,7 @@ component SourcePicker inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: "Météo";
+    default-font-family: "Lexend";
     preferred-width: 400px;
     preferred-height: 820px;
 
