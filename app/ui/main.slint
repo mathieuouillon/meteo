@@ -269,176 +269,90 @@ component TonalButton inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
-/// A details card: a title, then the tile's own content.
-component DetailCard inherits Rectangle {
-    in property <string> title;
+/// One line of the details list: an icon, what it is with a short
+/// explanation under it, and the value on the right.
+component DetailRow inherits Rectangle {
     in property <Theme> theme;
-    /// Height of what's under the title. Tiles with a dial or an arc keep the
-    /// default; the others take what their row's contents need.
-    in property <length> content-height: 110px;
-    height: self.content-height + 54px;
-    border-radius: 28px;
-    background: root.theme.surface-container;
-    Text {
-        x: 16px; y: 14px;
-        text: root.title;
-        color: root.theme.on-surface-variant; font-size: 13px; font-weight: 500;
-    }
-    @children
-}
-
-/// A value with an explanation under it, at the bottom of a card.
-component ValueNote inherits VerticalLayout {
-    in property <string> value;
+    in property <string> label;
     in property <string> note;
-    in property <Theme> theme;
-    in property <length> value-size: 30px;
-    spacing: 2px;
-    Text { text: root.value; color: root.theme.on-surface; font-size: root.value-size; font-weight: 600; }
-    if root.note != "": Text {
-        text: root.note; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap;
-    }
-}
-
-/// Wind: speed, where it comes from and gusts, with a compass.
-component WindCard inherits DetailCard {
-    in property <Details> details;
-    /// The phone's heading (degrees from north), so the dial stays aligned
-    /// with real north; 0 where there's no compass sensor.
+    in property <string> value;
+    /// Line icon, as path commands in a 24×24 box (see `RowIcons`).
+    in property <string> icon;
+    /// For the wind: a small compass instead of the icon. The arrow points
+    /// where the wind goes; the dial turns against the phone's heading.
+    in property <string> arrow;
     in property <float> heading;
-    VerticalLayout {
-        x: 16px; y: 40px;
-        width: parent.width - 32px - 70px;
-        height: parent.height - 52px;
-        alignment: end;
-        spacing: 2px;
-        HorizontalLayout {
-            alignment: start;
-            spacing: 4px;
-            Text { text: root.details.wind-speed; color: root.theme.on-surface; font-size: 34px; font-weight: 600; }
-            Text { text: root.details.wind-unit; color: root.theme.on-surface-variant; font-size: 14px; vertical-alignment: bottom; }
-        }
-        // Smaller type when a line is too long (French, imperial), so the
-        // unit always shows in full.
-        Text { text: root.details.wind-from; color: root.theme.on-surface-variant; font-size: root.small-size; }
-        if root.details.wind-gusts != "": Text { text: root.details.wind-gusts; color: root.theme.on-surface-variant; font-size: root.small-size; }
-    }
-    // The two lines at 12px, measured off screen to pick the size above.
-    // (In a zero-sized box, so they don't widen the card.)
-    Rectangle {
-        width: 0; height: 0; visible: false;
-        from-measure := Text { text: root.details.wind-from; font-size: 12px; }
-        gusts-measure := Text { text: root.details.wind-gusts; font-size: 12px; }
-    }
-    /// The card's width, given by the row (not measured, which would loop).
-    in property <length> card-width;
-    property <length> text-width: root.card-width - 32px - 70px;
-    property <length> small-size: max(9px, min(12px, 12px * root.text-width / max(1px, max(from-measure.preferred-width, gusts-measure.preferred-width))));
-    // Compass: a ring, north marked, the arrow pointing where the wind goes.
-    Rectangle {
-        x: parent.width - self.width - 14px;
-        y: 14px;
-        width: 64px; height: 64px;
-        border-radius: 32px;
-        border-width: 2px;
-        border-color: root.theme.outline-variant;
-        background: root.theme.surface-container-high;
-        // The dial: north and the arrow turn together against the phone's heading.
+    in property <bool> last;
+    HorizontalLayout {
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 14px;
         Rectangle {
-            width: 64px; height: 64px;
-            transform-rotation: -root.heading * 1deg;
-            Text { y: 3px; text: "N"; color: root.theme.on-surface-variant; font-size: 10px; font-weight: 600; }
-            Path {
-                width: 64px; height: 64px;
-                viewbox-width: 64; viewbox-height: 64;
+            width: 30px;
+            if root.arrow == "": Path {
+                width: 24px; height: 24px;
+                viewbox-width: 24; viewbox-height: 24;
                 fit: fill;
-                commands: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
-                fill: root.theme.primary;
-                stroke-width: 0px;
+                commands: root.icon;
+                stroke: root.theme.on-surface-variant;
+                stroke-width: 1.7px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+            }
+            if root.arrow != "": Rectangle {
+                width: 30px; height: 30px;
+                border-radius: 15px;
+                border-width: 1.5px;
+                border-color: root.theme.outline-variant;
+                Rectangle {
+                    width: 30px; height: 30px;
+                    transform-rotation: -root.heading * 1deg;
+                    Text { y: 1px; text: "N"; color: root.theme.on-surface-variant; font-size: 7px; font-weight: 600; }
+                    Path {
+                        width: 30px; height: 30px;
+                        viewbox-width: 64; viewbox-height: 64;
+                        fit: fill;
+                        commands: root.arrow;
+                        fill: root.theme.primary;
+                        stroke-width: 0px;
+                    }
+                }
             }
         }
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            horizontal-stretch: 1;
+            Text { text: root.label; color: root.theme.on-surface; font-size: 14px; font-weight: 500; }
+            if root.note != "": Text {
+                text: root.note; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap;
+            }
+        }
+        Text {
+            text: root.value;
+            color: root.theme.on-surface;
+            font-size: 17px; font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
     }
-}
-
-/// Sun: sunrise and sunset, the sun's place on its arc, hours of daylight.
-component SunCard inherits DetailCard {
-    in property <Details> details;
-    in property <Labels> labels;
-    property <length> arc-w: self.width - 32px;
-    property <length> arc-h: self.arc-w * 0.56;
-    Path {
-        x: 16px; y: 34px;
-        width: root.arc-w; height: root.arc-h;
-        viewbox-width: 100; viewbox-height: 56;
-        fit: fill;
-        commands: "M 8 50 A 42 42 0 0 1 92 50";
-        stroke: root.theme.outline-variant;
-        stroke-width: 2px;
-        stroke-line-cap: round;
-    }
-    // Horizon line.
-    Rectangle {
-        x: 16px; y: 34px + root.arc-h * 50 / 56;
-        width: root.arc-w; height: 1px;
+    if !root.last: Rectangle {
+        x: 44px; y: parent.height - 1px;
+        width: parent.width - 44px; height: 1px;
         background: root.theme.outline-variant;
-    }
-    if root.details.sun-up: Rectangle {
-        x: 16px + root.arc-w * root.details.sun-x / 100 - self.width / 2;
-        y: 34px + root.arc-h * root.details.sun-y / 56 - self.height / 2;
-        width: 14px; height: 14px; border-radius: 7px;
-        background: #ffb84d;
-        drop-shadow-color: #ffb84d99;
-        drop-shadow-blur: 8px;
-    }
-    // Hours of daylight, under the arc's middle.
-    Text {
-        x: 16px; y: 34px + root.arc-h * 0.62;
-        width: root.arc-w;
-        text: root.details.daylight;
-        color: root.theme.on-surface-variant; font-size: 11px;
-        horizontal-alignment: center;
-    }
-    HorizontalLayout {
-        x: 16px; y: parent.height - 46px;
-        width: parent.width - 32px; height: 34px;
-        VerticalLayout {
-            Text { text: root.details.sunrise; color: root.theme.on-surface; font-size: 15px; font-weight: 600; }
-            Text { text: root.labels.sunrise; color: root.theme.on-surface-variant; font-size: 11px; }
-        }
-        VerticalLayout {
-            Text { text: root.details.sunset; color: root.theme.on-surface; font-size: 15px; font-weight: 600; horizontal-alignment: right; }
-            Text { text: root.labels.sunset; color: root.theme.on-surface-variant; font-size: 11px; horizontal-alignment: right; }
-        }
+        opacity: 0.6;
     }
 }
 
-/// A gauge bar (0–1) with a dot marker; `gradient` for the UV scale.
-component Gauge inherits Rectangle {
-    in property <float> value;
-    in property <bool> uv-scale;
-    // Hide the marker when the value is unknown.
-    in property <bool> known: true;
-    in property <Theme> theme;
-    height: 8px;
-    border-radius: 4px;
-    background: root.uv-scale
-        ? @linear-gradient(90deg, #6fcf7c 0%, #f5d24a 30%, #f59a3e 55%, #e5533d 75%, #9b5de5 100%)
-        : root.theme.surface-container-high;
-    if !root.uv-scale: Rectangle {
-        x: 0; y: 0;
-        width: max(parent.height, parent.width * root.value);
-        height: parent.height;
-        border-radius: 4px;
-        background: root.theme.primary;
-    }
-    if root.uv-scale && root.known: Rectangle {
-        x: parent.width * root.value - self.width / 2;
-        y: (parent.height - self.height) / 2;
-        width: 14px; height: 14px; border-radius: 7px;
-        background: white;
-        border-width: 3px;
-        border-color: root.theme.on-surface;
-    }
+/// The details list's icons: line drawings in a 24×24 box.
+global RowIcons {
+    out property <string> thermometer: "M 10 13.5 V 5 A 2 2 0 0 1 14 5 V 13.5 A 4 4 0 1 1 10 13.5 Z M 12 9 V 16";
+    out property <string> droplet: "M 12 3 C 12 3 5.5 10.5 5.5 14.5 A 6.5 6.5 0 0 0 18.5 14.5 C 18.5 10.5 12 3 12 3 Z";
+    out property <string> uv: "M 16 12 A 4 4 0 1 1 8 12 A 4 4 0 1 1 16 12 Z M 12 2.5 V 4.5 M 12 19.5 V 21.5 M 2.5 12 H 4.5 M 19.5 12 H 21.5 M 5.3 5.3 L 6.7 6.7 M 17.3 17.3 L 18.7 18.7 M 5.3 18.7 L 6.7 17.3 M 17.3 6.7 L 18.7 5.3";
+    out property <string> pressure: "M 4.5 17 A 8 8 0 1 1 19.5 17 M 12 14 L 15.5 9 M 13 14 A 1 1 0 1 1 11 14 A 1 1 0 1 1 13 14 Z";
+    out property <string> leaf: "M 5 19 C 5 10 10 5 19 5 C 19 14 14 19 5 19 Z M 5 19 L 13 11";
+    out property <string> flower: "M 14 12 A 2 2 0 1 1 10 12 A 2 2 0 1 1 14 12 Z M 15 6.5 A 3 3 0 1 1 9 6.5 A 3 3 0 1 1 15 6.5 Z M 15 17.5 A 3 3 0 1 1 9 17.5 A 3 3 0 1 1 15 17.5 Z M 9.5 12 A 3 3 0 1 1 3.5 12 A 3 3 0 1 1 9.5 12 Z M 20.5 12 A 3 3 0 1 1 14.5 12 A 3 3 0 1 1 20.5 12 Z";
+    out property <string> sun: "M 3 18 H 21 M 7 18 A 5 5 0 0 1 17 18 M 12 4 V 9 M 9.5 6.5 L 12 4 L 14.5 6.5 M 4.5 12.5 L 6 14 M 19.5 12.5 L 18 14";
 }
 
 /// One day of the 7-day list; tap it to open its hour-by-hour chart.
@@ -1195,7 +1109,7 @@ export component MainWindow inherits Window {
     // Tops of the cards, in window coordinates, for drops to land on.
     out property <[length]> surface-tops: [
         forecast-card.absolute-position.y,
-        wind-row.absolute-position.y,
+        details-card.absolute-position.y,
         footer-card.absolute-position.y,
     ];
     in property <float> compass-heading;
@@ -1409,82 +1323,33 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // Details: two per row.
-                    wind-row := HorizontalLayout {
-                        spacing: 12px;
-                        WindCard { width: self.card-width; card-width: (wind-row.width - 12px) / 2; title: root.labels.wind; theme: root.theme; details: root.details; heading: root.compass-heading; }
-                        SunCard { title: root.labels.sun; theme: root.theme; details: root.details; labels: root.labels; }
-                    }
-                    HorizontalLayout {
-                        spacing: 12px;
-                        DetailCard {
-                            content-height: max(d1.preferred-height, d2.preferred-height);
-                            title: root.labels.feels-like; theme: root.theme;
-                            d1 := ValueNote {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                value: root.details.feels-like; note: root.details.feels-note; theme: root.theme;
+                    // Details: one list.
+                    details-card := Rectangle {
+                        border-radius: 28px;
+                        background: root.theme.surface-container;
+                        VerticalLayout {
+                            padding-left: 16px;
+                            padding-right: 18px;
+                            padding-top: 2px;
+                            padding-bottom: 2px;
+                            DetailRow {
+                                theme: root.theme; label: root.labels.wind;
+                                note: root.details.wind-gusts == "" ? root.details.wind-from : root.details.wind-from + " · " + root.details.wind-gusts;
+                                value: root.details.wind-speed + " " + root.details.wind-unit;
+                                arrow: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
+                                heading: root.compass-heading;
                             }
-                        }
-                        DetailCard {
-                            content-height: max(d1.preferred-height, d2.preferred-height);
-                            title: root.labels.humidity; theme: root.theme;
-                            d2 := VerticalLayout {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                spacing: 8px;
-                                ValueNote { value: root.details.humidity; note: root.details.dew-point; theme: root.theme; }
-                                Gauge { value: root.details.humidity-fraction; theme: root.theme; }
-                            }
-                        }
-                    }
-                    HorizontalLayout {
-                        spacing: 12px;
-                        DetailCard {
-                            content-height: max(d3.preferred-height, d4.preferred-height);
-                            title: root.labels.uv-index; theme: root.theme;
-                            d3 := VerticalLayout {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                spacing: 10px;
-                                ValueNote { value: root.details.uv; note: root.details.uv-level; theme: root.theme; }
-                                Gauge { value: root.details.uv-position; uv-scale: true; known: root.details.uv-known; theme: root.theme; }
-                            }
-                        }
-                        DetailCard {
-                            content-height: max(d3.preferred-height, d4.preferred-height);
-                            title: root.labels.pressure; theme: root.theme;
-                            d4 := ValueNote {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                value-size: 24px;
-                                value: root.details.pressure; note: root.details.pressure-note; theme: root.theme;
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 12px;
-                        DetailCard {
-                            content-height: max(d5.preferred-height, d6.preferred-height);
-                            title: root.labels.air-quality; theme: root.theme;
-                            d5 := VerticalLayout {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                spacing: 10px;
-                                ValueNote { value: root.air.aqi; note: root.air.aqi-level; theme: root.theme; }
-                                Gauge { value: root.air.aqi-position; uv-scale: true; known: root.air.aqi-known; theme: root.theme; }
-                            }
-                        }
-                        DetailCard {
-                            content-height: max(d5.preferred-height, d6.preferred-height);
-                            title: root.labels.pollen; theme: root.theme;
-                            d6 := VerticalLayout {
-                                x: 16px; y: 40px; width: parent.width - 32px; height: parent.height - 54px;
-                                alignment: end;
-                                spacing: 10px;
-                                ValueNote { value: root.air.pollen; note: root.air.pollen-level; value-size: 22px; theme: root.theme; }
-                                Gauge { value: root.air.pollen-position; uv-scale: true; known: root.air.pollen-known && root.air.pollen-level != ""; theme: root.theme; }
+                            DetailRow { theme: root.theme; icon: RowIcons.thermometer; label: root.labels.feels-like; note: root.details.feels-note; value: root.details.feels-like; }
+                            DetailRow { theme: root.theme; icon: RowIcons.droplet; label: root.labels.humidity; note: root.details.dew-point; value: root.details.humidity; }
+                            DetailRow { theme: root.theme; icon: RowIcons.uv; label: root.labels.uv-index; note: root.details.uv-level; value: root.details.uv; }
+                            DetailRow { theme: root.theme; icon: RowIcons.pressure; label: root.labels.pressure; note: root.details.pressure-note; value: root.details.pressure; }
+                            DetailRow { theme: root.theme; icon: RowIcons.leaf; label: root.labels.air-quality; note: root.air.aqi-level; value: root.air.aqi; }
+                            DetailRow { theme: root.theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-level; value: root.air.pollen; }
+                            DetailRow {
+                                theme: root.theme; icon: RowIcons.sun; label: root.labels.sun;
+                                note: root.details.daylight;
+                                value: root.details.sunrise + " – " + root.details.sunset;
+                                last: true;
                             }
                         }
                     }

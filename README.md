@@ -182,19 +182,23 @@ on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and
 
 ## Details
 
-Six tiles, each with a value and a short explanation:
+One list, a line each, with a line icon, a short explanation and the value:
 
-- **Wind:** speed, where it comes from, gusts, and a compass arrow pointing where it blows.
-  On a phone the dial turns with the phone (rotation vector sensor), so its N points north.
-- **Sun:** sunrise and sunset, the sun on its arc, and hours of daylight.
+- **Wind:** speed, where it comes from, and gusts. Its icon is a small compass whose
+  arrow points where the wind blows; on a phone the dial turns with the phone
+  (rotation vector sensor), so its N points north.
 - **Feels like:** with why it differs, for example wind chill.
-- **Humidity:** with the dew point and a gauge.
-- **UV index:** its level and a coloured scale.
+- **Humidity:** with the dew point.
+- **UV index** and its level.
 - **Pressure:** in hPa, with low (unsettled) or high (settled).
 - **Air quality:** the European AQI and its level.
 - **Pollen:** the strongest pollen today (Europe only).
+- **Sun:** sunrise and sunset, and hours of daylight.
 
-Above them:
+A source that lacks a value shows "Not available with this source"; Météo-France, for
+example, has no UV index.
+
+Above the list:
 
 - **Next 2 hours:** rain in 15-minute steps, with a sentence like "Rain stopping in 45 min".
 - **Models agree:** each day of the 7-day forecast says how closely five weather models
@@ -202,9 +206,6 @@ Above them:
   their spread as a band.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
-
-A source that lacks a value shows "Not available with this source"; Météo-France, for
-example, has no UV index.
 
 The footer shows the data source (tap it to change) and when the forecast was updated,
 with a Refresh button. "Updated 3 min ago" keeps counting while the app is open, and
