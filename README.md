@@ -285,6 +285,8 @@ Tap the city name to open the city picker:
   result to save and show it.
 - **Saved cities** (`meteo_core::Places`) are stored in `places.json` next to the
   cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
+- **Swipe** the top of the page left or right for the next or previous saved city;
+  dots under the city name show which one it is.
 - **Use my location** asks for approximate location permission, finds the device's
   position (rounded to about 1 km),
   and names it with Android's `Geocoder`. It becomes a "📍" entry at

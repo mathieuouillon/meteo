@@ -1154,6 +1154,11 @@ export component MainWindow inherits Window {
     in property <[CityItem]> results;
     in property <string> search-status;
     in-out property <bool> picker-open;
+    /// How many cities are saved, and which is shown (the dots under the city).
+    in property <int> city-count;
+    in property <int> city-index;
+    /// Swiped to the next (1) or previous (-1) saved city.
+    callback swipe-city(int);
     // Which day's hour-by-hour chart is open (-1: none); Today by default.
     in-out property <int> open-day: 0;
     /// The open day's hours are being swiped (see DayChart.panning).
@@ -1336,10 +1341,26 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Hero: city, icon, big temperature, condition — centred.
+            // Hero: city, icon, big temperature, condition — centred. Swipe it
+            // left or right for the next or previous saved city.
             Rectangle {
                 height: root.horizon - 40px;
+                swipe := SwipeGestureHandler {
+                    handle-swipe-left: root.city-count > 1;
+                    handle-swipe-right: root.city-count > 1;
+                    property <length> dx: self.swiping ? self.current-position.x - self.pressed-position.x : 0;
+                    swiped => {
+                        if (self.current-position.x - self.pressed-position.x < -60px) {
+                            root.swipe-city(1);
+                        } else if (self.current-position.x - self.pressed-position.x > 60px) {
+                            root.swipe-city(-1);
+                        }
+                    }
                 VerticalLayout {
+                    // Follows the finger, a little damped, and fades.
+                    x: swipe.dx * 0.6;
+                    animate x { duration: 220ms; easing: ease-out; }
+                    opacity: 1 - min(0.6, abs(swipe.dx) / 400px);
                     padding-left: 24px;
                     padding-right: 24px;
                     padding-top: 40px;
@@ -1395,6 +1416,16 @@ export component MainWindow inherits Window {
                             gear-touch := TouchArea { y: -6px; height: parent.height + 12px; clicked => { root.settings-open = true; } }
                         }
                     }
+                    // Which of the saved cities this is.
+                    if root.city-count > 1: HorizontalLayout {
+                        alignment: center;
+                        padding-top: 8px;
+                        spacing: 6px;
+                        for i in root.city-count: Rectangle {
+                            width: 6px; height: 6px; border-radius: 3px;
+                            background: i == root.city-index ? root.theme.on-surface : root.theme.on-surface.transparentize(70%);
+                        }
+                    }
                     if root.status != "": HorizontalLayout {
                         alignment: center;
                         padding-top: 6px;
@@ -1446,6 +1477,7 @@ export component MainWindow inherits Window {
                         text: root.error; color: root.theme.on-surface; font-size: 13px; wrap: word-wrap;
                         horizontal-alignment: center;
                     }
+                }
                 }
             }
 

@@ -161,6 +161,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let app = app.clone();
         move |i| app.change_places(|p| p.select(i as usize))
     });
+    // Swiping the top of the page: the next or previous city, round the list.
+    ui.on_swipe_city({
+        let app = app.clone();
+        move |step| {
+            app.change_places(|p| {
+                let n = p.cities().len() as i32;
+                p.select((p.selected_index() as i32 + step).rem_euclid(n.max(1)) as usize)
+            })
+        }
+    });
     ui.on_add_city({
         let app = app.clone();
         move |i| {
@@ -381,6 +391,7 @@ impl App {
         let source = self.settings.borrow().source;
         self.shown_at.store(NOTHING_SHOWN, Ordering::Relaxed);
         ui.set_open_day(0); // Today open, also after switching city
+        self.update_city_list();
         match self.dir.as_deref().and_then(|d| cache::load(d, &city, source, unix_now())) {
             Some(cached) => self.show(cached.forecast, cached.fetched_at),
             None => {
@@ -399,6 +410,8 @@ impl App {
         let items: Vec<CityItem> =
             places.cities().iter().enumerate().map(|(i, c)| city_item(c, i == places.selected_index())).collect();
         ui.set_cities(ModelRc::from(Rc::new(VecModel::from(items))));
+        ui.set_city_count(places.cities().len() as i32);
+        ui.set_city_index(places.selected_index() as i32);
     }
 
     /// Downloads the selected city's forecast in the background.
