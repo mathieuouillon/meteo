@@ -287,12 +287,19 @@ match). The home-screen widget reads the same files.
 
 ## Notes
 
-- **Patched Slint core:** `vendor/i-slint-core` is Slint 1.18.1's core with one
-  change in `items/flickable.rs` (search "Météo patch"): a Flickable that scrolls
-  along one axis only takes drags along that axis. Without it, the vertical page
-  takes over a sideways swipe on the day's hours as soon as the finger drifts
-  8px, which on a real phone is almost every swipe. It's wired in with
-  `[patch.crates-io]` in `Cargo.toml`; re-apply or drop it when upgrading Slint.
+- **Patched Slint core:** `vendor/i-slint-core` is Slint 1.18.1's core with two
+  changes (search "Météo patch"), both so the day's hours can be swiped sideways
+  inside the vertical page on a real phone:
+  - `window.rs`: the press a Flickable holds back (100 ms, to tell a tap from a
+    scroll) is delivered when the finger starts moving, not only when it lifts.
+    Before, a finger that moved within 100 ms (every real swipe) lost its press,
+    so the inner Flickable never started dragging.
+  - `items/flickable.rs`: a Flickable that scrolls along one axis only takes
+    drags mostly along that axis, so the page doesn't take a sideways swipe
+    that drifts 8px.
+
+  It's wired in with `[patch.crates-io]` in `Cargo.toml`; re-apply or drop it
+  when upgrading Slint.
 
 - **Renderer:** the app uses Slint's Skia renderer. The default FemtoVG renderer
   drops large colour emoji.

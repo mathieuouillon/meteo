@@ -946,7 +946,12 @@ impl WindowInner {
         let had_delay = mouse_input_state.has_delayed_event();
 
         let last_top_item = mouse_input_state.top_item_including_delayed();
-        if released_event {
+        // Météo patch: also deliver a press that a Flickable is holding back
+        // when the finger starts moving, not only when it lifts. Otherwise the
+        // press is dropped by the move, and a Flickable inside a Flickable (the
+        // day chart's hours inside the page) never sees a fast swipe start.
+        let moved_event = matches!(event, MouseEvent::Moved { .. });
+        if released_event || (had_delay && moved_event) {
             mouse_input_state =
                 crate::input::process_delayed_event(&window_adapter, mouse_input_state);
         }
