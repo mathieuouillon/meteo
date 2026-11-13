@@ -189,7 +189,17 @@ fn last_known(env: &mut JNIEnv, manager: &JObject) -> Option<Fix> {
 }
 
 /// Town name and "region, country" for a position, from Android's Geocoder.
-pub fn place_name(app: &AndroidApp, latitude: f64, longitude: f64) -> Option<(String, String)> {
+/// A place named by Android's geocoder.
+pub struct PlaceName {
+    pub name: String,
+    /// "Region, Country".
+    pub detail: String,
+    pub country_code: String,
+    /// Region, sub-region (département…), town: for weather warnings.
+    pub areas: Vec<String>,
+}
+
+pub fn place_name(app: &AndroidApp, latitude: f64, longitude: f64) -> Option<PlaceName> {
     with_activity(app, |env, activity| {
         let geocoder =
             env.new_object("android/location/Geocoder", "(Landroid/content/Context;)V", &[JValue::Object(activity)])?;
@@ -212,11 +222,15 @@ pub fn place_name(app: &AndroidApp, latitude: f64, longitude: f64) -> Option<(St
             }
             Ok(Some(env.get_string(&JString::from(s))?.into()))
         };
-        let town = field("getLocality")?.or(field("getSubAdminArea")?);
+        let locality = field("getLocality")?;
+        let sub_region = field("getSubAdminArea")?;
         let region = field("getAdminArea")?;
         let country = field("getCountryName")?;
-        let detail = [region, country].into_iter().flatten().collect::<Vec<_>>().join(", ");
-        Ok(town.map(|t| (t, detail)))
+        let country_code = field("getCountryCode")?.unwrap_or_default();
+        let town = locality.clone().or(sub_region.clone());
+        let detail = [region.clone(), country].into_iter().flatten().collect::<Vec<_>>().join(", ");
+        let areas = [region, sub_region, locality].into_iter().flatten().collect();
+        Ok(town.map(|name| PlaceName { name, detail, country_code, areas }))
     })
     .ok()
     .flatten()

@@ -15,11 +15,34 @@ pub struct Location {
     /// rather than a city the user searched for.
     #[serde(default)]
     pub is_device: bool,
+    /// ISO country code ("FR"), to find the place's weather warnings; empty
+    /// when unknown (places saved before it was recorded).
+    #[serde(default)]
+    pub country_code: String,
+    /// The administrative areas the place is in, largest first (region,
+    /// département, district…), matched against the warnings' areas.
+    #[serde(default)]
+    pub areas: Vec<String>,
 }
 
 impl Location {
     pub fn new(name: impl Into<String>, detail: impl Into<String>, latitude: f64, longitude: f64) -> Self {
-        Self { name: name.into(), detail: detail.into(), latitude, longitude, is_device: false }
+        Self {
+            name: name.into(),
+            detail: detail.into(),
+            latitude,
+            longitude,
+            is_device: false,
+            country_code: String::new(),
+            areas: Vec::new(),
+        }
+    }
+
+    /// The same place with its country and administrative areas.
+    pub fn with_areas(mut self, country_code: impl Into<String>, areas: Vec<String>) -> Self {
+        self.country_code = country_code.into();
+        self.areas = areas.into_iter().filter(|a| !a.is_empty()).collect();
+        self
     }
 
     pub fn paris() -> Self {
@@ -56,6 +79,9 @@ pub struct Forecast {
     pub spread: Vec<crate::extras::Spread>,
     #[serde(default)]
     pub air: Option<crate::extras::Air>,
+    /// Official weather warnings for the place (MeteoAlarm), all levels.
+    #[serde(default)]
+    pub warnings: Vec<crate::warnings::Warning>,
 }
 
 /// Rain during one 15-minute step.

@@ -294,6 +294,64 @@ impl Lang {
             Lang::Fr => format!("Aujourd’hui à {city}"),
         }
     }
+    /// "Orange warning · Thunderstorms" / "Vigilance orange · Orages".
+    pub fn warning_title(self, level: u8, kind: &str) -> String {
+        let level = match (self, level) {
+            (Lang::En, 3) => "Red warning",
+            (Lang::En, 2) => "Orange warning",
+            (Lang::En, _) => "Yellow warning",
+            (Lang::Fr, 3) => "Vigilance rouge",
+            (Lang::Fr, 2) => "Vigilance orange",
+            (Lang::Fr, _) => "Vigilance jaune",
+        };
+        format!("{level} · {}", self.warning_kind(kind))
+    }
+
+    /// MeteoAlarm's awareness types.
+    pub fn warning_kind(self, kind: &str) -> String {
+        let (en, fr) = match kind {
+            "wind" => ("Wind", "Vent violent"),
+            "snow-ice" | "snow ice" => ("Snow and ice", "Neige-verglas"),
+            "thunderstorm" | "thunderstorms" => ("Thunderstorms", "Orages"),
+            "fog" => ("Fog", "Brouillard"),
+            "high-temperature" | "high temperature" => ("Heat", "Canicule"),
+            "low-temperature" | "low temperature" => ("Cold", "Grand froid"),
+            "coastalevent" | "coastal-event" | "coastal event" => ("Coastal flooding", "Vagues-submersion"),
+            "forest-fire" | "forest fire" | "forestfire" => ("Forest fires", "Feux de forêt"),
+            "avalanches" | "avalanche" => ("Avalanches", "Avalanches"),
+            "rain" => ("Heavy rain", "Fortes pluies"),
+            "flooding" | "flood" => ("Floods", "Crues"),
+            "rain-flood" | "rain flood" => ("Rain and floods", "Pluie-inondation"),
+            other => {
+                let mut c = other.chars();
+                return c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
+            }
+        };
+        self.pick(en, fr).into()
+    }
+
+    /// "Until 23:00" (in force) / "From 18:00 to 23:00" (coming); times may
+    /// carry a weekday ("Sat 06:00").
+    pub fn warning_when(self, from: Option<&str>, until: &str) -> String {
+        match (self, from) {
+            (Lang::En, None) => format!("Until {until}"),
+            (Lang::Fr, None) => format!("Jusqu’à {until}"),
+            (Lang::En, Some(f)) => format!("From {f} to {until}"),
+            (Lang::Fr, Some(f)) => format!("De {f} à {until}"),
+        }
+    }
+
+    pub fn midnight(self) -> &'static str {
+        self.pick("midnight", "minuit")
+    }
+
+    pub fn warnings_title(self, city: &str) -> String {
+        match self {
+            Lang::En => format!("Weather warning in {city}"),
+            Lang::Fr => format!("Vigilance météo à {city}"),
+        }
+    }
+
     pub fn rain_soon_title(self, city: &str) -> String {
         match self {
             Lang::En => format!("Rain soon in {city}"),
@@ -398,6 +456,12 @@ impl Lang {
             morning_summary_help: self.pick("The day’s weather around 7:30", "La météo du jour vers 7 h 30"),
             rain_alerts: self.pick("Rain alerts", "Alertes pluie"),
             rain_alerts_help: self.pick("When rain is about to start", "Quand la pluie va commencer"),
+            warning_alerts: self.pick("Weather warnings", "Vigilances météo"),
+            warning_alerts_help: self.pick(
+                "Orange and red warnings for your city",
+                "Vigilances orange et rouge pour votre ville",
+            ),
+            warnings_source: self.pick("Official warnings · MeteoAlarm", "Vigilances officielles · MeteoAlarm"),
         }
     }
 }
@@ -438,6 +502,10 @@ pub struct Labels {
     pub morning_summary_help: &'static str,
     pub rain_alerts: &'static str,
     pub rain_alerts_help: &'static str,
+    pub warning_alerts: &'static str,
+    pub warning_alerts_help: &'static str,
+    /// Credit under the warnings (MeteoAlarm's terms ask for it).
+    pub warnings_source: &'static str,
 }
 
 #[cfg(test)]

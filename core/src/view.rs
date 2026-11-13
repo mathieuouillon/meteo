@@ -47,6 +47,8 @@ pub struct MainScreen {
     /// The UI's colours, from the weather and time of day.
     pub palette: Palette,
     pub nowcast: NowcastView,
+    /// Official warnings in force or coming, strongest first.
+    pub warnings: Vec<WarningView>,
     pub air: AirView,
     /// "3° warmer than usual"; empty without normals.
     pub vs_normal: String,
@@ -168,6 +170,52 @@ pub struct HourView {
 
 /// The details tiles: each value with a short explanation, plus what the
 /// compass and the sun's arc need.
+/// A weather warning, ready to show.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WarningView {
+    /// "Orange warning · Thunderstorms".
+    pub title: String,
+    /// "Until 23:00", "From Sat 06:00 to Sun 12:00".
+    pub detail: String,
+    /// 1 yellow, 2 orange, 3 red.
+    pub level: u8,
+}
+
+impl WarningView {
+    fn list(f: &Forecast, lang: Lang) -> Vec<Self> {
+        // The forecast's local time, back to Unix seconds.
+        let Some(now) = crate::date::parse_rfc3339(&f.current.time).map(|t| t - f.utc_offset_seconds) else {
+            return Vec::new();
+        };
+        let today = f.current.time.get(..10).unwrap_or("");
+        // "23:00" today, "midnight" tonight, "Sat 06:00" another day.
+        let at = |unix: i64| {
+            let local = crate::date::local_iso_minute(unix, f.utc_offset_seconds);
+            let clock = local.get(11..16).unwrap_or("").to_string();
+            if clock == "00:00"
+                && crate::date::local_iso_minute(unix - 60, f.utc_offset_seconds).get(..10) == Some(today)
+            {
+                return lang.midnight().to_string();
+            }
+            match local.get(..10) {
+                Some(day) if day != today => {
+                    weekday_index(day).map_or(clock.clone(), |w| format!("{} {clock}", lang.weekday(w)))
+                }
+                _ => clock,
+            }
+        };
+        f.warnings
+            .iter()
+            .filter(|w| w.is_current(now))
+            .map(|w| Self {
+                title: lang.warning_title(w.level, &w.kind),
+                detail: lang.warning_when((w.onset > now).then(|| at(w.onset)).as_deref(), &at(w.expires)),
+                level: w.level,
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DetailsView {
     pub feels_like: String,
@@ -246,6 +294,7 @@ impl MainScreen {
             landscape: land,
             palette,
             nowcast: NowcastView::new(f, lang),
+            warnings: WarningView::list(f, lang),
             air: AirView::new(f.air.as_ref(), lang),
             vs_normal: f
                 .days
@@ -533,6 +582,40 @@ mod tests {
             ],
             condition: Condition::Rain,
         }
+    }
+
+    #[test]
+    fn warnings_read_like_a_sentence() {
+        let json = br#"{"utc_offset_seconds":3600,"current":{"time":"2026-11-13T14:00","temperature_2m":7,"apparent_temperature":5,"relative_humidity_2m":80,"is_day":1,"weather_code":3,"wind_speed_10m":10},
+            "hourly":{"time":["2026-11-13T14:00"],"temperature_2m":[7],"weather_code":[3],"is_day":[1]},
+            "daily":{"time":["2026-11-13"],"weather_code":[3],"temperature_2m_max":[10],"temperature_2m_min":[5],"precipitation_sum":[0]}}"#;
+        let mut f = crate::api::parse_forecast("Grenoble", json).unwrap();
+        // 14:00 local is 13:00 UTC = 1_794_574_800.
+        let now = 1_794_574_800;
+        let w = |level, onset, expires| crate::warnings::Warning {
+            kind: "thunderstorm".into(),
+            level,
+            area: "Isère".into(),
+            onset,
+            expires,
+            id: String::new(),
+        };
+        f.warnings = vec![
+            w(2, now - 3600, now + 10 * 3600),      // until 00:00 local
+            w(1, now + 4 * 3600, now + 6 * 3600),   // 18:00 to 20:00
+            w(3, now + 20 * 3600, now + 30 * 3600), // tomorrow
+            w(1, now - 7200, now - 3600),           // over
+        ];
+        let screen = MainScreen::from_forecast(&f, Lang::En, Units::Metric);
+        let lines: Vec<_> = screen.warnings.iter().map(|w| format!("{} | {}", w.title, w.detail)).collect();
+        assert_eq!(
+            lines,
+            [
+                "Orange warning · Thunderstorms | Until midnight",
+                "Yellow warning · Thunderstorms | From 18:00 to 20:00",
+                "Red warning · Thunderstorms | From Sat 10:00 to Sat 20:00",
+            ]
+        );
     }
 
     #[test]

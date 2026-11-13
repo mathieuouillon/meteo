@@ -230,6 +230,22 @@ The footer shows the data source (tap it to change) and when the forecast was up
 with a Refresh button. "Updated 3 min ago" keeps counting while the app is open, and
 pulling the page down refreshes it.
 
+## Weather warnings
+
+Official warnings from [MeteoAlarm](https://meteoalarm.org), the national weather
+services of about 38 European countries (Météo-France's vigilance for France). They
+show first, as a yellow, orange or red card: "Orange warning · Thunderstorms, Until
+midnight". Tapping it opens MeteoAlarm. An optional notification announces orange
+and red warnings, once each.
+
+- [core/src/warnings.rs](core/src/warnings.rs) downloads the country's feed (Atom/CAP)
+  and keeps the entries whose area (département, district…) matches one of the
+  place's administrative areas or its name, ignoring accents and punctuation.
+- Places carry their country and areas from the city search (Open-Meteo geocoding)
+  or Android's geocoder. Cities saved earlier are looked up once by name and cached
+  (`region-<place>.json`).
+- Only the country goes to MeteoAlarm, never the coordinates.
+
 ## Settings
 
 The tune button next to the city opens the settings, saved in `settings.json`:
@@ -337,6 +353,8 @@ match). The home-screen widget reads the same files.
 
 - Weather data by [Open-Meteo.com](https://open-meteo.com), under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- Weather warnings from [MeteoAlarm](https://meteoalarm.org) (EUMETNET), under
+  terms equivalent to CC BY 4.0.
 - UI made with [Slint](https://slint.dev), used under the Slint Royalty-free
   License 2.0 (see `vendor/i-slint-core/LICENSES/`):
 

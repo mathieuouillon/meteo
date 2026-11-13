@@ -65,6 +65,9 @@ export struct Labels {
     morning-summary-help: string,
     rain-alerts: string,
     rain-alerts-help: string,
+    warning-alerts: string,
+    warning-alerts-help: string,
+    warnings-source: string,
 }
 
 /// The details tiles (DetailsView in core/src/view.rs).
@@ -150,6 +153,14 @@ export struct NowBar {
     label: string,
     height: float,
     wet: bool,
+}
+
+/// An official weather warning (WarningView in core/src/view.rs).
+export struct WarningItem {
+    title: string,
+    detail: string,
+    /// 1 yellow, 2 orange, 3 red.
+    level: int,
 }
 
 export struct Nowcast {
@@ -621,6 +632,51 @@ component DayChart inherits Rectangle {
 }
 
 /// Rain over the next 2 hours: a summary, and 15-minute bars when wet.
+/// The official warnings: one coloured line each (yellow, orange, red), a
+/// warning sign, and the source. Tapping opens MeteoAlarm.
+component WarningsCard inherits Rectangle {
+    in property <[WarningItem]> warnings;
+    in property <string> source;
+    callback open();
+    border-radius: 28px;
+    // The strongest level sets the card's colour.
+    property <int> top: root.warnings.length > 0 ? root.warnings[0].level : 1;
+    background: root.top >= 3 ? #d93a2b : root.top == 2 ? #f08a24 : #f6c945;
+    property <color> ink: root.top >= 3 ? #ffffff : root.top == 2 ? #2b1400 : #2e2400;
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        for w in root.warnings: HorizontalLayout {
+            spacing: 12px;
+            // A warning sign, in the line's own level colour when it differs.
+            Rectangle {
+                width: 26px;
+                Path {
+                    width: 24px; height: 24px;
+                    viewbox-width: 24; viewbox-height: 24;
+                    fit: fill;
+                    commands: "M 12 3 L 22 20 L 2 20 Z M 12 9 L 12 14 M 12 17 L 12 17.2";
+                    stroke: w.level == root.top ? root.ink
+                        : w.level == 2 ? #b85a00 : #8a6d00;
+                    stroke-width: 2px;
+                    stroke-line-join: round;
+                    stroke-line-cap: round;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text { text: w.title; color: root.ink; font-size: 15px; font-weight: 600; wrap: word-wrap; }
+                Text { text: w.detail; color: root.ink.transparentize(20%); font-size: 12px; }
+            }
+        }
+        Text { text: root.source; color: root.ink.transparentize(35%); font-size: 11px; horizontal-alignment: right; }
+    }
+    TouchArea { clicked => { root.open(); } }
+}
+
 component NowcastCard inherits Rectangle {
     // Drawn once into an image and reused (text is the costliest part of a frame).
     cache-rendering-hint: true;
@@ -741,6 +797,7 @@ component SettingsScreen inherits Rectangle {
     in property <int> language-index;
     in property <bool> morning-summary;
     in property <bool> rain-alerts;
+    in property <bool> warning-alerts;
     in property <bool> can-use-wallpaper;
     in property <string> source-name;
     callback close();
@@ -750,6 +807,7 @@ component SettingsScreen inherits Rectangle {
     callback set-language(int);
     callback set-morning-summary(bool);
     callback set-rain-alerts(bool);
+    callback set-warning-alerts(bool);
     background: root.theme.surface;
     TouchArea { }
     VerticalLayout {
@@ -807,6 +865,12 @@ component SettingsScreen inherits Rectangle {
                     title: root.labels.rain-alerts; help: root.labels.rain-alerts-help;
                     on: root.rain-alerts;
                     toggled(on) => { root.set-rain-alerts(on); }
+                }
+                SwitchRow {
+                    theme: root.theme;
+                    title: root.labels.warning-alerts; help: root.labels.warning-alerts-help;
+                    on: root.warning-alerts;
+                    toggled(on) => { root.set-warning-alerts(on); }
                 }
                 Text { text: root.labels.data-source; color: root.theme.primary; font-size: 14px; font-weight: 600; }
                 Rectangle {
@@ -1099,6 +1163,7 @@ export component MainWindow inherits Window {
     in-out property <bool> source-open;
     in property <bool> can-locate;
     in property <Nowcast> nowcast;
+    in property <[WarningItem]> warnings;
     in property <AirInfo> air;
     // "3° warmer than usual"; empty if unknown.
     in property <string> vs-normal;
@@ -1109,6 +1174,7 @@ export component MainWindow inherits Window {
     in property <int> language-index;
     in property <bool> morning-summary;
     in property <bool> rain-alerts;
+    in property <bool> warning-alerts;
     in property <bool> can-use-wallpaper;
     // Pull to refresh: true while a refresh started that way is running.
     in-out property <bool> refreshing;
@@ -1162,6 +1228,7 @@ export component MainWindow inherits Window {
     callback set-language(int);
     callback set-morning-summary(bool);
     callback set-rain-alerts(bool);
+    callback set-warning-alerts(bool);
 
     // Where the landscape meets the content cards.
     property <length> horizon: root.height * 0.56;
@@ -1390,6 +1457,12 @@ export component MainWindow inherits Window {
                     padding-bottom: 40px;
                     spacing: 12px;
                     alignment: start;
+                    // Official warnings first: the most important thing to see.
+                    if root.warnings.length > 0: WarningsCard {
+                        warnings: root.warnings;
+                        source: root.labels.warnings-source;
+                        open => { root.open-url("https://meteoalarm.org"); }
+                    }
                     if root.nowcast.summary != "": NowcastCard {
                         nowcast: root.nowcast;
                         title: root.labels.next-hours;
@@ -1558,6 +1631,7 @@ export component MainWindow inherits Window {
         language-index: root.language-index;
         morning-summary: root.morning-summary;
         rain-alerts: root.rain-alerts;
+        warning-alerts: root.warning-alerts;
         can-use-wallpaper: root.can-use-wallpaper;
         source-name: root.source-name;
         close => { root.settings-open = false; }
@@ -1567,6 +1641,7 @@ export component MainWindow inherits Window {
         set-language(i) => { root.set-language(i); }
         set-morning-summary(on) => { root.set-morning-summary(on); }
         set-rain-alerts(on) => { root.set-rain-alerts(on); }
+        set-warning-alerts(on) => { root.set-warning-alerts(on); }
     }
 
     if root.picker-open: CityPicker {

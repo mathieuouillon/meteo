@@ -21,6 +21,7 @@ mod scene;
 mod source;
 mod units;
 mod view;
+pub mod warnings;
 mod widget;
 
 pub use api::{Error, Problem, fetch_forecast, parse_forecast};

@@ -16,7 +16,9 @@ forecasts. Each request contains:
 - **The name you type** when you search for a city.
 
 These go to Open-Meteo's forecast, air quality, climate archive and
-geocoding services over an encrypted connection (HTTPS). To name the place
+geocoding services over an encrypted connection (HTTPS). For official weather
+warnings, the app also downloads the warnings of the place's country from
+[MeteoAlarm](https://meteoalarm.org); only the country is sent, not the place. To name the place
 you're in, the app also uses Android's built-in geocoder with the same
 rounded coordinates; on most phones that service is provided by Google. Like any web
 server, Open-Meteo sees your IP address. Météo sends nothing else: no device
@@ -75,7 +77,9 @@ Chaque requête contient :
 
 Elles sont envoyées aux services de prévisions, de qualité de l'air,
 d'archives climatiques et de géocodage d'Open-Meteo, par une connexion
-chiffrée (HTTPS). Pour nommer le lieu où vous êtes, l'application utilise
+chiffrée (HTTPS). Pour les vigilances météo officielles, l'application
+télécharge aussi celles du pays du lieu sur [MeteoAlarm](https://meteoalarm.org) ;
+seul le pays est envoyé, pas le lieu. Pour nommer le lieu où vous êtes, l'application utilise
 aussi le géocodeur intégré d'Android avec les mêmes coordonnées arrondies ;
 sur la plupart des téléphones, ce service est fourni par Google. Comme tout serveur web, Open-Meteo voit votre adresse IP.
 Météo n'envoie rien d'autre : aucun identifiant d'appareil, aucun nom, aucun

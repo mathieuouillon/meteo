@@ -49,6 +49,13 @@ class MeteoApp : Application() {
                 NotificationManager.IMPORTANCE_HIGH,
             ),
         )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                NotifyWorker.CHANNEL_WARNING,
+                if (fr) "Vigilances météo" else "Weather warnings",
+                NotificationManager.IMPORTANCE_HIGH,
+            ),
+        )
         val request = PeriodicWorkRequestBuilder<NotifyWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()

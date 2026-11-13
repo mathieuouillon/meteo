@@ -28,6 +28,27 @@ pub fn local_iso_minute(unix_secs: i64, utc_offset_seconds: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}", secs / 3600, secs % 3600 / 60)
 }
 
+/// Unix seconds from an RFC 3339 time, "2026-11-13T23:00:00+00:00" (or
+/// "…Z", or without seconds).
+pub fn parse_rfc3339(s: &str) -> Option<i64> {
+    let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
+    let (y, m, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (hh, mm) = (num(11..13)?, num(14..16)?);
+    let (ss, rest) = if s.get(16..17) == Some(":") { (num(17..19)?, s.get(19..)?) } else { (0, s.get(16..)?) };
+    // Skip fractional seconds.
+    let rest = rest.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+    let offset = match rest {
+        "" | "Z" | "z" => 0,
+        _ => {
+            let sign = if rest.starts_with('-') { -1 } else { 1 };
+            let h: i64 = rest.get(1..3)?.parse().ok()?;
+            let m: i64 = rest.get(4..6)?.parse().ok()?;
+            sign * (h * 3600 + m * 60)
+        }
+    };
+    Some(days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss - offset)
+}
+
 /// Inverse of [`days_from_civil`] (Howard Hinnant's `civil_from_days`).
 fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719_468;

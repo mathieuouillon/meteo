@@ -185,6 +185,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         nowcast,
         spread: Vec::new(),
         air: None,
+        warnings: Vec::new(),
     })
 }
 

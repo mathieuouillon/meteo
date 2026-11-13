@@ -27,6 +27,7 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     companion object {
         const val CHANNEL_MORNING = "morning"
         const val CHANNEL_RAIN = "rain"
+        const val CHANNEL_WARNING = "warning"
     }
 
     override suspend fun doWork(): Result {
@@ -58,7 +59,15 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 .setContentIntent(openApp)
                 .setAutoCancel(true)
                 .build()
-            NotificationManagerCompat.from(applicationContext).notify(if (kind == CHANNEL_RAIN) 2 else 1, notification)
+            NotificationManagerCompat.from(applicationContext).notify(
+                when (kind) {
+                    CHANNEL_RAIN -> 2
+                    // Each warning keeps its own notification.
+                    CHANNEL_WARNING -> 100 + (n.getString("text").hashCode() and 0xffff)
+                    else -> 1
+                },
+                notification,
+            )
         }
         return Result.success()
     }

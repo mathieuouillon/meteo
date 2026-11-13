@@ -9,6 +9,8 @@ reqwest = "0.13.5"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
+# MeteoAlarm's warning feeds (Atom/CAP XML); already used by Slint.
+roxmltree = "0.21.2"
 
 [dependencies.tokio]
 # Only the join! macro (runs on any executor).

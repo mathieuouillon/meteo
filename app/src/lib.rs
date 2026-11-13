@@ -224,6 +224,15 @@ pub fn run() -> Result<(), slint::PlatformError> {
             }
         }
     });
+    ui.on_set_warning_alerts({
+        let app = app.clone();
+        move |on| {
+            app.change_settings(|s| s.warning_alerts = on);
+            if on {
+                request_notifications();
+            }
+        }
+    });
     ui.run()
 }
 
@@ -286,6 +295,7 @@ impl App {
         });
         ui.set_morning_summary(s.morning_summary);
         ui.set_rain_alerts(s.rain_alerts);
+        ui.set_warning_alerts(s.warning_alerts);
         ui.set_can_use_wallpaper(cfg!(target_os = "android"));
     }
 
@@ -534,8 +544,10 @@ fn device_location(quiet: bool) -> Result<Location, String> {
     // phone (see docs/privacy-policy.md).
     let round = |x: f64| (x * 100.0).round() / 100.0;
     let (lat, lon) = (round(lat), round(lon));
-    let (name, detail) = loc::place_name(app, lat, lon).unwrap_or_else(|| (lang().my_location().into(), String::new()));
-    Ok(Location::new(name, detail, lat, lon))
+    Ok(match loc::place_name(app, lat, lon) {
+        Some(p) => Location::new(p.name, p.detail, lat, lon).with_areas(p.country_code, p.areas),
+        None => Location::new(lang().my_location(), "", lat, lon),
+    })
 }
 
 #[cfg(not(target_os = "android"))]
@@ -573,6 +585,16 @@ fn show_loading(ui: &MainWindow, city: &Location) {
 fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     animation::set_weather(s.scene);
     ui.set_vs_normal(s.vs_normal.as_str().into());
+    ui.set_warnings(ModelRc::from(Rc::new(VecModel::from(
+        s.warnings
+            .iter()
+            .map(|w| WarningItem {
+                title: w.title.as_str().into(),
+                detail: w.detail.as_str().into(),
+                level: w.level.into(),
+            })
+            .collect::<Vec<_>>(),
+    ))));
     ui.set_nowcast(Nowcast {
         summary: s.nowcast.summary.as_str().into(),
         wet: s.nowcast.wet,
@@ -743,6 +765,9 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         morning_summary_help: l.morning_summary_help.into(),
         rain_alerts: l.rain_alerts.into(),
         rain_alerts_help: l.rain_alerts_help.into(),
+        warning_alerts: l.warning_alerts.into(),
+        warning_alerts_help: l.warning_alerts_help.into(),
+        warnings_source: l.warnings_source.into(),
     }
 }
 

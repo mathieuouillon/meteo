@@ -32,13 +32,14 @@ pub fn parse_places(json: &[u8]) -> Result<Vec<Location>, Error> {
         .results
         .into_iter()
         .map(|p| {
-            let detail = [p.admin1, p.country]
+            let detail = [p.admin1.clone(), p.country]
                 .into_iter()
                 .flatten()
                 .filter(|s| !s.is_empty() && *s != p.name)
                 .collect::<Vec<_>>()
                 .join(", ");
-            Location::new(p.name, detail, p.latitude, p.longitude)
+            let areas = [p.admin1, p.admin2, p.admin3, p.admin4].into_iter().flatten().collect();
+            Location::new(p.name, detail, p.latitude, p.longitude).with_areas(p.country_code.unwrap_or_default(), areas)
         })
         .collect())
 }
@@ -56,7 +57,11 @@ struct RawPlace {
     latitude: f64,
     longitude: f64,
     admin1: Option<String>,
+    admin2: Option<String>,
+    admin3: Option<String>,
+    admin4: Option<String>,
     country: Option<String>,
+    country_code: Option<String>,
 }
 
 #[cfg(test)]

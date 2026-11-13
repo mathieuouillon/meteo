@@ -233,6 +233,9 @@ pub struct Settings {
     pub morning_summary: bool,
     #[serde(default)]
     pub rain_alerts: bool,
+    /// Orange and red official weather warnings (MeteoAlarm).
+    #[serde(default)]
+    pub warning_alerts: bool,
 }
 
 /// Where the UI's colours come from.

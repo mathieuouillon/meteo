@@ -35,12 +35,15 @@ struct State {
     morning_date: String,
     #[serde(default)]
     rain_alert_at: i64,
+    /// Warnings already notified (CAP identifiers, the latest few).
+    #[serde(default)]
+    warned: Vec<String>,
 }
 
 /// The notifications due now (usually none). `system_lang` is the phone's.
 pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
     let settings = Settings::load(dir);
-    if !settings.morning_summary && !settings.rain_alerts {
+    if !settings.morning_summary && !settings.rain_alerts && !settings.warning_alerts {
         return Vec::new();
     }
     let lang = settings.lang(system_lang);
@@ -79,6 +82,26 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
             text: screen.nowcast.summary.clone(),
         });
         state.rain_alert_at = unix_now;
+    }
+
+    // Orange and red warnings, each once.
+    if settings.warning_alerts {
+        for w in f.warnings.iter().filter(|w| w.level >= 2 && w.is_current(unix_now)) {
+            let key = if w.id.is_empty() { format!("{}-{}-{}", w.kind, w.level, w.onset) } else { w.id.clone() };
+            if state.warned.contains(&key) {
+                continue;
+            }
+            let title = lang.warning_title(w.level, &w.kind);
+            let when = screen.warnings.iter().find(|v| v.title == title).map(|v| v.detail.clone()).unwrap_or_default();
+            out.push(Notification {
+                kind: "warning".into(),
+                title: lang.warnings_title(&city.name),
+                text: format!("{title}\n{when}"),
+            });
+            state.warned.push(key);
+        }
+        let excess = state.warned.len().saturating_sub(50);
+        state.warned.drain(..excess);
     }
 
     if !out.is_empty()
@@ -140,6 +163,31 @@ mod tests {
         // Already raining, or off: nothing.
         let dir = setup("raining", false, true, Some(0));
         assert!(due(&dir, MORNING_8AM, Lang::En).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn orange_warning_notified_once() {
+        let dir = setup("warning", false, false, None);
+        Settings { warning_alerts: true, ..Settings::default() }.save(&dir).unwrap();
+        let mut cached = cache::load(&dir, &Location::paris(), Source::BestMatch, MORNING_8AM).unwrap();
+        let warning = |level, kind: &str, id: &str| crate::warnings::Warning {
+            kind: kind.into(),
+            level,
+            area: "Paris".into(),
+            onset: MORNING_8AM - 3600,
+            expires: MORNING_8AM + 6 * 3600,
+            id: id.into(),
+        };
+        // A yellow one isn't worth a notification; the orange one is.
+        cached.forecast.warnings = vec![warning(2, "thunderstorm", "a"), warning(1, "wind", "b")];
+        cache::save(&dir, &Location::paris(), Source::BestMatch, &cached.forecast, MORNING_8AM).unwrap();
+        let first = due(&dir, MORNING_8AM, Lang::Fr);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].kind, "warning");
+        assert_eq!(first[0].title, "Vigilance météo à Paris");
+        assert_eq!(first[0].text, "Vigilance orange · Orages\nJusqu’à 14:00");
+        assert!(due(&dir, MORNING_8AM + 900, Lang::Fr).is_empty(), "not twice");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

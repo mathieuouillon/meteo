@@ -266,9 +266,19 @@ pub async fn normals_for(dir: &Path, location: &Location) -> Option<Normals> {
 /// spread and the air quality fetched alongside, and the normals (from disk
 /// in `dir`, or downloaded once). Only the forecast's own failure is an error.
 pub async fn download(dir: Option<&Path>, location: &Location, source: crate::Source) -> Result<Forecast, Error> {
-    let (forecast, spread, air) =
-        tokio::join!(crate::api::fetch_forecast(location, source), fetch_spread(location), fetch_air(location),);
+    let warnings = async {
+        let place = crate::warnings::with_areas(dir, location).await;
+        crate::warnings::fetch_warnings(&place).await
+    };
+    let (forecast, spread, air, warnings) = tokio::join!(
+        crate::api::fetch_forecast(location, source),
+        fetch_spread(location),
+        fetch_air(location),
+        warnings
+    );
     let mut forecast = forecast?;
+    // A failed warnings download leaves none rather than failing the forecast.
+    forecast.warnings = warnings.unwrap_or_default();
     let normals = match dir {
         Some(dir) => normals_for(dir, location).await,
         None => None,
