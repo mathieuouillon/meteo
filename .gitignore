@@ -1,2 +1,5 @@
 /target
 .DS_Store
+
+# Built APKs to share (not committed).
+dist/
