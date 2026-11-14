@@ -238,6 +238,39 @@ impl Lang {
         }
     }
 
+    /// How a data source did over the last weeks, under its name in the list.
+    pub fn accuracy_line(self, best: bool, miss: &str, rain_right: u8, days: u8) -> String {
+        let line = match self {
+            Lang::En => format!("Temperature within {miss} · rain right {rain_right} days of {days}"),
+            Lang::Fr => format!("Température à {miss} près · pluie juste {rain_right} jours sur {days}"),
+        };
+        match (best, self) {
+            (false, _) => line,
+            (true, Lang::En) => format!("★ Most accurate here · {line}"),
+            (true, Lang::Fr) => format!("★ La plus juste ici · {line}"),
+        }
+    }
+
+    /// Above the list: what the accuracy lines measure.
+    pub fn accuracy_note(self, best: &str, from: &str, to: &str) -> String {
+        match self {
+            Lang::En => format!(
+                "Most accurate here lately: {best}. Each source’s forecast from the day before, checked against what happened from {} to {} (ERA5 reanalysis).",
+                self.day_month(from),
+                self.day_month(to)
+            ),
+            Lang::Fr => format!(
+                "La plus juste ici ces derniers temps : {best}. Prévisions de la veille de chaque source, comparées à ce qui s’est passé du {} au {} (réanalyse ERA5).",
+                self.day_month(from),
+                self.day_month(to)
+            ),
+        }
+    }
+
+    pub fn accuracy_checking(self) -> &'static str {
+        self.pick("Checking which source is most accurate here…", "Recherche de la source la plus juste ici…")
+    }
+
     /// How closely the models agree, on temperature and on rain.
     pub fn models_agree(self, temperature: u8, rain: u8, models: usize) -> String {
         match self {

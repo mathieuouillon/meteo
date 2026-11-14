@@ -1098,6 +1098,7 @@ component SourcePicker inherits Rectangle {
     in property <[CityItem]> sources;
     in property <Theme> theme;
     in property <Labels> labels;
+    in property <string> accuracy-note;
     callback close();
     callback select(int);
     background: root.theme.surface;
@@ -1120,6 +1121,12 @@ component SourcePicker inherits Rectangle {
             text: root.labels.data-source-help;
             color: root.theme.on-surface-variant;
             font-size: 14px;
+            wrap: word-wrap;
+        }
+        if root.accuracy-note != "": Text {
+            text: root.accuracy-note;
+            color: root.theme.on-surface-variant;
+            font-size: 13px;
             wrap: word-wrap;
         }
         Flickable {
@@ -1204,6 +1211,9 @@ export component MainWindow inherits Window {
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
+    in property <string> accuracy-note;
+    callback sources-opened();
+    changed source-open => { if (self.source-open) { root.sources-opened(); } }
     in property <bool> can-locate;
     in property <Nowcast> nowcast;
     in property <[WarningItem]> warnings;
@@ -1804,6 +1814,7 @@ export component MainWindow inherits Window {
         width: root.width;
         height: root.height;
         sources: root.sources;
+        accuracy-note: root.accuracy-note;
         theme: root.shown-theme;
         labels: root.labels;
         close => { root.source-open = false; }

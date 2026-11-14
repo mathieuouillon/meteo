@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use meteo_core::{
-    ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units, cache,
-    extras, search_cities, unix_now,
+    ColorMode, Forecast, Lang, LanguageChoice, Location, MainScreen, Palette, Places, Settings, Source, Units,
+    accuracy, accuracy::Accuracy, cache, extras, search_cities, unix_now,
 };
 use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak};
 
@@ -89,6 +89,8 @@ struct App {
     results: Arc<Mutex<Vec<Location>>>,
     /// The forecast on screen, to redraw it when a setting changes.
     shown: RefCell<Option<Forecast>>,
+    /// How each data source did for a place, shown in the source list.
+    accuracy: RefCell<Option<(Location, Accuracy)>>,
 }
 
 /// Builds the window, shows the selected city and runs the event loop.
@@ -109,6 +111,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         search_gen: Arc::default(),
         results: Arc::default(),
         shown: RefCell::new(None),
+        accuracy: RefCell::new(None),
     });
     APP.with(|a| a.set(app.clone()).ok());
     set_lang(&app.settings.borrow());
@@ -189,6 +192,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
     ui.on_remove_city({
         let app = app.clone();
         move |i| app.change_places(|p| p.remove(i as usize))
+    });
+    ui.on_sources_opened({
+        let app = app.clone();
+        move || app.check_accuracy()
     });
     ui.on_select_source({
         let app = app.clone();
@@ -412,17 +419,60 @@ impl App {
     fn update_source_list(&self) {
         let Some(ui) = self.ui.upgrade() else { return };
         let current = self.settings.borrow().source;
+        let (units, city) = (self.settings.borrow().units, self.places.borrow().selected().clone());
+        let accuracy = self.accuracy.borrow();
+        let accuracy = accuracy.as_ref().filter(|(place, _)| place.key() == city.key()).map(|(_, a)| a);
         let items: Vec<CityItem> = Source::ALL
             .iter()
-            .map(|&s| CityItem {
-                name: s.name(lang()).into(),
-                detail: s.description(lang()).into(),
-                selected: s == current,
-                device: false,
+            .map(|&s| {
+                let mut detail = s.description(lang()).to_string();
+                if let Some(score) = accuracy.and_then(|a| a.score(s)) {
+                    let best = accuracy.and_then(Accuracy::best) == Some(s);
+                    let miss = temp_miss(score.temp_error, units, lang());
+                    detail = format!("{}\n{detail}", lang().accuracy_line(best, &miss, score.rain_right, score.days));
+                }
+                CityItem { name: s.name(lang()).into(), detail: detail.into(), selected: s == current, device: false }
             })
             .collect();
+        ui.set_accuracy_note(match accuracy {
+            Some(a) => {
+                let best = a.best().map(|s| s.name(lang())).unwrap_or_default();
+                lang().accuracy_note(best, &a.from, &a.to).into()
+            }
+            None => SharedString::new(),
+        });
         ui.set_sources(ModelRc::from(Rc::new(VecModel::from(items))));
         ui.set_source_name(current.name(lang()).into());
+    }
+
+    /// Works out (or loads) how each data source did for the selected city,
+    /// then fills the list in.
+    fn check_accuracy(&self) {
+        let city = self.places.borrow().selected().clone();
+        let fresh =
+            self.accuracy.borrow().as_ref().is_some_and(|(place, a)| {
+                place.key() == city.key() && unix_now() - a.computed_at < accuracy::MAX_AGE_SECS
+            });
+        if fresh {
+            return;
+        }
+        if let Some(ui) = self.ui.upgrade() {
+            ui.set_accuracy_note(lang().accuracy_checking().into());
+        }
+        let dir = self.dir.clone();
+        std::thread::spawn(move || {
+            let found = block_on(accuracy::for_place(dir.as_deref(), &city, unix_now()));
+            let _ = slint::invoke_from_event_loop(move || {
+                APP.with(|a| {
+                    if let Some(app) = a.get() {
+                        if let Some(found) = found {
+                            *app.accuracy.borrow_mut() = Some((city, found));
+                        }
+                        app.update_source_list();
+                    }
+                });
+            });
+        });
     }
 
     /// Shows the selected city: its cached forecast at once if there is one,
@@ -616,6 +666,16 @@ fn can_locate() -> bool {
 }
 
 /// Runs a future on a small single-threaded runtime (we're on a worker thread).
+/// "0.8°": an average temperature miss, to a tenth of a degree.
+fn temp_miss(celsius: f64, units: Units, lang: Lang) -> String {
+    let d = match units {
+        Units::Metric => celsius,
+        Units::Imperial => celsius * 9.0 / 5.0,
+    };
+    let s = format!("{d:.1}°");
+    if lang == Lang::Fr { s.replace('.', ",") } else { s }
+}
+
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime").block_on(future)
 }

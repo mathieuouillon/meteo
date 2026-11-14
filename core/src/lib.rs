@@ -4,6 +4,7 @@
 //! mapping WMO weather codes to conditions and colours, and even the geometry
 //! of the hourly temperature curve, so each UI only has to draw it.
 
+pub mod accuracy;
 pub mod advice;
 mod api;
 pub mod cache;
