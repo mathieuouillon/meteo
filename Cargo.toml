@@ -13,3 +13,20 @@ license = "MIT"
 [patch.crates-io]
 i-slint-core = { path = "vendor/i-slint-core" }
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+
+# Release builds: smaller and a little faster. Link-time optimisation across
+# all crates, one code-generation unit, and abort on panic (a panic across the
+# JNI boundary aborts anyway). Symbols stay for profiling and crash reports;
+# Android's packaging strips them from the APK.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+# Optimised for size, except the code that draws every frame.
+opt-level = "s"
+
+[profile.release.package.i-slint-core]
+opt-level = 3
+
+[profile.release.package.i-slint-renderer-skia]
+opt-level = 3

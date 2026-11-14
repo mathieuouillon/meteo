@@ -6,11 +6,17 @@ license.workspace = true
 
 [dependencies]
 meteo-core = { version = "0.1.0", path = "../core" }
-slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-skia"] }
+# Skia only; each platform adds its own backend below (the defaults would pull
+# two more renderers and the desktop windowing into the Android library).
+slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "time"] }
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+# The desktop preview.
+slint = { version = "1.18.1", default-features = false, features = ["backend-winit", "accessibility"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
-slint = { version = "1.18.1", features = ["backend-android-activity-06"] }
+slint = { version = "1.18.1", default-features = false, features = ["backend-android-activity-06"] }
 # Same version as already used by the TLS stack; for LocationManager/Geocoder calls.
 jni = "0.21.1"
 # __system_property_get, for the preview overrides (animation.rs).
