@@ -14,6 +14,7 @@ use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak
 slint::include_modules!();
 
 mod animation;
+mod radar;
 mod startup;
 mod theme;
 
@@ -197,6 +198,24 @@ pub fn run() -> Result<(), slint::PlatformError> {
     ui.on_remove_city({
         let app = app.clone();
         move |i| app.change_places(|p| p.remove(i as usize))
+    });
+    ui.on_radar_opened({
+        let app = app.clone();
+        move || {
+            let Some(ui) = app.ui.upgrade() else { return };
+            let city = app.places.borrow().selected().clone();
+            let offset = app.shown.borrow().as_ref().map_or(0, |f| f.utc_offset_seconds);
+            radar::open(&ui, &city, offset, lang());
+        }
+    });
+    ui.on_radar_closed(radar::close);
+    ui.on_radar_toggle({
+        let app = app.clone();
+        move || {
+            if let Some(ui) = app.ui.upgrade() {
+                radar::toggle(&ui);
+            }
+        }
     });
     ui.on_sources_opened({
         let app = app.clone();
@@ -882,6 +901,9 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         use_location: l.use_location.into(),
         saved_cities: l.saved_cities.into(),
         next_hours: l.next_hours.into(),
+        radar: l.radar.into(),
+        radar_link: l.radar_link.into(),
+        radar_credit: l.radar_credit.into(),
         air_quality: l.air_quality.into(),
         pollen: l.pollen.into(),
         settings: l.settings.into(),

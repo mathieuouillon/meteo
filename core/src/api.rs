@@ -78,7 +78,11 @@ pub(crate) fn client() -> Result<&'static reqwest::Client, Error> {
     }
     // A network that connects but never answers (captive portal, bad mobile
     // signal) mustn't leave a refresh waiting forever.
-    let builder = reqwest::Client::builder().connect_timeout(CONNECT_TIMEOUT).timeout(REQUEST_TIMEOUT);
+    // Map and radar tile servers ask apps to say who they are.
+    let builder = reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .user_agent(concat!("Meteo/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mathieuouillon/meteo)"));
     // On Android the platform verifier needs JNI initialisation from the
     // Java side; bundled Mozilla roots avoid that and work in any host app
     // (Tauri, Slint, a widget). Elsewhere the OS certificate store is used.

@@ -49,6 +49,9 @@ export struct Labels {
     use-location: string,
     saved-cities: string,
     next-hours: string,
+    radar: string,
+    radar-link: string,
+    radar-credit: string,
     air-quality: string,
     pollen: string,
     settings: string,
@@ -693,8 +696,11 @@ component NowcastCard inherits Rectangle {
     cache-rendering-hint: true;
     in property <Nowcast> nowcast;
     in property <string> title;
+    in property <string> link;
     in property <Theme> theme;
+    callback clicked();
     border-radius: 28px;
+    TouchArea { clicked => { root.clicked(); } }
     background: root.theme.surface-container;
     VerticalLayout {
         padding: 16px;
@@ -712,6 +718,7 @@ component NowcastCard inherits Rectangle {
                 Text { text: root.title; color: root.theme.on-surface-variant; font-size: 12px; font-weight: 500; }
                 Text { text: root.nowcast.summary; color: root.theme.on-surface; font-size: 15px; font-weight: 600; wrap: word-wrap; }
             }
+            Text { text: root.link; color: root.theme.primary; font-size: 13px; font-weight: 600; vertical-alignment: center; }
         }
         if root.nowcast.wet: HorizontalLayout {
             spacing: 6px;
@@ -1093,6 +1100,90 @@ component CityPicker inherits Rectangle {
     }
 }
 
+/// The rain radar: the last two hours over a map, the place in the middle.
+component RadarScreen inherits Rectangle {
+    in property <Theme> theme;
+    in property <Labels> labels;
+    in property <image> map;
+    in property <image> rain;
+    in property <string> time;
+    in property <string> status;
+    in property <float> marker-x;
+    in property <float> marker-y;
+    in property <bool> playing;
+    callback close();
+    callback toggle();
+    background: root.theme.surface;
+    TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 44px;
+        spacing: 12px;
+        alignment: start;
+        HorizontalLayout {
+            padding-left: 8px;
+            Text { text: root.labels.radar; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
+            Rectangle {
+                width: 72px;
+                height: 48px;
+                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                TouchArea { clicked => { root.close(); } }
+            }
+        }
+        Rectangle {
+            height: self.width;
+            border-radius: 28px;
+            clip: true;
+            background: root.theme.surface-container;
+            Image { width: parent.width; height: parent.height; source: root.map; image-fit: fill; }
+            Image { width: parent.width; height: parent.height; source: root.rain; image-fit: fill; opacity: 0.85; }
+            Rectangle {
+                x: parent.width * root.marker-x - self.width / 2;
+                y: parent.height * root.marker-y - self.height / 2;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: root.theme.primary;
+                border-width: 3px;
+                border-color: #ffffff;
+            }
+            if root.time != "": Rectangle {
+                x: 12px;
+                y: 12px;
+                width: time-row.preferred-width;
+                height: 32px;
+                border-radius: 16px;
+                background: root.theme.surface.with-alpha(0.85);
+                time-row := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+                    alignment: center;
+                    Path {
+                        width: 10px;
+                        height: 12px;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 10;
+                        viewbox-height: 12;
+                        fill: root.theme.on-surface;
+                        commands: root.playing ? "M 0 0 L 10 6 L 0 12 Z" : "M 0 0 L 3.5 0 L 3.5 12 L 0 12 Z M 6.5 0 L 10 0 L 10 12 L 6.5 12 Z";
+                    }
+                    Text {
+                        text: root.time;
+                        color: root.theme.on-surface;
+                        font-size: 15px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            TouchArea { clicked => { root.toggle(); } }
+        }
+        Text { text: root.status; color: root.theme.on-surface-variant; font-size: 14px; wrap: word-wrap; }
+        Text { text: root.labels.radar-credit; color: root.theme.on-surface-variant; font-size: 11px; wrap: word-wrap; }
+    }
+}
+
 /// Full-screen list of weather models to choose from.
 component SourcePicker inherits Rectangle {
     in property <[CityItem]> sources;
@@ -1160,7 +1251,9 @@ export component MainWindow inherits Window {
             if (e.text != Key.Back && e.text != Key.Escape) {
                 return reject;
             }
-            if (root.source-open) {
+            if (root.radar-open) {
+                root.radar-open = false;
+            } else if (root.source-open) {
                 root.source-open = false;
             } else if (root.picker-open) {
                 root.picker-open = false;
@@ -1211,6 +1304,18 @@ export component MainWindow inherits Window {
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
+    in-out property <bool> radar-open;
+    in property <image> radar-map;
+    in property <image> radar-rain;
+    in property <string> radar-time;
+    in property <string> radar-status;
+    in property <float> radar-marker-x: 0.5;
+    in property <float> radar-marker-y: 0.5;
+    in property <bool> radar-playing;
+    callback radar-opened();
+    callback radar-closed();
+    callback radar-toggle();
+    changed radar-open => { if (self.radar-open) { root.radar-opened(); } else { root.radar-closed(); } }
     /// False for the first frame: the open day's chart joins right after,
     /// so the top of the page shows sooner.
     in-out property <bool> settled;
@@ -1612,7 +1717,9 @@ export component MainWindow inherits Window {
                     if root.nowcast.summary != "": NowcastCard {
                         nowcast: root.nowcast;
                         title: root.labels.next-hours;
+                        link: root.labels.radar-link;
                         theme: root.shown-theme;
+                        clicked => { root.radar-open = true; }
                     }
 
                     // 7-day forecast; a day opens hour by hour.
@@ -1811,6 +1918,22 @@ export component MainWindow inherits Window {
         add-city(i) => { root.add-city(i); self.close(); }
         select-city(i) => { root.select-city(i); self.close(); }
         remove-city(i) => { root.remove-city(i); }
+    }
+
+    if root.radar-open: RadarScreen {
+        width: root.width;
+        height: root.height;
+        theme: root.shown-theme;
+        labels: root.labels;
+        map: root.radar-map;
+        rain: root.radar-rain;
+        time: root.radar-time;
+        status: root.radar-status;
+        marker-x: root.radar-marker-x;
+        marker-y: root.radar-marker-y;
+        playing: root.radar-playing;
+        close => { root.radar-open = false; }
+        toggle => { root.radar-toggle(); }
     }
 
     if root.source-open: SourcePicker {

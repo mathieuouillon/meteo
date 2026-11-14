@@ -2833,6 +2833,7 @@ dependencies = [
  "libc",
  "meteo-core",
  "ndk-sys 0.6.0+11769913",
+ "png",
  "slint",
  "slint-build",
  "tokio",

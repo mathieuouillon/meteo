@@ -9,7 +9,9 @@ meteo-core = { version = "0.1.0", path = "../core" }
 # Skia only; each platform adds its own backend below (the defaults would pull
 # two more renderers and the desktop windowing into the Android library).
 slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
-tokio = { version = "1.54.1", features = ["rt", "net", "time"] }
+tokio = { version = "1.54.1", features = ["rt", "net", "time", "macros"] }
+# Radar and map tiles; the version Slint's renderer already includes.
+png = "0.18.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # The desktop preview.
