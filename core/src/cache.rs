@@ -41,9 +41,16 @@ pub fn save(dir: &Path, location: &Location, source: Source, forecast: &Forecast
 /// a home-screen widget) never sees a half-written file.
 pub(crate) fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!("{name}.tmp"));
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(tmp, dir.join(name))
+    // A temporary file of its own: the app, a widget and the background
+    // worker can save the same file at the same moment.
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dir.join(format!(".{name}.{}-{n}.tmp", std::process::id()));
+    if let Err(e) = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, dir.join(name))) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Loads the cached forecast for `location` from `dir`, moved forward to `unix_now`.
@@ -137,6 +144,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(file_name(&paris(), Source::BestMatch)), b"{not json").unwrap();
         assert!(load(&dir, &paris(), Source::BestMatch, FETCHED_AT).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn concurrent_saves_of_the_same_file_all_succeed() {
+        let dir = std::env::temp_dir().join(format!("meteo-concurrent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let big = |c: u8| serde_json::to_vec(&vec![c; 100_000]).unwrap();
+        let (a, b) = (big(1), big(2));
+        for _ in 0..50 {
+            std::thread::scope(|s| {
+                let w1 = s.spawn(|| write_atomic(&dir, "f.json", &a));
+                let w2 = s.spawn(|| write_atomic(&dir, "f.json", &b));
+                assert!(w1.join().unwrap().is_ok() && w2.join().unwrap().is_ok(), "both saves succeed");
+            });
+            let saved: Vec<u8> = serde_json::from_slice(&std::fs::read(dir.join("f.json")).unwrap()).unwrap();
+            assert!(saved == vec![1; 100_000] || saved == vec![2; 100_000], "one whole version");
+        }
+        // No temporary files left behind.
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

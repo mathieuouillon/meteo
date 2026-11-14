@@ -13,12 +13,21 @@ import kotlin.concurrent.thread
 /**
  * Downloads a fresh forecast in the background: for the watch's own
  * approximate position when allowed (otherwise the saved city), then asks
- * the tile to redraw.
+ * the tile to redraw. After a failure (offline), it waits before trying
+ * again: 1 min, then 2, 4… up to 30 min.
  */
 object WatchRefresh {
     private val running = AtomicBoolean(false)
+    @Volatile private var failures = 0
+    @Volatile private var lastFailure = 0L
 
-    fun start(context: Context, then: (() -> Unit)? = null) {
+    /** [force]: the user opened the app, so try now even after a failure. */
+    fun start(context: Context, force: Boolean = false, then: (() -> Unit)? = null) {
+        val wait = minOf(60_000L shl minOf(failures, 5), 30 * 60_000L)
+        if (!force && failures > 0 && System.currentTimeMillis() - lastFailure < wait) {
+            then?.invoke()
+            return
+        }
         if (!running.compareAndSet(false, true)) return
         val app = context.applicationContext
         thread {
@@ -27,8 +36,15 @@ object WatchRefresh {
                 lastPosition(app)?.let { (lat, lon) ->
                     RustBridge.setDevice(dir, placeName(app, lat, lon), lat, lon)
                 }
-                RustBridge.refresh(dir)
-                TileService.getUpdater(app).requestUpdate(WeatherTileService::class.java)
+                if (RustBridge.refresh(dir)) {
+                    failures = 0
+                    // Only redraw with new data: a redraw of a stale forecast
+                    // would start another refresh straight away.
+                    TileService.getUpdater(app).requestUpdate(WeatherTileService::class.java)
+                } else {
+                    failures++
+                    lastFailure = System.currentTimeMillis()
+                }
             } finally {
                 running.set(false)
                 then?.invoke()

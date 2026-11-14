@@ -67,12 +67,18 @@ pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forec
 }
 
 /// One shared HTTP client (connection pool, TLS setup done once).
+/// Time to connect, and for a whole request (the larger feeds take a few seconds).
+pub(crate) const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub(crate) fn client() -> Result<&'static reqwest::Client, Error> {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     if let Some(c) = CLIENT.get() {
         return Ok(c);
     }
-    let builder = reqwest::Client::builder();
+    // A network that connects but never answers (captive portal, bad mobile
+    // signal) mustn't leave a refresh waiting forever.
+    let builder = reqwest::Client::builder().connect_timeout(CONNECT_TIMEOUT).timeout(REQUEST_TIMEOUT);
     // On Android the platform verifier needs JNI initialisation from the
     // Java side; bundled Mozilla roots avoid that and work in any host app
     // (Tauri, Slint, a widget). Elsewhere the OS certificate store is used.
@@ -350,5 +356,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let mf = fetch_forecast(&Location::paris(), Source::MeteoFrance).await.unwrap();
         assert!((3..=DAYS_SHOWN).contains(&mf.days.len()));
+    }
+
+    #[test]
+    #[ignore = "slow: waits for the request timeout"]
+    fn a_server_that_never_answers_times_out() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Accepts, then never answers.
+        std::thread::spawn(move || {
+            let _held: Vec<_> = listener.incoming().take(1).collect();
+            std::thread::sleep(std::time::Duration::from_secs(120));
+        });
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let started = std::time::Instant::now();
+        let r = rt.block_on(async { client().unwrap().get(format!("http://127.0.0.1:{port}/")).send().await });
+        assert!(r.is_err_and(|e| e.is_timeout()), "the request gives up");
+        assert!(started.elapsed() < REQUEST_TIMEOUT + std::time::Duration::from_secs(5));
     }
 }

@@ -45,14 +45,14 @@ class WearActivity : Activity() {
         super.onResume()
         show()
         locate.visibility = if (hasLocation()) android.view.View.GONE else android.view.View.VISIBLE
-        WatchRefresh.start(this) { runOnUiThread { show() } }
+        WatchRefresh.start(this, force = true) { runOnUiThread { show() } }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (hasLocation()) {
             locate.visibility = android.view.View.GONE
-            WatchRefresh.start(this) { runOnUiThread { show() } }
+            WatchRefresh.start(this, force = true) { runOnUiThread { show() } }
         }
     }
 
