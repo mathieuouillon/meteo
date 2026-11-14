@@ -621,7 +621,10 @@ impl Lang {
                 "The last 2 hours, every 10 minutes. Tap the map to pause.",
                 "Les 2 dernières heures, toutes les 10 minutes. Touchez la carte pour mettre en pause.",
             ),
-            radar_credit: crate::radar::CREDIT,
+            radar_credit: self.pick(
+                "Radar: RainViewer · Map: © OpenStreetMap contributors",
+                "Radar : RainViewer · Carte : © les contributeurs d’OpenStreetMap",
+            ),
             air_quality: self.pick("Air quality", "Qualité de l’air"),
             pollen: self.pick("Pollen", "Pollens"),
             settings: self.pick("Settings", "Réglages"),

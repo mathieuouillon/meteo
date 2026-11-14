@@ -11,8 +11,6 @@ pub const ZOOM: u32 = 7;
 pub const GRID: u32 = 3;
 pub const TILE: u32 = 256;
 
-pub const CREDIT: &str = "Radar: RainViewer · Map: © OpenStreetMap contributors";
-
 /// One radar image.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frame {

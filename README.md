@@ -157,8 +157,9 @@ adb logcat -s Meteo
 ```
 
 `startup: window built 25 ms, forecast shown 30 ms, renderer ready 330 ms, drawing 400 ms,
-first frame 950 ms` (on the emulator). The cached forecast is on screen in about 30 ms;
-the rest is the graphics setup and the first frame. The open day's chart is drawn just
+first frame 950 ms` on the emulator; on a recent Samsung phone the first frame comes
+50–65 ms after start (250 ms on the very first launch). The cached forecast is ready
+in under 30 ms; the rest is the graphics setup and the first frame. The open day's chart is drawn just
 after the first frame, so the top of the page comes first.
 
 ## Days hour by hour
