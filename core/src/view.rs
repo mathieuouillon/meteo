@@ -515,7 +515,7 @@ impl DayView {
                     .zip(&day_spread)
                     .enumerate()
                     .map(|(i, ((h, p), s))| {
-                        let range = s.filter(|s| rain_differs(s.r_min, s.r_max));
+                        let range = s.map(|s| rain_span(s, h.precipitation)).filter(|&(lo, hi)| rain_differs(lo, hi));
                         DayHourView {
                             label: if Some(i) == now_index { lang.now().into() } else { h.label.clone() },
                             is_now: Some(i) == now_index,
@@ -525,9 +525,9 @@ impl DayView {
                             precipitation: rain_chance(h.precipitation_probability),
                             rain: units.rain(h.precipitation, false),
                             rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
-                            rain_range: range.map(|s| rain_range(units, s.r_min, s.r_max)).unwrap_or_default(),
-                            range_low: range.map_or(0.0, |s| (s.r_min / wettest).clamp(0.0, 1.0)),
-                            range_high: range.map_or(0.0, |s| (s.r_max / wettest).clamp(0.0, 1.0)),
+                            rain_range: range.map(|(lo, hi)| rain_range(units, lo, hi)).unwrap_or_default(),
+                            range_low: range.map_or(0.0, |(lo, _)| (lo / wettest).clamp(0.0, 1.0)),
+                            range_high: range.map_or(0.0, |(_, hi)| (hi / wettest).clamp(0.0, 1.0)),
                             x: p.x,
                             y: p.y,
                         }
@@ -565,6 +565,13 @@ impl DayView {
 
 /// Whether the models' rain this hour is worth showing as a range: some
 /// expect at least 0.1 mm, and they're at least 0.3 mm apart.
+/// The rain range shown for an hour: the runs' range (another model),
+/// widened to take in this source's own amount, so the bar never falls
+/// outside it.
+fn rain_span(s: &crate::extras::Spread, mm: f64) -> (f64, f64) {
+    (s.r_min.min(mm), s.r_max.max(mm))
+}
+
 fn rain_differs(low: f64, high: f64) -> bool {
     high >= 0.1 && high - low >= 0.3
 }
@@ -721,6 +728,46 @@ mod tests {
         assert_eq!(rain_range(Units::Metric, 0.0, 1.2), "0–1.2");
         assert_eq!(rain_range(Units::Metric, 0.4, 12.3), "0.4–12");
         assert_eq!(rain_range(Units::Imperial, 2.54, 25.4), "0.10–1.00");
+    }
+
+    /// The runs come from another model than the source: their range takes in
+    /// the source's own amount, so the bar is never outside it.
+    #[test]
+    fn rain_range_includes_the_source() {
+        let today = day("2026-11-12", 5.0, 10.0, 80.0);
+        let wet_hour = today.hours[2].clone(); // 1 mm in this source
+        let runs = crate::extras::Spread {
+            time: wet_hour.time.clone(),
+            t_min: 6.0,
+            t_mid: 7.0,
+            t_max: 8.0,
+            models: 51,
+            wet: 12,
+            r_min: 0.0,
+            r_max: 0.4,
+        };
+        let rows = DayView::list(&[today], &[runs], None, Lang::En, Units::Metric);
+        let h = &rows[0].hours[2];
+        assert_eq!(h.rain, "1.0");
+        assert_eq!(h.rain_range, "0–1.0", "was 0–0.4, below the bar");
+        assert!(h.range_high >= h.rain_height);
+        // Wider runs stay as they are.
+        let s = crate::extras::Spread { r_min: 0.2, r_max: 3.0, ..runs_like(&wet_hour.time) };
+        assert_eq!(rain_span(&s, 1.0), (0.2, 3.0));
+        assert_eq!(rain_span(&s, 0.0), (0.0, 3.0), "a dry source widens it down to 0");
+    }
+
+    fn runs_like(time: &str) -> crate::extras::Spread {
+        crate::extras::Spread {
+            time: time.into(),
+            t_min: 0.0,
+            t_mid: 0.0,
+            t_max: 0.0,
+            models: 51,
+            wet: 0,
+            r_min: 0.0,
+            r_max: 0.0,
+        }
     }
 
     #[test]
