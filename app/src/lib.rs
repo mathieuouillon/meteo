@@ -463,7 +463,7 @@ impl App {
         ui.set_accuracy_note(match accuracy {
             Some(a) => {
                 let best = a.best().map(|s| s.name(lang())).unwrap_or_default();
-                lang().accuracy_note(best, &a.from, &a.to).into()
+                lang().accuracy_note(best, &a.from, &a.to, &a.stations).into()
             }
             None => SharedString::new(),
         });

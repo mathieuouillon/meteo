@@ -258,17 +258,28 @@ impl Lang {
     }
 
     /// Above the list: what the accuracy lines measure.
-    pub fn accuracy_note(self, best: &str, from: &str, to: &str) -> String {
-        match self {
-            Lang::En => format!(
-                "Most accurate here lately: {best}. Each source’s forecast from the day before, checked against what happened from {} to {} (ERA5 reanalysis).",
-                self.day_month(from),
-                self.day_month(to)
+    /// `stations`: the weather stations compared with; empty for the ERA5
+    /// reanalysis, which favours ECMWF (it's made with its model).
+    pub fn accuracy_note(self, best: &str, from: &str, to: &str, stations: &[String]) -> String {
+        let (from, to) = (self.day_month(from), self.day_month(to));
+        let and = self.pick(" and ", " et ");
+        let list = match stations {
+            [] => String::new(),
+            [one] => one.clone(),
+            [rest @ .., last] => format!("{}{and}{last}", rest.join(", ")),
+        };
+        match (self, stations.is_empty()) {
+            (Lang::En, false) => format!(
+                "Most accurate here lately: {best}. Each source’s forecast from the day before, checked against what the Météo-France weather stations of {list} measured from {from} to {to}."
             ),
-            Lang::Fr => format!(
-                "La plus juste ici ces derniers temps : {best}. Prévisions de la veille de chaque source, comparées à ce qui s’est passé du {} au {} (réanalyse ERA5).",
-                self.day_month(from),
-                self.day_month(to)
+            (Lang::Fr, false) => format!(
+                "La plus juste ici ces derniers temps : {best}. Prévisions de la veille de chaque source, comparées aux relevés des stations Météo-France de {list} du {from} au {to}."
+            ),
+            (Lang::En, true) => format!(
+                "Most accurate here lately: {best}. Each source’s forecast from the day before, checked against the ERA5 reanalysis from {from} to {to}. ERA5 is made with ECMWF’s model, so it favours ECMWF."
+            ),
+            (Lang::Fr, true) => format!(
+                "La plus juste ici ces derniers temps : {best}. Prévisions de la veille de chaque source, comparées à la réanalyse ERA5 du {from} au {to}. ERA5 étant produite avec le modèle d’ECMWF, elle le favorise."
             ),
         }
     }

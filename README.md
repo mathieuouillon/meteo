@@ -192,13 +192,21 @@ so there are still no API keys.
 - Regional models are more detailed near home but may cover fewer days (Météo-France:
   about 4) or have no rain probability (Météo-France, JMA). Parsing stops at the first
   missing hour or day instead of failing.
-- **Most accurate here:** the list shows how each source did for the city over about
-  two weeks: its forecast made the day before ([Previous Runs API](https://open-meteo.com/en/docs/previous-runs-api))
-  against what happened (ERA5 reanalysis, which comes about five days late). "Temperature
-  within 1.1° · rain right 15 days of 16", and a ★ on the best (a degree of temperature
-  miss counts as much as a quarter of the days' rain wrong). Worked out when the list
-  opens, saved for 3 days ([core/src/accuracy.rs](core/src/accuracy.rs)). Two weeks
-  is a short sample, and ERA5 is coarse (9–25 km), so it's a hint, not a verdict.
+- **Most accurate here:** the list shows how each source did for the city over the
+  last weeks: its forecast made the day before ([Previous Runs API](https://open-meteo.com/en/docs/previous-runs-api))
+  against what happened. "Temperature within 1.1° · rain right 15 days of 16", and a ★
+  on the best (a degree of temperature miss counts as much as a quarter of the days'
+  rain wrong) ([core/src/accuracy.rs](core/src/accuracy.rs)).
+  - **In France**, "what happened" is measured: the up to 3 nearest Météo-France
+    weather stations within 150 km (their SYNOP reports, every 3 hours, from
+    [Opendatasoft](https://public.opendatasoft.com/explore/dataset/donnees-synop-essentielles-omm/),
+    about ten days late), over the last 5 weeks. Each source's forecast is taken at
+    the station's spot and height.
+  - **Elsewhere**, it's the ERA5 reanalysis (about five days late). ERA5 is made with
+    ECMWF's model, so it favours ECMWF and MET Norway (which uses ECMWF outside
+    Scandinavia); the note above the list says so. A study over 24 French stations
+    (Nov 2025 – Jun 2026) put ECMWF 1st against ERA5 but 8th against the stations.
+  - Worked out when the list opens and saved for 3 days.
 - The choice is saved in `settings.json`, and the widget uses it too. Each source has
   its own cache file (`forecast-<lat>_<lon>-<model>.json`), so switching back and
   forth works offline.

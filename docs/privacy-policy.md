@@ -1,6 +1,6 @@
 # Météo — Privacy policy
 
-_Last updated: 13 November 2026_
+_Last updated: 14 November 2026_
 
 Météo is a weather app. It has no account, no advertising, no analytics and no
 server of its own. This page explains the little data it handles.
@@ -24,6 +24,18 @@ rounded coordinates; on most phones that service is provided by Google. Like any
 server, Open-Meteo sees your IP address. Météo sends nothing else: no device
 identifier, no name, no email. See
 [Open-Meteo's terms and privacy policy](https://open-meteo.com/en/terms).
+
+Two features use other services, only when you open them:
+
+- **Rain radar:** the map and radar images come from
+  [OpenStreetMap](https://operations.osmfoundation.org/policies/privacy/) and
+  [RainViewer](https://www.rainviewer.com/privacy.html), as map tiles of about
+  200 km around the place. They see which tiles are asked for, so the area,
+  not the exact place.
+- **Most accurate source** (the data source list): in France, the app asks
+  [Opendatasoft](https://www.opendatasoft.com/en/privacy-policy/) for the
+  Météo-France weather stations within 150 km of the place, sending the same
+  rounded coordinates.
 
 ## Location
 
@@ -60,7 +72,7 @@ Questions: CONTACT_EMAIL.
 
 # Météo — Politique de confidentialité
 
-_Dernière mise à jour : 13 novembre 2026_
+_Dernière mise à jour : 14 novembre 2026_
 
 Météo est une application météo. Elle n'a ni compte, ni publicité, ni mesure
 d'audience, ni serveur à elle. Voici les quelques données qu'elle utilise.
@@ -85,6 +97,18 @@ sur la plupart des téléphones, ce service est fourni par Google. Comme tout se
 Météo n'envoie rien d'autre : aucun identifiant d'appareil, aucun nom, aucun
 e-mail. Voir les
 [conditions et la politique de confidentialité d'Open-Meteo](https://open-meteo.com/en/terms).
+
+Deux fonctions utilisent d'autres services, seulement quand vous les ouvrez :
+
+- **Radar de pluie :** la carte et les images radar viennent
+  d'[OpenStreetMap](https://operations.osmfoundation.org/policies/privacy/) et
+  de [RainViewer](https://www.rainviewer.com/privacy.html), sous forme de tuiles
+  d'environ 200 km autour du lieu. Ils voient quelles tuiles sont demandées,
+  donc la zone, pas le lieu exact.
+- **Source la plus juste** (la liste des sources) : en France, l'application
+  demande à [Opendatasoft](https://www.opendatasoft.com/fr/politique-de-confidentialite/)
+  les stations météo de Météo-France à moins de 150 km du lieu, avec les mêmes
+  coordonnées arrondies.
 
 ## Position
 
