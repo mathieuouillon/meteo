@@ -239,6 +239,12 @@ pub struct Settings {
     /// Frost tonight (in the evening) and heat today (in the morning).
     #[serde(default)]
     pub temperature_alerts: bool,
+    /// Widgets: how see-through their background is, in percent (0, 20 or
+    /// 40), and where their colours come from.
+    #[serde(default)]
+    pub widget_transparency: u8,
+    #[serde(default)]
+    pub widget_colors: ColorMode,
 }
 
 /// Where the UI's colours come from.

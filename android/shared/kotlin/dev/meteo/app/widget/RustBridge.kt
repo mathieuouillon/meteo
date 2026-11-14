@@ -55,6 +55,11 @@ data class WidgetView(
     val nowcastSummary: String,
     /** 15-minute bars: height 0–1, and whether it rains. */
     val nowcast: List<Pair<Double, Boolean>>,
+    /** Rain falling or due within the hour (the main widget then shows it). */
+    val rainSoon: Boolean = false,
+    /** Background opacity, 0–1, and whether to use the wallpaper's colours. */
+    val opacity: Double = 1.0,
+    val wallpaper: Boolean = false,
 )
 
 data class WidgetState(val needsRefresh: Boolean, val view: WidgetView?)
@@ -90,6 +95,9 @@ fun parseWidgetState(json: String): WidgetState {
             nowcast = it.optJSONArray("nowcast")?.let { bars ->
                 (0 until bars.length()).map { i -> bars.getJSONArray(i).let { b -> b.getDouble(0) to b.getBoolean(1) } }
             } ?: emptyList(),
+            rainSoon = it.optBoolean("rain_soon"),
+            opacity = it.optDouble("opacity", 1.0),
+            wallpaper = it.optBoolean("wallpaper"),
         )
     }
     return WidgetState(o.getBoolean("needs_refresh"), view)

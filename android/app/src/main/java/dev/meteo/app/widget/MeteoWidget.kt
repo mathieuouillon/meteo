@@ -116,7 +116,7 @@ abstract class RustWidget : GlanceAppWidget() {
                     if (ok) state = withContext(Dispatchers.IO) { parseWidgetState(RustBridge.state(dir, language)) }
                 }
             }
-            Body(state.view)
+            Body(state.view?.styled(context))
         }
     }
 }
@@ -130,8 +130,9 @@ class MeteoWidget : RustWidget() {
 
     override val sizeMode = SizeMode.Responsive(setOf(SMALL, WIDE))
 
+    /** Switches to the rain view when rain is falling or due within the hour. */
     @Composable
-    override fun Body(view: WidgetView?) = Content(view)
+    override fun Body(view: WidgetView?) = if (view?.rainSoon == true) RainContent(view) else Content(view)
 }
 
 /** Rain over the next 2 hours: the summary and 15-minute bars. */
@@ -139,7 +140,13 @@ class RainWidget : RustWidget() {
     override val sizeMode = SizeMode.Exact
 
     @Composable
-    override fun Body(view: WidgetView?) {
+    override fun Body(view: WidgetView?) = RainContent(view)
+}
+
+/** The next 2 hours of rain: summary and eight 15-minute bars. */
+@Composable
+private fun RainContent(view: WidgetView?) {
+    run {
         val ink = view?.ink ?: 0xFF3B2A12.toInt()
         val inkSoft = view?.inkSoft ?: 0xFF7D6446.toInt()
         Box(

@@ -53,6 +53,12 @@ pub struct WidgetView {
     pub nowcast: Vec<(f64, bool)>,
     /// "Next 2 hours", in the widget's language.
     pub nowcast_title: String,
+    /// Rain falling or due within the hour: the main widget shows the rain.
+    pub rain_soon: bool,
+    /// Background opacity, 0–1 (the settings' transparency).
+    pub opacity: f64,
+    /// Use the wallpaper's colours (Material You) instead of the weather's.
+    pub wallpaper: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -95,6 +101,9 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
             nowcast_summary: s.nowcast.summary.clone(),
             nowcast: s.nowcast.bars.iter().map(|b| (b.height, b.wet)).collect(),
             nowcast_title: lang.labels().next_hours.into(),
+            rain_soon: s.nowcast.starts_in.is_some_and(|m| m <= 60),
+            opacity: 1.0 - f64::from(settings.widget_transparency.min(60)) / 100.0,
+            wallpaper: settings.widget_colors == crate::source::ColorMode::Wallpaper,
             hours: s
                 .hours
                 .into_iter()

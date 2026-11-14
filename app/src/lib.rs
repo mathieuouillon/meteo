@@ -206,6 +206,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let app = app.clone();
         move |i| app.change_settings(|s| s.units = if i == 1 { Units::Imperial } else { Units::Metric })
     });
+    ui.on_set_widget_transparency({
+        let app = app.clone();
+        move |i| app.change_settings(|s| s.widget_transparency = (i.clamp(0, 2) * 20) as u8)
+    });
+    ui.on_set_widget_colors({
+        let app = app.clone();
+        move |i| {
+            app.change_settings(|s| s.widget_colors = if i == 1 { ColorMode::Wallpaper } else { ColorMode::Weather })
+        }
+    });
     ui.on_set_colors({
         let app = app.clone();
         move |i| app.change_settings(|s| s.colors = if i == 1 { ColorMode::Wallpaper } else { ColorMode::Weather })
@@ -308,6 +318,12 @@ impl App {
         self.update_settings_ui();
         self.update_source_list();
         self.render();
+        // Widgets follow the language, units and their own style settings.
+        #[cfg(target_os = "android")]
+        if let Some(app) = ANDROID_APP.get() {
+            let app = app.clone();
+            std::thread::spawn(move || android::notify_widgets(&app));
+        }
     }
 
     fn update_settings_ui(&self) {
@@ -315,6 +331,8 @@ impl App {
         let s = self.settings.borrow();
         ui.set_units_index(i32::from(s.units == Units::Imperial));
         ui.set_colors_index(i32::from(s.colors == ColorMode::Wallpaper));
+        ui.set_widget_transparency_index(i32::from(s.widget_transparency / 20).min(2));
+        ui.set_widget_colors_index(i32::from(s.widget_colors == ColorMode::Wallpaper));
         ui.set_language_index(match s.language {
             LanguageChoice::System => 0,
             LanguageChoice::English => 1,
@@ -819,6 +837,9 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         warning_alerts_help: l.warning_alerts_help.into(),
         warnings_source: l.warnings_source.into(),
         temperature_alerts: l.temperature_alerts.into(),
+        widgets: l.widgets.into(),
+        widget_solid: l.widget_solid.into(),
+        widget_see_through: l.widget_see_through.into(),
         temperature_alerts_help: l.temperature_alerts_help.into(),
     }
 }

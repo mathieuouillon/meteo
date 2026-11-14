@@ -69,6 +69,9 @@ export struct Labels {
     warning-alerts-help: string,
     temperature-alerts: string,
     temperature-alerts-help: string,
+    widgets: string,
+    widget-solid: string,
+    widget-see-through: string,
     warnings-source: string,
 }
 
@@ -802,6 +805,8 @@ component SettingsScreen inherits Rectangle {
     in property <Labels> labels;
     in property <int> units-index;
     in property <int> colors-index;
+    in property <int> widget-transparency-index;
+    in property <int> widget-colors-index;
     in property <int> language-index;
     in property <bool> morning-summary;
     in property <bool> rain-alerts;
@@ -813,6 +818,8 @@ component SettingsScreen inherits Rectangle {
     callback open-sources();
     callback set-units(int);
     callback set-colors(int);
+    callback set-widget-transparency(int);
+    callback set-widget-colors(int);
     callback set-language(int);
     callback set-morning-summary(bool);
     callback set-rain-alerts(bool);
@@ -855,6 +862,19 @@ component SettingsScreen inherits Rectangle {
                     options: [root.labels.colors-weather, root.labels.colors-wallpaper];
                     selected: root.colors-index;
                     chosen(i) => { root.set-colors(i); }
+                }
+                Text { text: root.labels.widgets; color: root.theme.primary; font-size: 14px; font-weight: 600; }
+                Segmented {
+                    theme: root.theme;
+                    options: [root.labels.widget-solid, root.labels.widget-see-through + " 20%", root.labels.widget-see-through + " 40%"];
+                    selected: root.widget-transparency-index;
+                    chosen(i) => { root.set-widget-transparency(i); }
+                }
+                if root.can-use-wallpaper: Segmented {
+                    theme: root.theme;
+                    options: [root.labels.colors-weather, root.labels.colors-wallpaper];
+                    selected: root.widget-colors-index;
+                    chosen(i) => { root.set-widget-colors(i); }
                 }
                 Text { text: root.labels.language; color: root.theme.primary; font-size: 14px; font-weight: 600; }
                 Segmented {
@@ -1194,6 +1214,8 @@ export component MainWindow inherits Window {
     in-out property <bool> settings-open;
     in property <int> units-index;
     in property <int> colors-index;
+    in property <int> widget-transparency-index;
+    in property <int> widget-colors-index;
     in property <int> language-index;
     in property <bool> morning-summary;
     in property <bool> rain-alerts;
@@ -1292,6 +1314,8 @@ export component MainWindow inherits Window {
     callback select-source(int);
     callback set-units(int);
     callback set-colors(int);
+    callback set-widget-transparency(int);
+    callback set-widget-colors(int);
     callback set-language(int);
     callback set-morning-summary(bool);
     callback set-rain-alerts(bool);
@@ -1737,6 +1761,8 @@ export component MainWindow inherits Window {
         labels: root.labels;
         units-index: root.units-index;
         colors-index: root.colors-index;
+        widget-transparency-index: root.widget-transparency-index;
+        widget-colors-index: root.widget-colors-index;
         language-index: root.language-index;
         morning-summary: root.morning-summary;
         rain-alerts: root.rain-alerts;
@@ -1748,6 +1774,8 @@ export component MainWindow inherits Window {
         open-sources => { root.source-open = true; }
         set-units(i) => { root.set-units(i); }
         set-colors(i) => { root.set-colors(i); }
+        set-widget-transparency(i) => { root.set-widget-transparency(i); }
+        set-widget-colors(i) => { root.set-widget-colors(i); }
         set-language(i) => { root.set-language(i); }
         set-morning-summary(on) => { root.set-morning-summary(on); }
         set-rain-alerts(on) => { root.set-rain-alerts(on); }
