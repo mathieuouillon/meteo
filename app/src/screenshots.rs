@@ -185,7 +185,7 @@ fn update_fixture() {
     // A folder for the normals and records, which come with the forecast.
     let dir = std::env::temp_dir().join("meteo-fixture");
     std::fs::create_dir_all(&dir).unwrap();
-    let f = crate::block_on(meteo_core::extras::download(Some(&dir), &place, meteo_core::Source::BestMatch))
+    let f = crate::block_on(meteo_core::extras::download(Some(&dir), &place, meteo_core::Source::Ecmwf))
         .expect("download");
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/grenoble.json");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

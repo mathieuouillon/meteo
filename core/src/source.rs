@@ -44,6 +44,20 @@ impl Source {
         Source::Jma,
     ];
 
+    /// This source's own ensemble (the same model run many times), which
+    /// gives the ranges and chances of rain; `None` for sources without one
+    /// on Open-Meteo, which then show no ranges.
+    pub fn ensemble(self) -> Option<&'static str> {
+        match self {
+            Source::Ecmwf => Some("ecmwf_ifs025"),
+            Source::Dwd => Some("icon_seamless"),
+            Source::Noaa => Some("gfs_seamless"),
+            Source::UkMetOffice => Some("ukmo_global_ensemble_20km"),
+            Source::Canada => Some("gem_global"),
+            _ => None,
+        }
+    }
+
     /// Open-Meteo's `models=` value.
     pub fn model_id(self) -> &'static str {
         match self {

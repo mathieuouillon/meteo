@@ -233,13 +233,14 @@ impl Lang {
     /// Under a day: what the ensemble's runs say. `high`: the likely range
     /// of the day's high ("12°–15°", or one value when they agree).
     pub fn ensemble_day(self, runs: u8, high: &str, wet: u8) -> String {
+        let (en, fr) = (format!("{runs} runs"), format!("{runs} simulations"));
         match (self, wet) {
-            (Lang::En, 0) => format!("{runs} runs: high {high} · dry in all of them"),
-            (Lang::En, w) if w == runs => format!("{runs} runs: high {high} · rain in all of them"),
-            (Lang::En, w) => format!("{runs} runs: high {high} · rain in {w} of them"),
-            (Lang::Fr, 0) => format!("{runs} simulations : max {high} · sec dans toutes"),
-            (Lang::Fr, w) if w == runs => format!("{runs} simulations : max {high} · pluie dans toutes"),
-            (Lang::Fr, w) => format!("{runs} simulations : max {high} · pluie dans {w}"),
+            (Lang::En, 0) => format!("{en}: high {high} · dry in all of them"),
+            (Lang::En, w) if w == runs => format!("{en}: high {high} · rain in all of them"),
+            (Lang::En, w) => format!("{en}: high {high} · rain in {w} of them"),
+            (Lang::Fr, 0) => format!("{fr} : max {high} · sec dans toutes"),
+            (Lang::Fr, w) if w == runs => format!("{fr} : max {high} · pluie dans toutes"),
+            (Lang::Fr, w) => format!("{fr} : max {high} · pluie dans {w}"),
         }
     }
 

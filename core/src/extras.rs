@@ -75,10 +75,11 @@ pub struct Normals {
 
 // ── Ensemble: one model, 51 runs ───────────────────────────────────
 
-/// The ECMWF ensemble: one model run 51 times from slightly different
-/// starting points. How far the runs spread is how sure the forecast is; the
-/// share of runs with rain is an honest chance of rain.
-pub const ENSEMBLE_MODEL: &str = "ecmwf_ifs025";
+/// An ensemble: one model run many times (ECMWF 51, ICON 40, GFS 31…) from
+/// slightly different starting points. How far the runs spread is how sure
+/// the forecast is; the share of runs with rain is an honest chance of rain.
+/// Only a source's own model's ensemble is used (`Source::ensemble`), so the
+/// ranges match the forecast shown; sources without one show none.
 /// Rain in an hour, and over a day (the usual "rainy day"), in mm.
 const ENSEMBLE_WET_HOUR_MM: f64 = 0.1;
 const ENSEMBLE_WET_DAY_MM: f64 = 1.0;
@@ -108,10 +109,10 @@ pub struct Ensemble {
     pub spread: Vec<Spread>,
 }
 
-pub async fn fetch_ensemble(location: &Location) -> Result<Ensemble, Error> {
+pub async fn fetch_ensemble(location: &Location, model: &str) -> Result<Ensemble, Error> {
     let url = format!(
         "https://ensemble-api.open-meteo.com/v1/ensemble?latitude={}&longitude={}\
-         &hourly=temperature_2m,precipitation&models={ENSEMBLE_MODEL}&forecast_days=7&timezone=auto",
+         &hourly=temperature_2m,precipitation&models={model}&forecast_days=7&timezone=auto",
         location.latitude, location.longitude
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
@@ -392,14 +393,15 @@ pub async fn download(dir: Option<&Path>, location: &Location, source: crate::So
         let place = crate::warnings::with_areas(dir, location).await;
         crate::warnings::fetch_warnings(&place).await
     };
-    let (forecast, air, warnings, ensemble) = tokio::join!(
-        crate::api::fetch_forecast(location, source),
-        fetch_air(location),
-        warnings,
-        fetch_ensemble(location)
-    );
+    let (forecast, air, warnings, ensemble) =
+        tokio::join!(crate::api::fetch_forecast(location, source), fetch_air(location), warnings, async {
+            match source.ensemble() {
+                Some(model) => fetch_ensemble(location, model).await.ok(),
+                None => None,
+            }
+        });
     let mut forecast = forecast?;
-    if let Ok(ensemble) = ensemble {
+    if let Some(ensemble) = ensemble {
         attach_ensemble(&mut forecast, ensemble);
     }
     // A failed warnings download leaves none rather than failing the forecast.
@@ -462,6 +464,19 @@ mod tests {
         assert_eq!((s.models, s.wet, s.t_mid), (4, 1, 9.0));
         assert!((s.t_min - 8.3).abs() < 1e-9 && (s.t_max - 9.7).abs() < 1e-9);
         assert!((s.r_max - 0.7).abs() < 1e-9 && s.r_min == 0.0);
+    }
+
+    /// Every source with an ensemble gets its runs (network).
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_ensembles() {
+        let place = Location::paris();
+        for source in crate::Source::ALL {
+            let Some(model) = source.ensemble() else { continue };
+            let e = fetch_ensemble(&place, model).await.unwrap_or_else(|err| panic!("{model}: {err}"));
+            println!("{source:?}: {} runs, {} days, {} hours of spread", e.runs, e.days.len(), e.spread.len());
+            assert!(e.runs >= 10 && e.days.len() >= 5 && e.spread.len() > 100, "{model}");
+        }
     }
 
     #[test]

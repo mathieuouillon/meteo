@@ -776,7 +776,10 @@ mod tests {
         today.ensemble = Some(crate::extras::EnsembleDay { high: (7.6, 9.0, 11.4), wet: 35, runs: 51 });
         let mut tomorrow = day("2026-11-13", 0.0, 20.0, 5.0);
         tomorrow.ensemble = Some(crate::extras::EnsembleDay { high: (19.8, 20.0, 20.3), wet: 0, runs: 51 });
-        let rows = DayView::list(&[today, tomorrow], &[], Some("2026-11-12T01:00"), Lang::En, Units::Metric);
+        let rows = DayView::list(&[today.clone(), tomorrow], &[], Some("2026-11-12T01:00"), Lang::En, Units::Metric);
+        // A source without its own ensemble: no line.
+        today.ensemble = None;
+        assert_eq!(DayView::list(&[today], &[], None, Lang::En, Units::Metric)[0].agreement, "");
         // The runs' range of the high, around this source's 10°.
         assert_eq!(rows[0].agreement, "51 runs: high 9–12° · rain in 35 of them");
         assert_eq!(rows[1].agreement, "51 runs: high 20° · dry in all of them");

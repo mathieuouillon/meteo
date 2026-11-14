@@ -140,7 +140,7 @@ UPDATE_SCREENSHOTS=1 cargo test -p meteo screenshots  # new reference pictures
 
 **UI screenshots** ([app/src/screenshots.rs](app/src/screenshots.rs)): the real UI is
 drawn without a window or GPU by Slint's software renderer, from a saved forecast
-([app/tests/fixtures/grenoble.json](app/tests/fixtures/grenoble.json)): the main page in
+([app/tests/fixtures/grenoble.json](app/tests/fixtures/grenoble.json), ECMWF): the main page in
 English and French, the settings and the radar. Each picture is compared with its
 reference in `app/tests/screenshots/`; more than 0.2 % of changed pixels fails the test.
 The pictures drawn are kept in `target/screenshots/`.
@@ -292,15 +292,18 @@ Above the list:
   [app/src/radar.rs](app/src/radar.rs)). RainViewer's free tiles stop at zoom 7 (about
   350 km across) and have no forecast frames. OpenStreetMap's tile servers allow light
   use by apps that identify themselves; a widely used release would need its own tiles.
-- **51 runs:** each day of the 7-day forecast says what the ECMWF ensemble's runs
-  expect. That's one model run 51 times from slightly different starting points:
-  "51 runs: high 12–15° · rain in 35 of them". The ranges keep the middle 80 % of the
-  runs, so one odd run doesn't widen them. They're centred on the chosen source's own
-  forecast, because the ensemble is a different model. In the day's chart, the
-  temperature curve shows that spread as a band, and each hour where the runs' rain
-  differs shows its range ("0–2.4") as a faint bar behind the rain bar. The chances of
-  rain are the share of runs with rain (≥ 0.1 mm for an hour, ≥ 1 mm for a day): 35 of
-  51 runs is 69 %.
+- **Ensemble runs:** for sources that have one on Open-Meteo, each day says what
+  the same model run many times from slightly different starting points expects:
+  "51 runs: high 12–15° · rain in 35 of them". The sources are ECMWF (51 runs), DWD ICON
+  (40), NOAA GFS (31), Environment Canada GEM (21) and UK Met Office MOGREPS-G (18).
+  The ranges keep the middle 80 % of the runs, so one odd run doesn't widen them. In the
+  day's chart, the temperature curve shows that spread as a band, and each hour where
+  the runs' rain differs shows its range ("0–2.4") as a faint bar behind the rain bar.
+  That range always takes in the amount shown, since the main forecast isn't one of
+  the runs. The chances of rain are the share of runs with rain (≥ 0.1 mm for an hour,
+  ≥ 1 mm for a day): 35 of 51 runs is 69 %. Best match, Météo-France, JMA, MET Norway,
+  KNMI and DMI have no ensemble there: they show no ranges, and their own chances of
+  rain where they have them.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
 - **Records:** the same download has every day since 1991, so a day near or past its
