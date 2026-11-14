@@ -131,6 +131,8 @@ mod tests {
             precipitation: 0.0,
             condition: Condition::Clear,
             is_day: true,
+            wind_gusts: None,
+            uv_index: None,
         }
     }
 

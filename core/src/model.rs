@@ -164,6 +164,11 @@ pub struct Hour {
     pub precipitation: f64,
     pub condition: Condition,
     pub is_day: bool,
+    /// Strongest gust this hour, km/h (for the advice line).
+    #[serde(default)]
+    pub wind_gusts: Option<f64>,
+    #[serde(default)]
+    pub uv_index: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

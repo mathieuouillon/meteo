@@ -345,6 +345,53 @@ impl Lang {
         }
     }
 
+    // ── Advice line (advice.rs) ──
+    pub fn advice_from(self, snow: bool, at: &str) -> String {
+        match (self, snow) {
+            (Lang::En, false) => format!("Take an umbrella from {at}"),
+            (Lang::Fr, false) => format!("Parapluie à partir de {at}"),
+            (Lang::En, true) => format!("Snow from {at}"),
+            (Lang::Fr, true) => format!("Neige à partir de {at}"),
+        }
+    }
+    pub fn advice_until(self, snow: bool, at: &str) -> String {
+        match (self, snow) {
+            (Lang::En, false) => format!("Rain until {at}"),
+            (Lang::Fr, false) => format!("Pluie jusqu’à {at}"),
+            (Lang::En, true) => format!("Snow until {at}"),
+            (Lang::Fr, true) => format!("Neige jusqu’à {at}"),
+        }
+    }
+    pub fn advice_all_day(self, snow: bool) -> String {
+        match (self, snow) {
+            (Lang::En, false) => "Rain all day: take an umbrella".into(),
+            (Lang::Fr, false) => "Pluie toute la journée : prenez un parapluie".into(),
+            (Lang::En, true) => "Snow all day".into(),
+            (Lang::Fr, true) => "Neige toute la journée".into(),
+        }
+    }
+    pub fn advice_gusts(self, wind: &str) -> String {
+        match self {
+            Lang::En => format!("Gusts up to {wind} today"),
+            Lang::Fr => format!("Rafales jusqu’à {wind} aujourd’hui"),
+        }
+    }
+    pub fn advice_heat(self, temp: &str, at: &str) -> String {
+        match self {
+            Lang::En => format!("Hot: up to {temp} at {at}, drink water"),
+            Lang::Fr => format!("Chaud : jusqu’à {temp} à {at}, buvez de l’eau"),
+        }
+    }
+    pub fn advice_frost(self) -> &'static str {
+        self.pick("Frost tonight: cover plants", "Gel cette nuit : protégez les plantes")
+    }
+    pub fn advice_uv(self, from: &str, to: &str, uv: u32) -> String {
+        match self {
+            Lang::En => format!("Sunscreen {from}–{to} (UV {uv})"),
+            Lang::Fr => format!("Crème solaire {from}–{to} (UV {uv})"),
+        }
+    }
+
     pub fn midnight(self) -> &'static str {
         self.pick("midnight", "minuit")
     }

@@ -53,7 +53,7 @@ pub async fn fetch_forecast(location: &Location, source: Source) -> Result<Forec
         "https://api.open-meteo.com/v1/forecast\
          ?latitude={}&longitude={}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,pressure_msl,uv_index,precipitation\
-         &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day\
+         &hourly=temperature_2m,precipitation,precipitation_probability,weather_code,is_day,wind_gusts_10m,uv_index\
          &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset\
          &minutely_15=precipitation&forecast_minutely_15=8\
          &timezone=auto&forecast_days={}&models={}",
@@ -115,6 +115,8 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         precipitation: at(&h.precipitation, i).unwrap_or(0.0),
         condition: Condition::from_wmo(at(&h.weather_code, i).unwrap_or(0)),
         is_day: at(&h.is_day, i) == Some(1),
+        wind_gusts: at(&h.wind_gusts_10m, i),
+        uv_index: at(&h.uv_index, i),
     };
     let mut hours: Vec<Hour> = (start..h.time.len()).take_while(|&i| hour_ok(i)).take(HOURS_KEPT).map(hour).collect();
     if let Some(first) = hours.first_mut() {
@@ -254,6 +256,10 @@ struct RawHourly {
     weather_code: Vec<Option<u8>>,
     #[serde(default)]
     is_day: Vec<Option<u8>>,
+    #[serde(default)]
+    wind_gusts_10m: Vec<Option<f64>>,
+    #[serde(default)]
+    uv_index: Vec<Option<f64>>,
 }
 
 #[derive(Deserialize)]

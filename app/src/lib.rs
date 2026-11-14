@@ -612,6 +612,7 @@ fn show_loading(ui: &MainWindow, city: &Location) {
 fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
     animation::set_weather(s.scene);
     ui.set_vs_normal(s.vs_normal.as_str().into());
+    ui.set_advice(s.advice.as_str().into());
     ui.set_warnings(ModelRc::from(Rc::new(VecModel::from(
         s.warnings
             .iter()

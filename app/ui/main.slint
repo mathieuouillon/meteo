@@ -1254,6 +1254,7 @@ export component MainWindow inherits Window {
     in property <string> icon-kind: "clear-day";
     // "Feels like 9° · Day 15° · Night 10°".
     in property <string> subline;
+    in property <string> advice;
 
     // Animated weather (see animation.rs).
     in property <string> rain-far;
@@ -1515,6 +1516,13 @@ export component MainWindow inherits Window {
                         text: root.subline;
                         color: root.shown-theme.on-surface-variant; font-size: 14px;
                         horizontal-alignment: center;
+                    }
+                    // One practical tip: "Take an umbrella from 16h".
+                    if root.advice != "": Text {
+                        text: "→ " + root.advice;
+                        color: root.shown-theme.on-surface; font-size: 14px; font-weight: 500;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
                     }
                     if root.vs-normal != "": HorizontalLayout {
                         alignment: center;

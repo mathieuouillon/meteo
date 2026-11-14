@@ -47,6 +47,8 @@ pub struct MainScreen {
     /// The UI's colours, from the weather and time of day.
     pub palette: Palette,
     pub nowcast: NowcastView,
+    /// One practical tip for the rest of the day; empty when there's none.
+    pub advice: String,
     /// Official warnings in force or coming, strongest first.
     pub warnings: Vec<WarningView>,
     pub air: AirView,
@@ -321,6 +323,7 @@ impl MainScreen {
             palette,
             nowcast: NowcastView::new(f, lang),
             warnings: WarningView::list(f, lang),
+            advice: crate::advice::advice(f, lang, units).unwrap_or_default(),
             air: AirView::new(f.air.as_ref(), lang),
             vs_normal: f
                 .days
@@ -586,6 +589,8 @@ mod tests {
             precipitation: rain_mm,
             condition: Condition::Rain,
             is_day: true,
+            wind_gusts: None,
+            uv_index: None,
         }
     }
 
