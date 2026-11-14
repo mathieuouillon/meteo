@@ -268,8 +268,11 @@ midnight". Tapping it opens MeteoAlarm. An optional notification announces orang
 and red warnings, once each.
 
 - [core/src/warnings.rs](core/src/warnings.rs) downloads the country's feed (Atom/CAP)
-  and keeps the entries whose area (département, district…) matches one of the
-  place's administrative areas or its name, ignoring accents and punctuation.
+  and keeps the entries whose area (département, district…) is one of the place's
+  own administrative areas or its name, ignoring accents and punctuation. Names
+  match whole: Lyon (Rhône) doesn't get Bouches-du-Rhône's warnings, nor Chambéry
+  (Savoie) Haute-Savoie's. An area listing several places ("Alb-Donau-Kreis und
+  Stadt Ulm") is compared part by part.
 - Places carry their country and areas from the city search (Open-Meteo geocoding)
   or Android's geocoder. Cities saved earlier are looked up once by name and cached
   (`region-<place>.json`).

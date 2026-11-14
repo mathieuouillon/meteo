@@ -137,25 +137,59 @@ fn level_and_kind(title: &str) -> Option<(u8, String)> {
 }
 
 /// The warnings that apply to `location`, strongest first.
+///
+/// Names must match whole: "Rhône" (Lyon's département) is not
+/// "Bouches-du-Rhône", nor "Savoie" "Haute-Savoie". An area that lists
+/// several places ("Alb-Donau-Kreis und Stadt Ulm") is compared part by part.
 pub fn for_place(warnings: Vec<Warning>, location: &Location) -> Vec<Warning> {
     let names: Vec<String> = location
         .areas
         .iter()
         .chain(std::iter::once(&location.name))
-        .map(|n| fold(n))
+        .map(|n| plain_name(&fold(n)))
         .filter(|n| n.len() >= 3)
         .collect();
-    let mut found: Vec<Warning> = warnings
-        .into_iter()
-        .filter(|w| {
-            let area = format!(" {} ", fold(&w.area));
-            names.iter().any(|n| area.contains(&format!(" {n} ")))
-        })
-        .collect();
+    let mut found: Vec<Warning> =
+        warnings.into_iter().filter(|w| area_parts(&w.area).iter().any(|part| names.contains(part))).collect();
     found.sort_by(|a, b| b.level.cmp(&a.level).then(a.onset.cmp(&b.onset)));
     // The same warning can be listed for several matching areas.
     found.dedup_by(|a, b| a.kind == b.kind && a.level == b.level && a.onset == b.onset && a.expires == b.expires);
     found
+}
+
+/// The places an area names: "Alb-Donau-Kreis und Stadt Ulm" → ["alb donau",
+/// "ulm"]; most areas are a single name.
+fn area_parts(area: &str) -> Vec<String> {
+    let folded = format!(" {} ", fold(area));
+    let mut parts = vec![folded];
+    for separator in [" und ", " and ", " et ", " e ", " y ", " i "] {
+        parts = parts.iter().flat_map(|p| p.split(separator).map(|s| format!(" {} ", s.trim()))).collect();
+    }
+    parts.iter().map(|p| plain_name(p.trim())).filter(|p| !p.is_empty()).collect()
+}
+
+/// Without the words that only say what kind of area it is ("Stadt Ulm",
+/// "Landkreis Ulm", "Ulm district" → "ulm"); `name` is already folded.
+fn plain_name(name: &str) -> String {
+    // Not "region": "Tübingen Region" (a region) is not "Kreis Tübingen".
+    const KINDS: [&str; 13] = [
+        "stadt",
+        "landkreis",
+        "kreis",
+        "kreisfreie",
+        "city",
+        "of",
+        "county",
+        "district",
+        "province",
+        "provincia",
+        "di",
+        "comune",
+        "departement",
+    ];
+    let words: Vec<&str> = name.split(' ').filter(|w| !KINDS.contains(w)).collect();
+    // A name that is only such words stays as it was.
+    if words.is_empty() { name.to_string() } else { words.join(" ") }
 }
 
 /// Lowercase, without accents or punctuation, single spaces: "Hautes-Alpes"
@@ -296,6 +330,36 @@ mod tests {
         // A town named inside a longer area.
         let ulm = Location::new("Ulm", "", 48.4, 9.99).with_areas("DE", vec!["Baden-Württemberg".into()]);
         assert_eq!(for_place(all.clone(), &ulm)[0].level, 3);
+        // A region isn't the district of the same name.
+        let ulm2 = Location::new("Ulm", "", 48.4, 9.99).with_areas("DE", vec!["Tübingen Region".into()]);
+        let tubingen = Warning {
+            kind: "wind".into(),
+            level: 2,
+            area: "Kreis Tübingen".into(),
+            onset: 0,
+            expires: i64::MAX,
+            id: String::new(),
+        };
+        assert!(for_place(vec![tubingen], &ulm2).is_empty());
+        // Whole names only: Lyon (Rhône) is not Bouches-du-Rhône, Chambéry
+        // (Savoie) not Haute-Savoie.
+        let near = |area: &str| Warning {
+            kind: "wind".into(),
+            level: 2,
+            area: area.into(),
+            onset: 0,
+            expires: i64::MAX,
+            id: String::new(),
+        };
+        let others = vec![near("Bouches-du-Rhône"), near("Haute-Savoie"), near("Haute-Loire")];
+        let lyon = Location::new("Lyon", "", 45.76, 4.84)
+            .with_areas("FR", vec!["Auvergne-Rhône-Alpes".into(), "Rhône".into(), "Lyon".into()]);
+        assert!(for_place(others.clone(), &lyon).is_empty(), "no neighbouring départements");
+        let chambery = Location::new("Chambéry", "", 45.57, 5.92).with_areas("FR", vec!["Savoie".into()]);
+        assert!(for_place(others.clone(), &chambery).is_empty());
+        let mut own = others;
+        own.push(near("Rhône"));
+        assert_eq!(for_place(own, &lyon).len(), 1, "its own département");
         // No partial words: "Isère" doesn't match "Iser".
         let none =
             Location::new("Paris", "", 48.85, 2.35).with_areas("FR", vec!["Île-de-France".into(), "Paris".into()]);
@@ -314,5 +378,32 @@ mod tests {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let france = Location::new("Grenoble", "", 45.18, 5.71).with_areas("FR", vec!["Isère".into()]);
         rt.block_on(fetch_warnings(&france)).unwrap();
+    }
+
+    #[test]
+    #[ignore = "network: prints which areas some cities match today"]
+    fn live_matching_report() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let fetch = |feed: &str| {
+            let url = format!("https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-{feed}");
+            let body = rt.block_on(async { client().unwrap().get(url).send().await.unwrap().text().await.unwrap() });
+            parse_feed(&body).unwrap()
+        };
+        let fr = fetch("france");
+        let de = fetch("germany");
+        let place = |name: &str, cc: &str, areas: &[&str]| {
+            Location::new(name, "", 0.0, 0.0).with_areas(cc, areas.iter().map(|a| a.to_string()).collect())
+        };
+        for (p, feed) in [
+            (place("Lyon", "FR", &["Auvergne-Rhône-Alpes", "Rhône", "Lyon"]), &fr),
+            (place("Grenoble", "FR", &["Auvergne-Rhône-Alpes", "Isère", "Grenoble"]), &fr),
+            (place("Marseille", "FR", &["Provence-Alpes-Côte d'Azur", "Bouches-du-Rhône", "Marseille"]), &fr),
+            (place("Paris", "FR", &["Île-de-France", "Paris"]), &fr),
+            (place("Ulm", "DE", &["Baden-Württemberg", "Tübingen Region", "Ulm"]), &de),
+            (place("Berlin", "DE", &["Land Berlin", "Berlin"]), &de),
+        ] {
+            let areas: Vec<String> = for_place(feed.clone(), &p).into_iter().map(|w| w.area).collect();
+            println!("{}: {:?}", p.name, areas);
+        }
     }
 }
