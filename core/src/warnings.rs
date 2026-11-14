@@ -160,12 +160,9 @@ pub fn for_place(warnings: Vec<Warning>, location: &Location) -> Vec<Warning> {
 /// The places an area names: "Alb-Donau-Kreis und Stadt Ulm" → ["alb donau",
 /// "ulm"]; most areas are a single name.
 fn area_parts(area: &str) -> Vec<String> {
-    let folded = format!(" {} ", fold(area));
-    let mut parts = vec![folded];
-    for separator in [" und ", " and ", " et ", " e ", " y ", " i "] {
-        parts = parts.iter().flat_map(|p| p.split(separator).map(|s| format!(" {} ", s.trim()))).collect();
-    }
-    parts.iter().map(|p| plain_name(p.trim())).filter(|p| !p.is_empty()).collect()
+    // Only German lists ("Kreis X und Stadt Y"): "et", "y", "e" are inside
+    // real names (Maine-et-Loire, Castilla y León).
+    fold(area).split(" und ").map(|p| plain_name(p.trim())).filter(|p| !p.is_empty()).collect()
 }
 
 /// Without the words that only say what kind of area it is ("Stadt Ulm",
@@ -357,6 +354,12 @@ mod tests {
         assert!(for_place(others.clone(), &lyon).is_empty(), "no neighbouring départements");
         let chambery = Location::new("Chambéry", "", 45.57, 5.92).with_areas("FR", vec!["Savoie".into()]);
         assert!(for_place(others.clone(), &chambery).is_empty());
+        // "Maine-et-Loire" is one name, not "Maine" and "Loire".
+        let fouillouse = Location::new("La Fouillouse", "", 45.5, 4.31)
+            .with_areas("FR", vec!["Auvergne-Rhône-Alpes".into(), "Loire".into(), "Saint-Étienne".into()]);
+        let loires =
+            vec![near("Maine-et-Loire"), near("Loire-Atlantique"), near("Indre-et-Loire"), near("Saône-et-Loire")];
+        assert!(for_place(loires, &fouillouse).is_empty());
         let mut own = others;
         own.push(near("Rhône"));
         assert_eq!(for_place(own, &lyon).len(), 1, "its own département");
@@ -399,11 +402,28 @@ mod tests {
             (place("Grenoble", "FR", &["Auvergne-Rhône-Alpes", "Isère", "Grenoble"]), &fr),
             (place("Marseille", "FR", &["Provence-Alpes-Côte d'Azur", "Bouches-du-Rhône", "Marseille"]), &fr),
             (place("Paris", "FR", &["Île-de-France", "Paris"]), &fr),
+            (place("La Fouillouse", "FR", &["Auvergne-Rhône-Alpes", "Loire", "Saint-Étienne", "La Fouillouse"]), &fr),
+            (place("Angers", "FR", &["Pays de la Loire", "Maine-et-Loire", "Angers"]), &fr),
             (place("Ulm", "DE", &["Baden-Württemberg", "Tübingen Region", "Ulm"]), &de),
             (place("Berlin", "DE", &["Land Berlin", "Berlin"]), &de),
         ] {
             let areas: Vec<String> = for_place(feed.clone(), &p).into_iter().map(|w| w.area).collect();
             println!("{}: {:?}", p.name, areas);
+        }
+        // Each area, as a place, matches only itself.
+        for feed in [&fr, &de] {
+            let mut names: Vec<&str> = feed.iter().map(|w| w.area.as_str()).collect();
+            names.sort();
+            names.dedup();
+            for name in &names {
+                let p = place(name, "XX", &[name]);
+                let wrong: Vec<String> =
+                    for_place(feed.clone(), &p).into_iter().map(|w| w.area).filter(|a| a != name).collect();
+                if !wrong.is_empty() {
+                    println!("CROSS {name}: {wrong:?}");
+                }
+            }
+            println!("checked {} areas", names.len());
         }
     }
 }
