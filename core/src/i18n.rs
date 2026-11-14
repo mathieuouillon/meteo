@@ -230,6 +230,14 @@ impl Lang {
 
     // ── Models, air, normals ───────────────────────────────────────────
 
+    /// Where the chances of rain come from, after the agreement line.
+    pub fn ensemble_runs(self, runs: u8) -> String {
+        match self {
+            Lang::En => format!("rain chances from {runs} runs"),
+            Lang::Fr => format!("risque de pluie sur {runs} simulations"),
+        }
+    }
+
     /// How closely the models agree, on temperature and on rain.
     pub fn models_agree(self, temperature: u8, rain: u8, models: usize) -> String {
         match self {

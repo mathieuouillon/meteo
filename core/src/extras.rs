@@ -76,6 +76,88 @@ pub struct Normals {
     pub record_min: Vec<(f64, u16)>,
 }
 
+// ── Ensemble: real chances of rain ─────────────────────────────────────
+
+/// The ECMWF ensemble: one model run 51 times from slightly different
+/// starting points. The share of runs with rain is an honest chance of rain.
+pub const ENSEMBLE_MODEL: &str = "ecmwf_ifs025";
+/// Rain in an hour, and over a day (the usual "rainy day"), in mm.
+const ENSEMBLE_WET_HOUR_MM: f64 = 0.1;
+const ENSEMBLE_WET_DAY_MM: f64 = 1.0;
+
+/// Chances of rain from the ensemble's runs.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Ensemble {
+    pub runs: u8,
+    /// Local hour ("2026-11-14T15:00") → share of runs with rain, 0–1.
+    pub hours: HashMap<String, f64>,
+    /// Local date → share of runs with at least 1 mm that day, 0–1.
+    pub days: HashMap<String, f64>,
+}
+
+pub async fn fetch_ensemble(location: &Location) -> Result<Ensemble, Error> {
+    let url = format!(
+        "https://ensemble-api.open-meteo.com/v1/ensemble?latitude={}&longitude={}\
+         &hourly=precipitation&models={ENSEMBLE_MODEL}&forecast_days=7&timezone=auto",
+        location.latitude, location.longitude
+    );
+    let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
+    parse_ensemble(&body)
+}
+
+pub fn parse_ensemble(json: &[u8]) -> Result<Ensemble, Error> {
+    let v: Value = serde_json::from_slice(json)?;
+    let hourly = v.get("hourly").and_then(Value::as_object).ok_or(Error::MissingData)?;
+    let times = hourly.get("time").and_then(Value::as_array).ok_or(Error::MissingData)?;
+    // "precipitation" is the control run, "precipitation_memberNN" the others.
+    let runs: Vec<&Vec<Value>> =
+        hourly.iter().filter(|(k, _)| k.starts_with("precipitation")).filter_map(|(_, v)| v.as_array()).collect();
+    if runs.len() < 2 {
+        return Err(Error::MissingData);
+    }
+    let mut hours = HashMap::new();
+    // Per date, each run's total.
+    let mut totals: HashMap<String, Vec<f64>> = HashMap::new();
+    for (i, t) in times.iter().enumerate() {
+        let Some(t) = t.as_str() else { continue };
+        let values: Vec<Option<f64>> = runs.iter().map(|r| r.get(i).and_then(Value::as_f64)).collect();
+        let known: Vec<f64> = values.iter().flatten().copied().collect();
+        if known.len() < runs.len() / 2 {
+            continue;
+        }
+        let wet = known.iter().filter(|&&mm| mm >= ENSEMBLE_WET_HOUR_MM).count();
+        hours.insert(t.to_string(), wet as f64 / known.len() as f64);
+        let day = totals.entry(t.get(..10).unwrap_or("").to_string()).or_insert_with(|| vec![0.0; runs.len()]);
+        for (run, mm) in values.iter().enumerate() {
+            day[run] += mm.unwrap_or(0.0);
+        }
+    }
+    let days = totals
+        .into_iter()
+        .map(|(date, runs)| {
+            let wet = runs.iter().filter(|&&mm| mm >= ENSEMBLE_WET_DAY_MM).count();
+            (date, wet as f64 / runs.len() as f64)
+        })
+        .collect();
+    Ok(Ensemble { runs: runs.len().min(255) as u8, hours, days })
+}
+
+/// Replaces the single model's chances of rain with the ensemble's.
+pub fn attach_ensemble(forecast: &mut Forecast, ensemble: &Ensemble) {
+    let chance = |share: f64| (share * 100.0).round();
+    for h in forecast.hours.iter_mut().chain(forecast.days.iter_mut().flat_map(|d| d.hours.iter_mut())) {
+        if let Some(&share) = ensemble.hours.get(&h.time) {
+            h.precipitation_probability = chance(share);
+        }
+    }
+    for d in &mut forecast.days {
+        if let Some(&share) = ensemble.days.get(&d.date) {
+            d.precipitation_probability = chance(share);
+        }
+    }
+    forecast.ensemble_runs = ensemble.runs;
+}
+
 // ── Spread ─────────────────────────────────────────────────────────────
 
 pub async fn fetch_spread(location: &Location) -> Result<Vec<Spread>, Error> {
@@ -331,13 +413,17 @@ pub async fn download(dir: Option<&Path>, location: &Location, source: crate::So
         let place = crate::warnings::with_areas(dir, location).await;
         crate::warnings::fetch_warnings(&place).await
     };
-    let (forecast, spread, air, warnings) = tokio::join!(
+    let (forecast, spread, air, warnings, ensemble) = tokio::join!(
         crate::api::fetch_forecast(location, source),
         fetch_spread(location),
         fetch_air(location),
-        warnings
+        warnings,
+        fetch_ensemble(location)
     );
     let mut forecast = forecast?;
+    if let Ok(ensemble) = ensemble {
+        attach_ensemble(&mut forecast, &ensemble);
+    }
     // A failed warnings download leaves none rather than failing the forecast.
     forecast.warnings = warnings.unwrap_or_default();
     let normals = match dir {
@@ -408,6 +494,21 @@ mod tests {
         assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 2.0, 2.0)]), Some(100));
         assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 1.0, 4.0)]), Some(70));
         assert_eq!(rain_agreement(&[]), None);
+    }
+
+    #[test]
+    fn ensemble_chances() {
+        // Four runs: hour 1 wet in 3 of them; the day's totals 1.2, 0.5, 2.0, 0.0.
+        let json = br#"{"hourly": {"time": ["2026-11-14T10:00", "2026-11-14T11:00"],
+            "precipitation": [0.0, 1.2],
+            "precipitation_member01": [0.0, 0.5],
+            "precipitation_member02": [1.0, 1.0],
+            "precipitation_member03": [0.0, 0.0]}}"#;
+        let e = parse_ensemble(json).unwrap();
+        assert_eq!(e.runs, 4);
+        assert_eq!(e.hours["2026-11-14T10:00"], 0.25);
+        assert_eq!(e.hours["2026-11-14T11:00"], 0.75);
+        assert_eq!(e.days["2026-11-14"], 0.5, "two runs reach 1 mm");
     }
 
     #[test]

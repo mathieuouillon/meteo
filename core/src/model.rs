@@ -82,6 +82,10 @@ pub struct Forecast {
     /// Official weather warnings for the place (MeteoAlarm), all levels.
     #[serde(default)]
     pub warnings: Vec<crate::warnings::Warning>,
+    /// How many ensemble runs the chances of rain come from (0: the single
+    /// model's own estimate).
+    #[serde(default)]
+    pub ensemble_runs: u8,
 }
 
 /// Rain during one 15-minute step.

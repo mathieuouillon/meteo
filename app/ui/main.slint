@@ -481,10 +481,11 @@ component DayChart inherits Rectangle {
     property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + (root.day.has-range ? 30px : 16px) : 3px;
     property <length> rain-base: root.rain-top + root.rain-room;
     // Room for "Models agree 82%" above the chart.
-    property <length> head: root.day.agreement != "" ? 22px : 0px;
+    property <length> head: root.day.agreement != "" ? head-text.preferred-height + 8px : 0px;
     height: root.head + root.rain-base + 32px;
 
-    if root.day.agreement != "": Text {
+    head-text := Text {
+        visible: root.day.agreement != "";
         x: 10px; y: 2px;
         text: root.day.agreement;
         color: root.theme.on-surface-variant; font-size: 12px;

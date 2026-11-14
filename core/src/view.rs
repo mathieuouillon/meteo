@@ -332,7 +332,7 @@ impl MainScreen {
             sky_top_css: sky.top_css(),
             sky_bottom_css: sky.bottom_css(),
             hours,
-            days: DayView::list(&f.days, &f.spread, now.as_deref(), lang, units),
+            days: DayView::list(&f.days, &f.spread, f.ensemble_runs, now.as_deref(), lang, units),
             details: DetailsView::new(f, rise, set, lang, units),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction)
                 .with_rain_rate(c.precipitation.map_or(0.0, |mm| mm * 4.0)),
@@ -474,7 +474,15 @@ const MORNING: usize = 6;
 
 impl DayView {
     /// `now`: the current hour's time ("2026-11-12T15:00"), marked "Now".
-    fn list(days: &[Day], spread: &[crate::extras::Spread], now: Option<&str>, lang: Lang, units: Units) -> Vec<Self> {
+    /// `ensemble_runs`: how many runs the chances of rain come from (0: none).
+    fn list(
+        days: &[Day],
+        spread: &[crate::extras::Spread],
+        ensemble_runs: u8,
+        now: Option<&str>,
+        lang: Lang,
+        units: Units,
+    ) -> Vec<Self> {
         let by_time = spread_by_time(spread);
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
@@ -492,10 +500,14 @@ impl DayView {
                 let chart = temperature_chart_with_band(&d.hours, &band, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
                 let known: Vec<_> = day_spread.iter().flatten().copied().collect();
                 let models = known.iter().map(|s| s.models as usize).max().unwrap_or(0);
-                let agreement = match (temperature_agreement(&known), rain_agreement(&known)) {
+                let mut agreement = match (temperature_agreement(&known), rain_agreement(&known)) {
                     (Some(t), Some(r)) => lang.models_agree(t, r, models),
                     _ => String::new(),
                 };
+                if ensemble_runs > 0 {
+                    let runs = lang.ensemble_runs(ensemble_runs);
+                    agreement = if agreement.is_empty() { runs } else { format!("{agreement}\n{runs}") };
+                }
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
                 let hours: Vec<DayHourView> = d
                     .hours
@@ -716,6 +728,7 @@ mod tests {
         let rows = DayView::list(
             &[day("2026-11-12", 5.0, 10.0, 80.0), day("2026-11-13", 0.0, 20.0, 5.0)],
             &[],
+            0,
             Some("2026-11-12T01:00"),
             Lang::En,
             Units::Metric,

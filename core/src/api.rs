@@ -196,6 +196,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
         spread: Vec::new(),
         air: None,
         warnings: Vec::new(),
+        ensemble_runs: 0,
     })
 }
 

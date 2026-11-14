@@ -252,6 +252,10 @@ Above the list:
   each hour and, when it does, how close their amounts are. In the day's chart, the
   temperature curve shows their spread as a band, and each hour where the models'
   rain differs shows their range ("0–2.4") as a faint bar behind the rain bar.
+- **Real chances of rain:** from the ECMWF ensemble, one model run 51 times from
+  slightly different starting points. An hour's chance is the share of runs with
+  rain (≥ 0.1 mm), a day's the share with at least 1 mm. Unlike "models agree"
+  (five different models, once each), it's a probability: 35 of 51 runs is 70 %.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
 
