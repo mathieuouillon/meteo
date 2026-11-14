@@ -292,16 +292,15 @@ Above the list:
   [app/src/radar.rs](app/src/radar.rs)). RainViewer's free tiles stop at zoom 7 (about
   350 km across) and have no forecast frames. OpenStreetMap's tile servers allow light
   use by apps that identify themselves; a widely used release would need its own tiles.
-- **Models agree:** each day of the 7-day forecast compares five weather models (ECMWF,
-  ICON, GFS, Météo-France, UK Met Office): "5 models agree · temperature 84% · rain 56%".
-  Temperature counts how far apart they are; rain counts whether they agree it rains
-  each hour and, when it does, how close their amounts are. In the day's chart, the
-  temperature curve shows their spread as a band, and each hour where the models'
-  rain differs shows their range ("0–2.4") as a faint bar behind the rain bar.
-- **Real chances of rain:** from the ECMWF ensemble, one model run 51 times from
-  slightly different starting points. An hour's chance is the share of runs with
-  rain (≥ 0.1 mm), a day's the share with at least 1 mm. Unlike "models agree"
-  (five different models, once each), it's a probability: 35 of 51 runs is 70 %.
+- **51 runs:** each day of the 7-day forecast says what the ECMWF ensemble's runs
+  expect. That's one model run 51 times from slightly different starting points:
+  "51 runs: high 12–15° · rain in 35 of them". The ranges keep the middle 80 % of the
+  runs, so one odd run doesn't widen them. They're centred on the chosen source's own
+  forecast, because the ensemble is a different model. In the day's chart, the
+  temperature curve shows that spread as a band, and each hour where the runs' rain
+  differs shows its range ("0–2.4") as a faint bar behind the rain bar. The chances of
+  rain are the share of runs with rain (≥ 0.1 mm for an hour, ≥ 1 mm for a day): 35 of
+  51 runs is 69 %.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
 - **Records:** the same download has every day since 1991, so a day near or past its

@@ -208,5 +208,8 @@ pub struct Day {
     pub record_max: Option<(f64, u16)>,
     #[serde(default)]
     pub record_min: Option<(f64, u16)>,
+    /// What the ensemble's 51 runs say about the day (when downloaded).
+    #[serde(default)]
+    pub ensemble: Option<crate::extras::EnsembleDay>,
     pub condition: Condition,
 }

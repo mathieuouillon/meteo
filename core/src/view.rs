@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::chart::{ChartGeometry, temperature_chart_with_band};
 use crate::date::weekday_index;
-use crate::extras::{Air, rain_agreement, spread_by_time, temperature_agreement};
+use crate::extras::{Air, spread_by_time};
 use crate::i18n::Lang;
 use crate::landscape::{Landscape, Phase, landscape, seed_for};
 use crate::model::{Day, Forecast};
@@ -332,7 +332,7 @@ impl MainScreen {
             sky_top_css: sky.top_css(),
             sky_bottom_css: sky.bottom_css(),
             hours,
-            days: DayView::list(&f.days, &f.spread, f.ensemble_runs, now.as_deref(), lang, units),
+            days: DayView::list(&f.days, &f.spread, now.as_deref(), lang, units),
             details: DetailsView::new(f, rise, set, lang, units),
             scene: SceneSpec::for_weather(c.condition, c.is_day, c.wind_speed, c.wind_direction)
                 .with_rain_rate(c.precipitation.map_or(0.0, |mm| mm * 4.0)),
@@ -433,10 +433,10 @@ pub struct DayView {
     pub rain_peak: f64,
     /// Whether any hour shows a chance of rain (some sources have none).
     pub has_chance: bool,
-    /// "5 models agree · temperature 91% · rain 76%"; empty without the
-    /// models' data.
+    /// "51 runs: high 12–15° · rain in 35 of them"; empty without the
+    /// ensemble's data.
     pub agreement: String,
-    /// Whether some hour shows the models' range of rain.
+    /// Whether some hour shows the runs' range of rain.
     pub has_range: bool,
 }
 
@@ -455,8 +455,8 @@ pub struct DayHourView {
     pub rain: String,
     /// Rain bar height, 0–1, on a scale shared by the whole week.
     pub rain_height: f64,
-    /// The models' range of rain this hour, "0.4–2.1"; empty when they
-    /// agree (or all say dry).
+    /// The runs' range of rain this hour (middle 80 %), "0.4–2.1"; empty
+    /// when they agree (or all say dry).
     pub rain_range: String,
     /// That range as heights (0–1) on the same scale as `rain_height`.
     pub range_low: f64,
@@ -474,15 +474,7 @@ const MORNING: usize = 6;
 
 impl DayView {
     /// `now`: the current hour's time ("2026-11-12T15:00"), marked "Now".
-    /// `ensemble_runs`: how many runs the chances of rain come from (0: none).
-    fn list(
-        days: &[Day],
-        spread: &[crate::extras::Spread],
-        ensemble_runs: u8,
-        now: Option<&str>,
-        lang: Lang,
-        units: Units,
-    ) -> Vec<Self> {
+    fn list(days: &[Day], spread: &[crate::extras::Spread], now: Option<&str>, lang: Lang, units: Units) -> Vec<Self> {
         let by_time = spread_by_time(spread);
         let lo = days.iter().map(|d| d.min).fold(f64::INFINITY, f64::min);
         let hi = days.iter().map(|d| d.max).fold(f64::NEG_INFINITY, f64::max);
@@ -496,18 +488,25 @@ impl DayView {
             .enumerate()
             .map(|(day_index, d)| {
                 let day_spread: Vec<_> = d.hours.iter().map(|h| by_time.get(h.time.as_str()).copied()).collect();
-                let band: Vec<_> = day_spread.iter().map(|s| s.map(|s| (s.t_min, s.t_max))).collect();
+                // The runs' spread, centred on the chosen source's curve: the
+                // ensemble is another model, and its own level would drift
+                // away from the line drawn.
+                let band: Vec<_> = d
+                    .hours
+                    .iter()
+                    .zip(&day_spread)
+                    .map(|(h, s)| s.map(|s| (h.temperature - (s.t_mid - s.t_min), h.temperature + (s.t_max - s.t_mid))))
+                    .collect();
                 let chart = temperature_chart_with_band(&d.hours, &band, HOUR_STEP, CHART_HEIGHT, 30.0, 10.0);
-                let known: Vec<_> = day_spread.iter().flatten().copied().collect();
-                let models = known.iter().map(|s| s.models as usize).max().unwrap_or(0);
-                let mut agreement = match (temperature_agreement(&known), rain_agreement(&known)) {
-                    (Some(t), Some(r)) => lang.models_agree(t, r, models),
-                    _ => String::new(),
-                };
-                if ensemble_runs > 0 {
-                    let runs = lang.ensemble_runs(ensemble_runs);
-                    agreement = if agreement.is_empty() { runs } else { format!("{agreement}\n{runs}") };
-                }
+                let agreement = d
+                    .ensemble
+                    .map(|e| {
+                        let (low, mid, high) = e.high;
+                        let (low, high) = (units.temp(d.max - (mid - low)), units.temp(d.max + (high - mid)));
+                        let range = if low == high { low } else { format!("{}–{high}", low.trim_end_matches('°')) };
+                        lang.ensemble_day(e.runs, &range, e.wet)
+                    })
+                    .unwrap_or_default();
                 let now_index = now.and_then(|t| d.hours.iter().position(|h| h.time == t));
                 let hours: Vec<DayHourView> = d
                     .hours
@@ -632,6 +631,7 @@ mod tests {
             normal_min: None,
             record_max: None,
             record_min: None,
+            ensemble: None,
             hours: vec![
                 hour(&format!("{date}T00:00"), min, 0.0),
                 hour(&format!("{date}T01:00"), max, rain / 20.0),
@@ -725,14 +725,14 @@ mod tests {
 
     #[test]
     fn days_share_the_week_scales() {
-        let rows = DayView::list(
-            &[day("2026-11-12", 5.0, 10.0, 80.0), day("2026-11-13", 0.0, 20.0, 5.0)],
-            &[],
-            0,
-            Some("2026-11-12T01:00"),
-            Lang::En,
-            Units::Metric,
-        );
+        let mut today = day("2026-11-12", 5.0, 10.0, 80.0);
+        today.ensemble = Some(crate::extras::EnsembleDay { high: (7.6, 9.0, 11.4), wet: 35, runs: 51 });
+        let mut tomorrow = day("2026-11-13", 0.0, 20.0, 5.0);
+        tomorrow.ensemble = Some(crate::extras::EnsembleDay { high: (19.8, 20.0, 20.3), wet: 0, runs: 51 });
+        let rows = DayView::list(&[today, tomorrow], &[], Some("2026-11-12T01:00"), Lang::En, Units::Metric);
+        // The runs' range of the high, around this source's 10°.
+        assert_eq!(rows[0].agreement, "51 runs: high 9–12° · rain in 35 of them");
+        assert_eq!(rows[1].agreement, "51 runs: high 20° · dry in all of them");
         // Temperature bars on the week's range.
         assert_eq!((rows[0].bar_start, rows[0].bar_end), (0.25, 0.5));
         assert_eq!((rows[1].bar_start, rows[1].bar_end), (0.0, 1.0));

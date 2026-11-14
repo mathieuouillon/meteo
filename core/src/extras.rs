@@ -17,23 +17,20 @@ use serde_json::Value;
 use crate::api::{Error, client};
 use crate::model::{Forecast, Location};
 
-/// Models compared for the agreement band (global and regional ones that
-/// cover most places; those without data for a place are simply skipped).
-pub const SPREAD_MODELS: [&str; 5] =
-    ["ecmwf_ifs025", "icon_seamless", "gfs_seamless", "meteofrance_seamless", "ukmo_seamless"];
-
-/// One hour across several models.
+/// One hour across the ensemble's runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Spread {
     /// Local time, "2026-11-13T15:00".
     pub time: String,
-    /// Coldest and warmest of the models, °C.
+    /// Low end, middle and high end of the runs' temperatures, °C.
     pub t_min: f64,
+    #[serde(default)]
+    pub t_mid: f64,
     pub t_max: f64,
-    /// How many models have data for this hour, and how many expect rain.
+    /// How many runs have data for this hour, and how many expect rain.
     pub models: u8,
     pub wet: u8,
-    /// Least and most rain the models expect this hour, mm.
+    /// Low and high end of the rain the runs expect this hour, mm.
     #[serde(default)]
     pub r_min: f64,
     #[serde(default)]
@@ -76,33 +73,62 @@ pub struct Normals {
     pub record_min: Vec<(f64, u16)>,
 }
 
-// ── Ensemble: real chances of rain ─────────────────────────────────────
+// ── Ensemble: one model, 51 runs ───────────────────────────────────
 
 /// The ECMWF ensemble: one model run 51 times from slightly different
-/// starting points. The share of runs with rain is an honest chance of rain.
+/// starting points. How far the runs spread is how sure the forecast is; the
+/// share of runs with rain is an honest chance of rain.
 pub const ENSEMBLE_MODEL: &str = "ecmwf_ifs025";
 /// Rain in an hour, and over a day (the usual "rainy day"), in mm.
 const ENSEMBLE_WET_HOUR_MM: f64 = 0.1;
 const ENSEMBLE_WET_DAY_MM: f64 = 1.0;
+/// The ranges shown keep the middle 80 % of the runs (a single odd run
+/// doesn't widen them).
+const LOW: f64 = 0.1;
+const HIGH: f64 = 0.9;
 
-/// Chances of rain from the ensemble's runs.
+/// What the runs say for one day.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct EnsembleDay {
+    /// The day's high: low end, middle and high end of the runs, °C.
+    pub high: (f64, f64, f64),
+    /// Runs with at least 1 mm of rain, out of `runs`.
+    pub wet: u8,
+    pub runs: u8,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Ensemble {
     pub runs: u8,
     /// Local hour ("2026-11-14T15:00") → share of runs with rain, 0–1.
     pub hours: HashMap<String, f64>,
-    /// Local date → share of runs with at least 1 mm that day, 0–1.
-    pub days: HashMap<String, f64>,
+    /// Local date → the day's high and wet runs.
+    pub days: HashMap<String, EnsembleDay>,
+    /// Per hour, the range of the runs' temperatures and rain.
+    pub spread: Vec<Spread>,
 }
 
 pub async fn fetch_ensemble(location: &Location) -> Result<Ensemble, Error> {
     let url = format!(
         "https://ensemble-api.open-meteo.com/v1/ensemble?latitude={}&longitude={}\
-         &hourly=precipitation&models={ENSEMBLE_MODEL}&forecast_days=7&timezone=auto",
+         &hourly=temperature_2m,precipitation&models={ENSEMBLE_MODEL}&forecast_days=7&timezone=auto",
         location.latitude, location.longitude
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
     parse_ensemble(&body)
+}
+
+/// The value below which `share` of `sorted` lies, between neighbours.
+fn quantile(sorted: &[f64], share: f64) -> f64 {
+    let at = share * (sorted.len() - 1) as f64;
+    let (i, frac) = (at.floor() as usize, at.fract());
+    let next = sorted.get(i + 1).copied().unwrap_or(sorted[i]);
+    sorted[i] + (next - sorted[i]) * frac
+}
+
+fn sorted(mut v: Vec<f64>) -> Vec<f64> {
+    v.sort_by(f64::total_cmp);
+    v
 }
 
 pub fn parse_ensemble(json: &[u8]) -> Result<Ensemble, Error> {
@@ -110,40 +136,75 @@ pub fn parse_ensemble(json: &[u8]) -> Result<Ensemble, Error> {
     let hourly = v.get("hourly").and_then(Value::as_object).ok_or(Error::MissingData)?;
     let times = hourly.get("time").and_then(Value::as_array).ok_or(Error::MissingData)?;
     // "precipitation" is the control run, "precipitation_memberNN" the others.
-    let runs: Vec<&Vec<Value>> =
-        hourly.iter().filter(|(k, _)| k.starts_with("precipitation")).filter_map(|(_, v)| v.as_array()).collect();
-    if runs.len() < 2 {
+    let series = |prefix: &str| -> Vec<&Vec<Value>> {
+        hourly.iter().filter(|(k, _)| k.starts_with(prefix)).filter_map(|(_, v)| v.as_array()).collect()
+    };
+    let (rains, temps) = (series("precipitation"), series("temperature_2m"));
+    if rains.len() < 2 {
         return Err(Error::MissingData);
     }
     let mut hours = HashMap::new();
-    // Per date, each run's total.
+    let mut spread = Vec::new();
+    // Per date, each run's rain total and high.
     let mut totals: HashMap<String, Vec<f64>> = HashMap::new();
+    let mut highs: HashMap<String, Vec<f64>> = HashMap::new();
     for (i, t) in times.iter().enumerate() {
         let Some(t) = t.as_str() else { continue };
-        let values: Vec<Option<f64>> = runs.iter().map(|r| r.get(i).and_then(Value::as_f64)).collect();
-        let known: Vec<f64> = values.iter().flatten().copied().collect();
-        if known.len() < runs.len() / 2 {
+        let at = |runs: &[&Vec<Value>]| -> Vec<Option<f64>> {
+            runs.iter().map(|r| r.get(i).and_then(Value::as_f64)).collect()
+        };
+        let (rain, temp) = (at(&rains), at(&temps));
+        let known: Vec<f64> = rain.iter().flatten().copied().collect();
+        if known.len() < rains.len() / 2 {
             continue;
         }
         let wet = known.iter().filter(|&&mm| mm >= ENSEMBLE_WET_HOUR_MM).count();
         hours.insert(t.to_string(), wet as f64 / known.len() as f64);
-        let day = totals.entry(t.get(..10).unwrap_or("").to_string()).or_insert_with(|| vec![0.0; runs.len()]);
-        for (run, mm) in values.iter().enumerate() {
+        let date = t.get(..10).unwrap_or("").to_string();
+        let day = totals.entry(date.clone()).or_insert_with(|| vec![0.0; rains.len()]);
+        for (run, mm) in rain.iter().enumerate() {
             day[run] += mm.unwrap_or(0.0);
         }
+        let ts: Vec<f64> = temp.iter().flatten().copied().collect();
+        if ts.len() * 2 >= temps.len() && !ts.is_empty() {
+            let high = highs.entry(date).or_insert_with(|| vec![f64::NEG_INFINITY; temps.len()]);
+            for (run, t) in temp.iter().enumerate() {
+                if let Some(t) = t {
+                    high[run] = high[run].max(*t);
+                }
+            }
+            let (ts, rs) = (sorted(ts), sorted(known));
+            spread.push(Spread {
+                time: t.to_string(),
+                t_min: quantile(&ts, LOW),
+                t_mid: quantile(&ts, 0.5),
+                t_max: quantile(&ts, HIGH),
+                models: rs.len().min(255) as u8,
+                wet: wet.min(255) as u8,
+                r_min: quantile(&rs, LOW).max(0.0),
+                r_max: quantile(&rs, HIGH),
+            });
+        }
     }
+    let runs = rains.len().min(255) as u8;
     let days = totals
         .into_iter()
-        .map(|(date, runs)| {
-            let wet = runs.iter().filter(|&&mm| mm >= ENSEMBLE_WET_DAY_MM).count();
-            (date, wet as f64 / runs.len() as f64)
+        .filter_map(|(date, rain)| {
+            let high = sorted(highs.get(&date)?.iter().copied().filter(|t| t.is_finite()).collect());
+            if high.is_empty() {
+                return None;
+            }
+            let wet = rain.iter().filter(|&&mm| mm >= ENSEMBLE_WET_DAY_MM).count().min(255) as u8;
+            let high = (quantile(&high, LOW), quantile(&high, 0.5), quantile(&high, HIGH));
+            Some((date, EnsembleDay { high, wet, runs }))
         })
         .collect();
-    Ok(Ensemble { runs: runs.len().min(255) as u8, hours, days })
+    Ok(Ensemble { runs, hours, days, spread })
 }
 
-/// Replaces the single model's chances of rain with the ensemble's.
-pub fn attach_ensemble(forecast: &mut Forecast, ensemble: &Ensemble) {
+/// The ensemble's chances of rain replace the single model's; its spread
+/// and each day's high and wet runs come along.
+pub fn attach_ensemble(forecast: &mut Forecast, ensemble: Ensemble) {
     let chance = |share: f64| (share * 100.0).round();
     for h in forecast.hours.iter_mut().chain(forecast.days.iter_mut().flat_map(|d| d.hours.iter_mut())) {
         if let Some(&share) = ensemble.hours.get(&h.time) {
@@ -151,95 +212,13 @@ pub fn attach_ensemble(forecast: &mut Forecast, ensemble: &Ensemble) {
         }
     }
     for d in &mut forecast.days {
-        if let Some(&share) = ensemble.days.get(&d.date) {
-            d.precipitation_probability = chance(share);
+        if let Some(e) = ensemble.days.get(&d.date) {
+            d.precipitation_probability = chance(f64::from(e.wet) / f64::from(e.runs.max(1)));
+            d.ensemble = Some(*e);
         }
     }
     forecast.ensemble_runs = ensemble.runs;
-}
-
-// ── Spread ─────────────────────────────────────────────────────────────
-
-pub async fn fetch_spread(location: &Location) -> Result<Vec<Spread>, Error> {
-    let url = format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}\
-         &hourly=temperature_2m,precipitation&timezone=auto&forecast_days=7&models={}",
-        location.latitude,
-        location.longitude,
-        SPREAD_MODELS.join(",")
-    );
-    let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
-    parse_spread(&body)
-}
-
-/// Per hour, the range of the models' temperatures and how many expect rain
-/// (≥ 0.1 mm). Hours where fewer than two models have data are left out.
-pub fn parse_spread(json: &[u8]) -> Result<Vec<Spread>, Error> {
-    let v: Value = serde_json::from_slice(json)?;
-    let hourly = v.get("hourly").and_then(Value::as_object).ok_or(Error::MissingData)?;
-    let times = hourly.get("time").and_then(Value::as_array).ok_or(Error::MissingData)?;
-    let series = |prefix: &str| -> Vec<&Vec<Value>> {
-        hourly.iter().filter(|(k, _)| k.starts_with(prefix)).filter_map(|(_, v)| v.as_array()).collect()
-    };
-    let (temps, rains) = (series("temperature_2m"), series("precipitation"));
-    Ok(times
-        .iter()
-        .enumerate()
-        .filter_map(|(i, t)| {
-            let ts: Vec<f64> = temps.iter().filter_map(|s| s.get(i)?.as_f64()).collect();
-            if ts.len() < 2 {
-                return None;
-            }
-            let rs: Vec<f64> = rains.iter().filter_map(|s| s.get(i)?.as_f64()).collect();
-            Some(Spread {
-                time: t.as_str()?.to_string(),
-                t_min: ts.iter().copied().fold(f64::INFINITY, f64::min),
-                t_max: ts.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-                models: ts.len() as u8,
-                wet: rs.iter().filter(|&&r| r >= 0.1).count() as u8,
-                r_min: if rs.is_empty() { 0.0 } else { rs.iter().copied().fold(f64::INFINITY, f64::min).max(0.0) },
-                r_max: rs.iter().copied().fold(0.0, f64::max),
-            })
-        })
-        .collect())
-}
-
-/// How closely the models agree on temperature over some hours, 0–100:
-/// 100 when they're within a degree, 0 when 8° or more apart on average.
-pub fn temperature_agreement(hours: &[&Spread]) -> Option<u8> {
-    if hours.is_empty() {
-        return None;
-    }
-    let mean_spread = hours.iter().map(|s| s.t_max - s.t_min).sum::<f64>() / hours.len() as f64;
-    let score = 1.0 - ((mean_spread - 1.0) / 7.0).clamp(0.0, 1.0);
-    Some((score * 100.0).round() as u8)
-}
-
-/// How closely the models agree on rain over some hours, 0–100: whether it
-/// rains each hour (all saying the same is full marks, an even split none),
-/// and when most say it rains, how close their amounts are.
-pub fn rain_agreement(hours: &[&Spread]) -> Option<u8> {
-    if hours.is_empty() {
-        return None;
-    }
-    let score = hours
-        .iter()
-        .map(|s| {
-            let m = f64::from(s.models.max(1));
-            let wet = f64::from(s.wet.min(s.models));
-            // Majority share is at least half; stretch it to 0–1.
-            let consensus = ((wet.max(m - wet) / m - 0.5) * 2.0).clamp(0.0, 1.0);
-            if wet * 2.0 > m && s.r_max > 0.0 {
-                // 1 mm against 4 mm counts as half agreeing on the amount.
-                let closeness = 1.0 - ((s.r_max - s.r_min) / (s.r_max + 1.0)).clamp(0.0, 1.0);
-                consensus * (0.5 + 0.5 * closeness)
-            } else {
-                consensus
-            }
-        })
-        .sum::<f64>()
-        / hours.len() as f64;
-    Some((score * 100.0).round() as u8)
+    forecast.spread = ensemble.spread;
 }
 
 // ── Air ────────────────────────────────────────────────────────────────
@@ -405,24 +384,23 @@ pub async fn normals_for(dir: &Path, location: &Location) -> Option<Normals> {
 
 // ── Putting it together ────────────────────────────────────────────────
 
-/// Everything for one place: the forecast (required) with the models'
-/// spread and the air quality fetched alongside, and the normals (from disk
+/// Everything for one place: the forecast (required) with the ensemble's
+/// runs and the air quality fetched alongside, and the normals (from disk
 /// in `dir`, or downloaded once). Only the forecast's own failure is an error.
 pub async fn download(dir: Option<&Path>, location: &Location, source: crate::Source) -> Result<Forecast, Error> {
     let warnings = async {
         let place = crate::warnings::with_areas(dir, location).await;
         crate::warnings::fetch_warnings(&place).await
     };
-    let (forecast, spread, air, warnings, ensemble) = tokio::join!(
+    let (forecast, air, warnings, ensemble) = tokio::join!(
         crate::api::fetch_forecast(location, source),
-        fetch_spread(location),
         fetch_air(location),
         warnings,
         fetch_ensemble(location)
     );
     let mut forecast = forecast?;
     if let Ok(ensemble) = ensemble {
-        attach_ensemble(&mut forecast, &ensemble);
+        attach_ensemble(&mut forecast, ensemble);
     }
     // A failed warnings download leaves none rather than failing the forecast.
     forecast.warnings = warnings.unwrap_or_default();
@@ -430,15 +408,12 @@ pub async fn download(dir: Option<&Path>, location: &Location, source: crate::So
         Some(dir) => normals_for(dir, location).await,
         None => None,
     };
-    attach(&mut forecast, spread.ok(), air.ok(), normals.as_ref());
+    attach(&mut forecast, air.ok(), normals.as_ref());
     Ok(forecast)
 }
 
-/// Adds the extras to a forecast: spread by hour, air, and each day's normal.
-pub fn attach(forecast: &mut Forecast, spread: Option<Vec<Spread>>, air: Option<Air>, normals: Option<&Normals>) {
-    if let Some(spread) = spread {
-        forecast.spread = spread;
-    }
+/// Adds the extras to a forecast: air, and each day's normal and records.
+pub fn attach(forecast: &mut Forecast, air: Option<Air>, normals: Option<&Normals>) {
     forecast.air = air;
     if let Some(n) = normals {
         for day in &mut forecast.days {
@@ -462,53 +437,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn spread_from_several_models() {
-        let json = br#"{"hourly": {"time": ["2026-11-13T10:00", "2026-11-13T11:00"],
-            "temperature_2m_a": [10.0, 11.0], "precipitation_a": [0.0, 1.0],
-            "temperature_2m_b": [12.0, null], "precipitation_b": [0.5, null],
-            "temperature_2m_c": [11.0, 11.5], "precipitation_c": [0.0, 0.8]}}"#;
-        let s = parse_spread(json).unwrap();
-        assert_eq!(s.len(), 2);
-        assert_eq!((s[0].t_min, s[0].t_max, s[0].models, s[0].wet), (10.0, 12.0, 3, 1));
-        assert_eq!((s[0].r_min, s[0].r_max), (0.0, 0.5));
-        assert_eq!((s[1].models, s[1].wet, s[1].r_min, s[1].r_max), (2, 2, 0.8, 1.0));
-    }
-
-    #[test]
-    fn agreement_on_temperature_and_rain() {
-        let hour = |t_min, t_max, wet, r_min, r_max| Spread {
-            time: String::new(),
-            t_min,
-            t_max,
-            models: 4,
-            wet,
-            r_min,
-            r_max,
-        };
-        let dry = hour(10.0, 10.5, 0, 0.0, 0.0);
-        assert_eq!((temperature_agreement(&[&dry]), rain_agreement(&[&dry])), (Some(100), Some(100)));
-        // Far apart, and split on whether it rains.
-        let split = hour(5.0, 13.0, 2, 0.0, 2.0);
-        assert_eq!((temperature_agreement(&[&split]), rain_agreement(&[&split])), (Some(0), Some(0)));
-        // All say rain, same amount; then all say rain, 1 mm against 4 mm.
-        assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 2.0, 2.0)]), Some(100));
-        assert_eq!(rain_agreement(&[&hour(9.0, 9.0, 4, 1.0, 4.0)]), Some(70));
-        assert_eq!(rain_agreement(&[]), None);
-    }
-
-    #[test]
-    fn ensemble_chances() {
+    fn ensemble_runs() {
         // Four runs: hour 1 wet in 3 of them; the day's totals 1.2, 0.5, 2.0, 0.0.
         let json = br#"{"hourly": {"time": ["2026-11-14T10:00", "2026-11-14T11:00"],
             "precipitation": [0.0, 1.2],
             "precipitation_member01": [0.0, 0.5],
             "precipitation_member02": [1.0, 1.0],
-            "precipitation_member03": [0.0, 0.0]}}"#;
+            "precipitation_member03": [0.0, 0.0],
+            "temperature_2m": [9.0, 12.0],
+            "temperature_2m_member01": [10.0, 11.0],
+            "temperature_2m_member02": [8.0, 14.0],
+            "temperature_2m_member03": [9.0, null]}}"#;
         let e = parse_ensemble(json).unwrap();
         assert_eq!(e.runs, 4);
         assert_eq!(e.hours["2026-11-14T10:00"], 0.25);
         assert_eq!(e.hours["2026-11-14T11:00"], 0.75);
-        assert_eq!(e.days["2026-11-14"], 0.5, "two runs reach 1 mm");
+        let day = e.days["2026-11-14"];
+        assert_eq!((day.wet, day.runs), (2, 4), "two runs reach 1 mm");
+        // Highs per run: 12, 11, 14, 9 → sorted 9, 11, 12, 14.
+        let (low, mid, high) = day.high;
+        assert!((low - 9.6).abs() < 1e-9 && (mid - 11.5).abs() < 1e-9 && (high - 13.4).abs() < 1e-9, "{:?}", day.high);
+        // Hour 10: temperatures 8, 9, 9, 10; rain 0, 0, 0, 1.
+        let s = &e.spread[0];
+        assert_eq!((s.models, s.wet, s.t_mid), (4, 1, 9.0));
+        assert!((s.t_min - 8.3).abs() < 1e-9 && (s.t_max - 9.7).abs() < 1e-9);
+        assert!((s.r_max - 0.7).abs() < 1e-9 && s.r_min == 0.0);
+    }
+
+    #[test]
+    fn quantiles_between_neighbours() {
+        let v = [1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!((quantile(&v, 0.0), quantile(&v, 0.5), quantile(&v, 1.0)), (1.0, 3.0, 5.0));
+        assert!((quantile(&v, 0.1) - 1.4).abs() < 1e-9);
+        assert_eq!(quantile(&[7.0], 0.9), 7.0);
     }
 
     #[test]

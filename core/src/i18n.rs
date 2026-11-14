@@ -230,11 +230,16 @@ impl Lang {
 
     // ── Models, air, normals ───────────────────────────────────────────
 
-    /// Where the chances of rain come from, after the agreement line.
-    pub fn ensemble_runs(self, runs: u8) -> String {
-        match self {
-            Lang::En => format!("rain chances from {runs} runs"),
-            Lang::Fr => format!("risque de pluie sur {runs} simulations"),
+    /// Under a day: what the ensemble's runs say. `high`: the likely range
+    /// of the day's high ("12°–15°", or one value when they agree).
+    pub fn ensemble_day(self, runs: u8, high: &str, wet: u8) -> String {
+        match (self, wet) {
+            (Lang::En, 0) => format!("{runs} runs: high {high} · dry in all of them"),
+            (Lang::En, w) if w == runs => format!("{runs} runs: high {high} · rain in all of them"),
+            (Lang::En, w) => format!("{runs} runs: high {high} · rain in {w} of them"),
+            (Lang::Fr, 0) => format!("{runs} simulations : max {high} · sec dans toutes"),
+            (Lang::Fr, w) if w == runs => format!("{runs} simulations : max {high} · pluie dans toutes"),
+            (Lang::Fr, w) => format!("{runs} simulations : max {high} · pluie dans {w}"),
         }
     }
 
@@ -269,14 +274,6 @@ impl Lang {
 
     pub fn accuracy_checking(self) -> &'static str {
         self.pick("Checking which source is most accurate here…", "Recherche de la source la plus juste ici…")
-    }
-
-    /// How closely the models agree, on temperature and on rain.
-    pub fn models_agree(self, temperature: u8, rain: u8, models: usize) -> String {
-        match self {
-            Lang::En => format!("{models} models agree · temperature {temperature}% · rain {rain}%"),
-            Lang::Fr => format!("Accord de {models} modèles · température {temperature} % · pluie {rain} %"),
-        }
     }
 
     /// European AQI levels.

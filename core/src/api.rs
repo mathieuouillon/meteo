@@ -153,6 +153,7 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                 normal_min: None,
                 record_max: None,
                 record_min: None,
+                ensemble: None,
                 date,
             })
         })
