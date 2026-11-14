@@ -17,6 +17,11 @@ png = "0.18.1"
 # The desktop preview.
 slint = { version = "1.18.1", default-features = false, features = ["backend-winit", "accessibility"] }
 
+[target.'cfg(not(target_os = "android"))'.dev-dependencies]
+# The screenshot test draws the UI without a window or a GPU.
+slint = { version = "1.18.1", default-features = false, features = ["renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
+serde_json = "1.0.154"
+
 [target.'cfg(target_os = "android")'.dependencies]
 slint = { version = "1.18.1", default-features = false, features = ["backend-android-activity-06"] }
 # Same version as already used by the TLS stack; for LocationManager/Geocoder calls.

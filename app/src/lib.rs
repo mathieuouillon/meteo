@@ -15,6 +15,8 @@ slint::include_modules!();
 
 mod animation;
 mod radar;
+#[cfg(all(test, not(target_os = "android")))]
+mod screenshots;
 mod startup;
 mod theme;
 

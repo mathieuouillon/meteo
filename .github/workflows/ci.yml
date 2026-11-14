@@ -27,8 +27,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      # Live network tests stay ignored (they call Open-Meteo).
+      # Live network tests stay ignored (they call Open-Meteo). Includes the
+      # UI screenshots, compared with app/tests/screenshots.
       - run: cargo test --workspace
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: target/screenshots/*.png
+          if-no-files-found: ignore
 
   android:
     name: Android APK
