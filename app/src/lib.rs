@@ -14,6 +14,7 @@ use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, VecModel, Weak
 slint::include_modules!();
 
 mod animation;
+mod startup;
 mod theme;
 
 #[cfg(target_os = "android")]
@@ -95,7 +96,9 @@ struct App {
 
 /// Builds the window, shows the selected city and runs the event loop.
 pub fn run() -> Result<(), slint::PlatformError> {
+    startup::begin();
     let ui = MainWindow::new()?;
+    startup::mark("window built");
     let dir = data_dir();
     if let Some(dir) = &dir {
         // Single-city cache from before saved cities existed.
@@ -145,6 +148,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
     });
     ui.set_can_locate(can_locate());
     app.show_selected();
+    startup::mark("forecast shown");
+    startup::after_first_frame(&ui);
     // Following the device: update the position quietly at startup if
     // we're already allowed to.
     if app.places.borrow().selected().is_device {
@@ -956,6 +961,7 @@ fn rgb(c: u32) -> Color {
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: slint::android::AndroidApp) {
+    startup::begin();
     if let Some(dir) = app.internal_data_path() {
         let _ = DATA_DIR.set(dir);
     }

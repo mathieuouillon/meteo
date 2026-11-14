@@ -1211,6 +1211,9 @@ export component MainWindow inherits Window {
     in property <string> source-name: "Best match";
     in property <[CityItem]> sources;
     in-out property <bool> source-open;
+    /// False for the first frame: the open day's chart joins right after,
+    /// so the top of the page shows sooner.
+    in-out property <bool> settled;
     in property <string> accuracy-note;
     callback sources-opened();
     changed source-open => { if (self.source-open) { root.sources-opened(); } }
@@ -1633,7 +1636,7 @@ export component MainWindow inherits Window {
                                     open: root.open-day == i;
                                     clicked => { root.open-day = root.open-day == i ? -1 : i; }
                                 }
-                                if root.open-day == i: DayChart {
+                                if root.open-day == i && root.settled: DayChart {
                                     day: d; theme: root.shown-theme;
                                     changed panning => { root.chart-panning = self.panning; }
                                 }
