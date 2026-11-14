@@ -52,14 +52,24 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         for (i in 0 until due.length()) {
             val n = due.getJSONObject(i)
             val kind = n.getString("kind")
-            val notification = NotificationCompat.Builder(applicationContext, kind)
+            val builder = NotificationCompat.Builder(applicationContext, kind)
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
                 .setContentTitle(n.getString("title"))
                 .setContentText(n.getString("text"))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(n.getString("text")))
                 .setContentIntent(openApp)
                 .setAutoCancel(true)
-                .build()
+            // Rain soon: a live countdown to the start (the system updates it,
+            // the app isn't woken), gone 15 minutes after the rain starts.
+            if (n.has("starts_at")) {
+                val startsAt = n.getLong("starts_at") * 1000
+                builder.setWhen(startsAt)
+                    .setShowWhen(true)
+                    .setUsesChronometer(true)
+                    .setChronometerCountDown(true)
+                    .setTimeoutAfter(maxOf(startsAt + 15 * 60_000 - System.currentTimeMillis(), 60_000))
+            }
+            val notification = builder.build()
             NotificationManagerCompat.from(applicationContext).notify(
                 when (kind) {
                     CHANNEL_RAIN -> 2

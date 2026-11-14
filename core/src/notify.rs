@@ -26,6 +26,10 @@ pub struct Notification {
     pub kind: String,
     pub title: String,
     pub text: String,
+    /// When the rain starts (Unix seconds), for a live countdown; rain
+    /// alerts only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub starts_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -79,7 +83,7 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
         if !screen.nowcast.summary.is_empty() && screen.nowcast.wet {
             text += &format!("\n{}", screen.nowcast.summary);
         }
-        out.push(Notification { kind: "morning".into(), title: lang.morning_title(&city.name), text });
+        out.push(Notification { kind: "morning".into(), title: lang.morning_title(&city.name), text, starts_at: None });
         state.morning_date = today.clone();
     }
 
@@ -99,6 +103,7 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
                 kind: "temperature".into(),
                 title: lang.frost_title(&city.name),
                 text: lang.frost_text(&settings.units.temp(min)),
+                starts_at: None,
             });
             state.frost_date = today.clone();
         }
@@ -111,6 +116,7 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
                 kind: "temperature".into(),
                 title: lang.heat_title(&city.name),
                 text: lang.heat_text(&settings.units.temp(day.max)),
+                starts_at: None,
             });
             state.heat_date = today.clone();
         }
@@ -123,6 +129,8 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
             kind: "rain".into(),
             title: lang.rain_soon_title(&city.name),
             text: screen.nowcast.summary.clone(),
+            // A live "Rain in 12 min" countdown on the phone.
+            starts_at: screen.nowcast.starts_in.map(|m| unix_now + i64::from(m) * 60),
         });
         state.rain_alert_at = unix_now;
     }
@@ -140,6 +148,7 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
                 kind: "warning".into(),
                 title: lang.warnings_title(&city.name),
                 text: format!("{title}\n{when}"),
+                starts_at: None,
             });
             state.warned.push(key);
         }
@@ -201,6 +210,7 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].kind, "rain");
         assert!(alerts[0].text.contains("30 min"), "{}", alerts[0].text);
+        assert_eq!(alerts[0].starts_at, Some(MORNING_8AM + 30 * 60), "countdown to the start");
         assert!(due(&dir, MORNING_8AM + 900, Lang::Fr).is_empty(), "not again soon after");
         std::fs::remove_dir_all(&dir).unwrap();
         // Already raining, or off: nothing.
