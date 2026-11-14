@@ -147,6 +147,8 @@ pub fn parse_forecast(location_name: &str, json: &[u8]) -> Result<Forecast, Erro
                 sunset: d.sunset.get(i).cloned().flatten(),
                 normal_max: None,
                 normal_min: None,
+                record_max: None,
+                record_min: None,
                 date,
             })
         })

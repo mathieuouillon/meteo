@@ -279,6 +279,59 @@ impl Lang {
         self.pick("Not available here", "Non disponible ici")
     }
     /// "3° warmer than usual for the date", from a signed difference.
+    /// "14 November" / "14 novembre" from "2026-11-14".
+    pub fn day_month(self, date: &str) -> String {
+        const EN: [&str; 12] = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+        const FR: [&str; 12] = [
+            "janvier",
+            "février",
+            "mars",
+            "avril",
+            "mai",
+            "juin",
+            "juillet",
+            "août",
+            "septembre",
+            "octobre",
+            "novembre",
+            "décembre",
+        ];
+        let m: usize = date.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(1).clamp(1, 12);
+        let d: u32 = date.get(8..10).and_then(|d| d.parse().ok()).unwrap_or(1);
+        match self {
+            Lang::En => format!("{d} {}", EN[m - 1]),
+            Lang::Fr => format!("{} {}", if d == 1 { "1er".to_string() } else { d.to_string() }, FR[m - 1]),
+        }
+    }
+
+    /// Today against the records since 1991. `beaten`: the forecast passes
+    /// the record (otherwise it's within a degree of it).
+    pub fn record(self, warm: bool, beaten: bool, day: &str, was: &str, year: u16) -> String {
+        match (self, warm, beaten) {
+            (Lang::En, true, true) => format!("Warmest {day} since 1991 (was {was} in {year})"),
+            (Lang::En, false, true) => format!("Coldest {day} since 1991 (was {was} in {year})"),
+            (Lang::En, true, false) => format!("Near the record for {day}: {was} in {year}"),
+            (Lang::En, false, false) => format!("Near the record low for {day}: {was} in {year}"),
+            (Lang::Fr, true, true) => format!("Le {day} le plus chaud depuis 1991 (record {was} en {year})"),
+            (Lang::Fr, false, true) => format!("Le {day} le plus froid depuis 1991 (record {was} en {year})"),
+            (Lang::Fr, true, false) => format!("Proche du record du {day} : {was} en {year}"),
+            (Lang::Fr, false, false) => format!("Proche du record de froid du {day} : {was} en {year}"),
+        }
+    }
+
     pub fn vs_normal(self, diff_c: f64, delta: &str) -> String {
         let d = delta.trim_start_matches(['+', '-']);
         match (self, diff_c) {

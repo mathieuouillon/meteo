@@ -68,6 +68,12 @@ pub struct PollenDay {
 pub struct Normals {
     pub max: Vec<f64>,
     pub min: Vec<f64>,
+    /// Each date's highest high and lowest low since 1991, with the year
+    /// (not smoothed). Empty in files saved before records existed.
+    #[serde(default)]
+    pub record_max: Vec<(f64, u16)>,
+    #[serde(default)]
+    pub record_min: Vec<(f64, u16)>,
 }
 
 // ── Spread ─────────────────────────────────────────────────────────────
@@ -208,13 +214,17 @@ fn pollen_days(hourly: &Value) -> Vec<PollenDay> {
 
 // ── Normals ────────────────────────────────────────────────────────────
 
-/// Downloads 30 years of daily highs and lows (about 250 KB) and averages
-/// them per day of the year, smoothed over ±7 days.
+/// Downloads the daily highs and lows since 1991 (about 300 KB): averages
+/// over 1991–2020 per day of the year, smoothed over ±7 days (the normals),
+/// and each date's records up to last year.
 pub async fn fetch_normals(location: &Location) -> Result<Normals, Error> {
+    let this_year: i64 = crate::date::local_iso_minute(crate::cache::unix_now(), 0)[..4].parse().unwrap_or(2026);
     let url = format!(
         "https://archive-api.open-meteo.com/v1/archive?latitude={}&longitude={}\
-         &start_date=1991-01-01&end_date=2020-12-31&daily=temperature_2m_max,temperature_2m_min&timezone=auto",
-        location.latitude, location.longitude
+         &start_date=1991-01-01&end_date={}-12-31&daily=temperature_2m_max,temperature_2m_min&timezone=auto",
+        location.latitude,
+        location.longitude,
+        this_year - 1
     );
     let body = client()?.get(url).send().await?.error_for_status()?.bytes().await?;
     parse_normals(&body)
@@ -233,14 +243,27 @@ pub fn parse_normals(json: &[u8]) -> Result<Normals, Error> {
     }
     let raw: Raw = serde_json::from_slice(json)?;
     let (mut sum_max, mut sum_min, mut count) = (vec![0.0; 365], vec![0.0; 365], vec![0.0; 365]);
+    let mut record_max = vec![(f64::NEG_INFINITY, 0u16); 365];
+    let mut record_min = vec![(f64::INFINITY, 0u16); 365];
     for (i, date) in raw.daily.time.iter().enumerate() {
-        let (Some(day), Some(hi), Some(lo)) = (
+        let (Some(day), Some(year), Some(hi), Some(lo)) = (
             day_of_year(date),
+            date.get(..4).and_then(|y| y.parse::<u16>().ok()),
             raw.daily.temperature_2m_max.get(i).copied().flatten(),
             raw.daily.temperature_2m_min.get(i).copied().flatten(),
         ) else {
             continue;
         };
+        // Records from every year; the normals from the 1991–2020 reference.
+        if hi > record_max[day].0 {
+            record_max[day] = (hi, year);
+        }
+        if lo < record_min[day].0 {
+            record_min[day] = (lo, year);
+        }
+        if year > 2020 {
+            continue;
+        }
         sum_max[day] += hi;
         sum_min[day] += lo;
         count[day] += 1.0;
@@ -259,7 +282,7 @@ pub fn parse_normals(json: &[u8]) -> Result<Normals, Error> {
             })
             .collect()
     };
-    Ok(Normals { max: smooth(&sum_max), min: smooth(&sum_min) })
+    Ok(Normals { max: smooth(&sum_max), min: smooth(&sum_min), record_max, record_min })
 }
 
 /// 0-based day of the year for "YYYY-MM-DD"; 29 February counts as 28.
@@ -277,8 +300,11 @@ fn normals_file(location: &Location) -> String {
     format!("normals-{}.json", location.key())
 }
 
+/// Saved normals; files from before records existed count as missing, so
+/// they're downloaded once more.
 pub fn load_normals(dir: &Path, location: &Location) -> Option<Normals> {
-    serde_json::from_slice(&std::fs::read(dir.join(normals_file(location))).ok()?).ok()
+    let n: Normals = serde_json::from_slice(&std::fs::read(dir.join(normals_file(location))).ok()?).ok()?;
+    (!n.record_max.is_empty()).then_some(n)
 }
 
 pub fn save_normals(dir: &Path, location: &Location, normals: &Normals) -> io::Result<()> {
@@ -333,6 +359,8 @@ pub fn attach(forecast: &mut Forecast, spread: Option<Vec<Spread>>, air: Option<
             if let Some(i) = day_of_year(&day.date) {
                 day.normal_max = n.max.get(i).copied();
                 day.normal_min = n.min.get(i).copied();
+                day.record_max = n.record_max.get(i).copied().filter(|r| r.1 > 0);
+                day.record_min = n.record_min.get(i).copied().filter(|r| r.1 > 0);
             }
         }
     }
@@ -412,5 +440,12 @@ mod tests {
         assert_eq!(n.min[d], 3.0);
         // Smoothed: a nearby day borrows the same values.
         assert_eq!(n.max[d + 3], 11.0);
+        // Records: the extreme of each date, from any year; normals 1991–2020.
+        let json = br#"{"daily": {"time": ["1991-11-13", "2015-11-13", "2023-11-13"],
+            "temperature_2m_max": [10.0, 17.0, 19.0], "temperature_2m_min": [2.0, -3.0, 4.0]}}"#;
+        let n = parse_normals(json).unwrap();
+        assert_eq!(n.record_max[d], (19.0, 2023));
+        assert_eq!(n.record_min[d], (-3.0, 2015));
+        assert_eq!(n.max[d], 13.5, "2023 is outside the normals' period");
     }
 }

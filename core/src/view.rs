@@ -198,6 +198,23 @@ pub struct HourView {
 
 /// The details tiles: each value with a short explanation, plus what the
 /// compass and the sun's arc need.
+/// Today against the climate: a record beaten or nearly, else how far from
+/// the normal ("2° warmer than usual").
+fn climate_note(d: &crate::model::Day, lang: Lang, units: Units) -> String {
+    let day = lang.day_month(&d.date);
+    if let Some((record, year)) = d.record_max
+        && d.max >= record - 1.0
+    {
+        return lang.record(true, d.max > record, &day, &units.temp(record), year);
+    }
+    if let Some((record, year)) = d.record_min
+        && d.min <= record + 1.0
+    {
+        return lang.record(false, d.min < record, &day, &units.temp(record), year);
+    }
+    d.normal_max.map(|n| d.max - n).map(|diff| lang.vs_normal(diff, &units.temp_delta(diff))).unwrap_or_default()
+}
+
 /// A weather warning, ready to show.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WarningView {
@@ -325,12 +342,7 @@ impl MainScreen {
             warnings: WarningView::list(f, lang),
             advice: crate::advice::advice(f, lang, units).unwrap_or_default(),
             air: AirView::new(f.air.as_ref(), lang),
-            vs_normal: f
-                .days
-                .first()
-                .and_then(|d| Some(d.max - d.normal_max?))
-                .map(|diff| lang.vs_normal(diff, &units.temp_delta(diff)))
-                .unwrap_or_default(),
+            vs_normal: f.days.first().map(|d| climate_note(d, lang, units)).unwrap_or_default(),
             rain_rate: c.precipitation.map_or(0.0, |mm| mm * 4.0),
         }
     }
@@ -606,6 +618,8 @@ mod tests {
             sunset: None,
             normal_max: None,
             normal_min: None,
+            record_max: None,
+            record_min: None,
             hours: vec![
                 hour(&format!("{date}T00:00"), min, 0.0),
                 hour(&format!("{date}T01:00"), max, rain / 20.0),
@@ -613,6 +627,20 @@ mod tests {
             ],
             condition: Condition::Rain,
         }
+    }
+
+    #[test]
+    fn records_and_normals() {
+        let mut d = day("2026-11-14", 5.0, 18.0, 0.0);
+        d.normal_max = Some(12.0);
+        assert_eq!(climate_note(&d, Lang::En, Units::Metric), "6° warmer than usual");
+        d.record_max = Some((17.0, 2015));
+        assert_eq!(climate_note(&d, Lang::En, Units::Metric), "Warmest 14 November since 1991 (was 17° in 2015)");
+        d.record_max = Some((18.5, 2015));
+        assert_eq!(climate_note(&d, Lang::En, Units::Metric), "Near the record for 14 November: 19° in 2015");
+        d.record_max = Some((25.0, 2015));
+        d.record_min = Some((4.5, 1998));
+        assert_eq!(climate_note(&d, Lang::Fr, Units::Metric), "Proche du record de froid du 14 novembre : 5° en 1998");
     }
 
     #[test]

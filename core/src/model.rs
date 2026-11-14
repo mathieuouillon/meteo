@@ -199,5 +199,10 @@ pub struct Day {
     pub normal_max: Option<f64>,
     #[serde(default)]
     pub normal_min: Option<f64>,
+    /// This date's record high and low since 1991, with the year.
+    #[serde(default)]
+    pub record_max: Option<(f64, u16)>,
+    #[serde(default)]
+    pub record_min: Option<(f64, u16)>,
     pub condition: Condition,
 }
