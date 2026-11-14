@@ -93,6 +93,10 @@ Two more widgets share the same Rust state:
   eight quarter-hour bars.
 - **Météo · Round** (1×1): the icon and temperature in a circle.
 
+The main widget turns into the rain view on its own when rain should start within the
+hour. In the settings, widgets can be solid or see-through (20 % or 40 %), in the
+weather's colours or the wallpaper's (Android 12+).
+
 ## Wear OS
 
 A watch app (`android/wear`) with a tile: the city, the weather icon, the temperature,
@@ -111,12 +115,16 @@ cd android && ./gradlew :wear:installRelease   # with a watch or Wear OS emulato
 
 ## Notifications
 
-Two optional notifications, switched on in the settings (Android asks for permission the
+Optional notifications, switched on in the settings (Android asks for permission the
 first time):
 
 - **Morning summary:** once a day between 7 and 10 am: condition, day and night
   temperatures, rain expected.
 - **Rain alert:** when rain should start within the hour, at most once every 3 hours.
+  It counts down live to the start ("in 12:30") and goes away 15 minutes after.
+- **Weather warnings:** orange and red MeteoAlarm warnings for the city, once each.
+- **Frost and heat:** frost tonight (sent in the evening when the night goes to 0° or
+  below), heat today (sent in the morning when the day reaches 30°).
 
 `MeteoApp.kt` schedules a WorkManager job every 15 minutes. `NotifyWorker` refreshes the
 forecast and asks Rust what to post (`meteo_core::notify::due`). What was already sent is
@@ -125,13 +133,33 @@ kept in `notify-state.json`, so nothing repeats.
 ## Tests
 
 ```bash
-cargo test -p meteo-core                    # offline tests
-cargo test -p meteo-core -- --include-ignored  # also hits the live API
+cargo test --workspace                         # offline tests, UI screenshots included
+cargo test -p meteo-core -- --include-ignored  # also hits the live APIs
+UPDATE_SCREENSHOTS=1 cargo test -p meteo screenshots  # new reference pictures
 ```
+
+**UI screenshots** ([app/src/screenshots.rs](app/src/screenshots.rs)): the real UI is
+drawn without a window or GPU by Slint's software renderer, from a saved forecast
+([app/tests/fixtures/grenoble.json](app/tests/fixtures/grenoble.json)): the main page in
+English and French, the settings and the radar. Each picture is compared with its
+reference in `app/tests/screenshots/`; more than 0.2 % of changed pixels fails the test.
+The pictures drawn are kept in `target/screenshots/`.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 `cargo fmt --check`, clippy with warnings as errors, the tests, and an Android
-release build (debug-signed, kept as the `meteo-apk` artifact).
+release build (debug-signed, kept as the `meteo-apk` artifact). The screenshots are
+kept as the `screenshots` artifact.
+
+**Startup time:** the app writes one line to the system log on each start:
+
+```bash
+adb logcat -s Meteo
+```
+
+`startup: window built 25 ms, forecast shown 30 ms, renderer ready 330 ms, drawing 400 ms,
+first frame 950 ms` (on the emulator). The cached forecast is on screen in about 30 ms;
+the rest is the graphics setup and the first frame. The open day's chart is drawn just
+after the first frame, so the top of the page comes first.
 
 ## Days hour by hour
 
@@ -163,6 +191,13 @@ so there are still no API keys.
 - Regional models are more detailed near home but may cover fewer days (Météo-France:
   about 4) or have no rain probability (Météo-France, JMA). Parsing stops at the first
   missing hour or day instead of failing.
+- **Most accurate here:** the list shows how each source did for the city over about
+  two weeks: its forecast made the day before ([Previous Runs API](https://open-meteo.com/en/docs/previous-runs-api))
+  against what happened (ERA5 reanalysis, which comes about five days late). "Temperature
+  within 1.1° · rain right 15 days of 16", and a ★ on the best (a degree of temperature
+  miss counts as much as a quarter of the days' rain wrong). Worked out when the list
+  opens, saved for 3 days ([core/src/accuracy.rs](core/src/accuracy.rs)). Two weeks
+  is a short sample, and ERA5 is coarse (9–25 km), so it's a hint, not a verdict.
 - The choice is saved in `settings.json`, and the widget uses it too. Each source has
   its own cache file (`forecast-<lat>_<lon>-<model>.json`), so switching back and
   forth works offline.
@@ -245,7 +280,17 @@ example, has no UV index.
 
 Above the list:
 
+- **Advice line:** under the temperature, one practical tip for the rest of the day,
+  the most useful of: rain or snow ("Take an umbrella from 16h"), strong gusts, heat,
+  frost tonight, strong sun ("Sunscreen 12h–15h (UV 7)") ([core/src/advice.rs](core/src/advice.rs)).
 - **Next 2 hours:** rain in 15-minute steps, with a sentence like "Rain stopping in 45 min".
+  Tap it for the **rain radar**: the last two hours, every 10 minutes, from
+  [RainViewer](https://www.rainviewer.com/api.html), over OpenStreetMap tiles turned
+  grey (inverted in dark mode) so the rain stands out. The place is marked in the
+  middle; tap the map to pause ([core/src/radar.rs](core/src/radar.rs),
+  [app/src/radar.rs](app/src/radar.rs)). RainViewer's free tiles stop at zoom 7 (about
+  350 km across) and have no forecast frames. OpenStreetMap's tile servers allow light
+  use by apps that identify themselves; a widely used release would need its own tiles.
 - **Models agree:** each day of the 7-day forecast compares five weather models (ECMWF,
   ICON, GFS, Météo-France, UK Met Office): "5 models agree · temperature 84% · rain 56%".
   Temperature counts how far apart they are; rain counts whether they agree it rains
@@ -258,6 +303,9 @@ Above the list:
   (five different models, once each), it's a probability: 35 of 51 runs is 70 %.
 - **Compared with normal:** "2° colder than usual", from the 1991–2020 average for the
   date (Open-Meteo archive, downloaded once per city and cached).
+- **Records:** the same download has every day since 1991, so a day near or past its
+  record says so instead: "Warmest 14 November since 1991 (was 22° in 2025)" or "Near the
+  record for 14 November: 22° in 2025".
 
 The footer shows the data source (tap it to change) and when the forecast was updated,
 with a Refresh button. "Updated 3 min ago" keeps counting while the app is open, and
@@ -290,7 +338,8 @@ The tune button next to the city opens the settings, saved in `settings.json`:
 - **Units:** metric (°C, km/h, mm, hPa) or imperial (°F, mph, in, inHg).
 - **Colours:** the weather's palettes, or the wallpaper's (Material You, Android 12+).
 - **Language:** the phone's, English or French.
-- **Data source** and the two **notifications**.
+- **Widgets:** solid or see-through, weather or wallpaper colours.
+- **Data source** and the **notifications**.
 
 ## Languages
 
