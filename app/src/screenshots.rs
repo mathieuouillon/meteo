@@ -137,8 +137,10 @@ fn check(name: &str, picture: &Picture) -> Option<String> {
     }
     let changed = expected
         .rgba
-        .chunks_exact(4)
-        .zip(picture.rgba.chunks_exact(4))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(picture.rgba.as_chunks::<4>().0)
         .filter(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| x.abs_diff(*y) > CHANNEL_TOLERANCE))
         .count();
     let share = changed as f64 / f64::from(picture.width * picture.height);
