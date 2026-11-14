@@ -396,6 +396,31 @@ impl Lang {
         self.pick("midnight", "minuit")
     }
 
+    pub fn frost_title(self, city: &str) -> String {
+        match self {
+            Lang::En => format!("Frost tonight in {city}"),
+            Lang::Fr => format!("Gel cette nuit à {city}"),
+        }
+    }
+    pub fn frost_text(self, low: &str) -> String {
+        match self {
+            Lang::En => format!("Down to {low}: cover plants, watch for ice on the roads."),
+            Lang::Fr => format!("Jusqu’à {low} : protégez les plantes, attention au verglas."),
+        }
+    }
+    pub fn heat_title(self, city: &str) -> String {
+        match self {
+            Lang::En => format!("Hot day in {city}"),
+            Lang::Fr => format!("Forte chaleur à {city}"),
+        }
+    }
+    pub fn heat_text(self, high: &str) -> String {
+        match self {
+            Lang::En => format!("Up to {high}: drink water, stay in the shade in the afternoon."),
+            Lang::Fr => format!("Jusqu’à {high} : buvez de l’eau, restez à l’ombre l’après-midi."),
+        }
+    }
+
     pub fn warnings_title(self, city: &str) -> String {
         match self {
             Lang::En => format!("Weather warning in {city}"),
@@ -513,6 +538,11 @@ impl Lang {
                 "Vigilances orange et rouge pour votre ville",
             ),
             warnings_source: self.pick("Official warnings · MeteoAlarm", "Vigilances officielles · MeteoAlarm"),
+            temperature_alerts: self.pick("Frost and heat", "Gel et chaleur"),
+            temperature_alerts_help: self.pick(
+                "Frost tonight (in the evening), heat today (in the morning)",
+                "Gel la nuit (le soir), forte chaleur (le matin)",
+            ),
         }
     }
 }
@@ -557,6 +587,8 @@ pub struct Labels {
     pub warning_alerts_help: &'static str,
     /// Credit under the warnings (MeteoAlarm's terms ask for it).
     pub warnings_source: &'static str,
+    pub temperature_alerts: &'static str,
+    pub temperature_alerts_help: &'static str,
 }
 
 #[cfg(test)]

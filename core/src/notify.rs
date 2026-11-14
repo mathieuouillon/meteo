@@ -38,12 +38,22 @@ struct State {
     /// Warnings already notified (CAP identifiers, the latest few).
     #[serde(default)]
     warned: Vec<String>,
+    /// Local dates of the last frost and heat alerts.
+    #[serde(default)]
+    frost_date: String,
+    #[serde(default)]
+    heat_date: String,
 }
+
+/// Frost alerts go out in the evening, heat alerts in the morning.
+const EVENING: (u32, u32) = (17, 21);
+const FROST_C: f64 = 0.0;
+const HEAT_C: f64 = 30.0;
 
 /// The notifications due now (usually none). `system_lang` is the phone's.
 pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
     let settings = Settings::load(dir);
-    if !settings.morning_summary && !settings.rain_alerts && !settings.warning_alerts {
+    if !settings.morning_summary && !settings.rain_alerts && !settings.warning_alerts && !settings.temperature_alerts {
         return Vec::new();
     }
     let lang = settings.lang(system_lang);
@@ -70,7 +80,40 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
             text += &format!("\n{}", screen.nowcast.summary);
         }
         out.push(Notification { kind: "morning".into(), title: lang.morning_title(&city.name), text });
-        state.morning_date = today;
+        state.morning_date = today.clone();
+    }
+
+    if settings.temperature_alerts {
+        // Frost: the coldest hour from now to 9 am tomorrow.
+        let night_min = f
+            .hours
+            .iter()
+            .take_while(|h| h.time.starts_with(&today) || h.time.get(11..13) < Some("10"))
+            .map(|h| h.temperature)
+            .reduce(f64::min);
+        if (EVENING.0..EVENING.1).contains(&hour)
+            && state.frost_date != today
+            && let Some(min) = night_min.filter(|t| *t <= FROST_C)
+        {
+            out.push(Notification {
+                kind: "temperature".into(),
+                title: lang.frost_title(&city.name),
+                text: lang.frost_text(&settings.units.temp(min)),
+            });
+            state.frost_date = today.clone();
+        }
+        // Heat: today's high.
+        if (MORNING.0..MORNING.1).contains(&hour)
+            && state.heat_date != today
+            && let Some(day) = f.days.first().filter(|d| d.max >= HEAT_C)
+        {
+            out.push(Notification {
+                kind: "temperature".into(),
+                title: lang.heat_title(&city.name),
+                text: lang.heat_text(&settings.units.temp(day.max)),
+            });
+            state.heat_date = today.clone();
+        }
     }
 
     // Rain about to start (not already raining), at most every few hours.
@@ -188,6 +231,34 @@ mod tests {
         assert_eq!(first[0].title, "Vigilance météo à Paris");
         assert_eq!(first[0].text, "Vigilance orange · Orages\nJusqu’à 14:00");
         assert!(due(&dir, MORNING_8AM + 900, Lang::Fr).is_empty(), "not twice");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn frost_in_the_evening_once() {
+        let dir = setup("frost", false, false, None);
+        Settings { temperature_alerts: true, ..Settings::default() }.save(&dir).unwrap();
+        let mut cached = cache::load(&dir, &Location::paris(), Source::BestMatch, MORNING_8AM).unwrap();
+        // The night drops to -3° (hours from 08h today to 09h tomorrow).
+        let base = cached.forecast.hours[0].clone();
+        cached.forecast.hours = (0..26)
+            .map(|i| {
+                let (d, h) = if 8 + i < 24 { (13, 8 + i) } else { (14, 8 + i - 24) };
+                crate::model::Hour {
+                    time: format!("2026-11-{d}T{h:02}:00"),
+                    temperature: if h < 8 && d == 14 { -3.0 } else { 6.0 },
+                    ..base.clone()
+                }
+            })
+            .collect();
+        cache::save(&dir, &Location::paris(), Source::BestMatch, &cached.forecast, MORNING_8AM).unwrap();
+        assert!(due(&dir, MORNING_8AM, Lang::En).is_empty(), "not in the morning");
+        let evening = MORNING_8AM + 10 * 3600; // 18:00
+        let n = due(&dir, evening, Lang::En);
+        assert_eq!(n.len(), 1);
+        assert_eq!((n[0].kind.as_str(), n[0].title.as_str()), ("temperature", "Frost tonight in Paris"));
+        assert!(n[0].text.starts_with("Down to -3°"), "{}", n[0].text);
+        assert!(due(&dir, evening + 1800, Lang::En).is_empty(), "once a day");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

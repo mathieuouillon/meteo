@@ -240,6 +240,15 @@ pub fn run() -> Result<(), slint::PlatformError> {
             }
         }
     });
+    ui.on_set_temperature_alerts({
+        let app = app.clone();
+        move |on| {
+            app.change_settings(|s| s.temperature_alerts = on);
+            if on {
+                request_notifications();
+            }
+        }
+    });
     ui.on_set_warning_alerts({
         let app = app.clone();
         move |on| {
@@ -314,6 +323,7 @@ impl App {
         ui.set_morning_summary(s.morning_summary);
         ui.set_rain_alerts(s.rain_alerts);
         ui.set_warning_alerts(s.warning_alerts);
+        ui.set_temperature_alerts(s.temperature_alerts);
         ui.set_can_use_wallpaper(cfg!(target_os = "android"));
     }
 
@@ -808,6 +818,8 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         warning_alerts: l.warning_alerts.into(),
         warning_alerts_help: l.warning_alerts_help.into(),
         warnings_source: l.warnings_source.into(),
+        temperature_alerts: l.temperature_alerts.into(),
+        temperature_alerts_help: l.temperature_alerts_help.into(),
     }
 }
 

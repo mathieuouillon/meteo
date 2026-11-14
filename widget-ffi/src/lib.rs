@@ -59,7 +59,7 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notificationsEnabled
 ) -> jboolean {
     let Some(dir) = data_dir(&mut env, &dir) else { return JNI_FALSE };
     let s = meteo_core::Settings::load(&dir);
-    if s.morning_summary || s.rain_alerts || s.warning_alerts { JNI_TRUE } else { JNI_FALSE }
+    if s.morning_summary || s.rain_alerts || s.warning_alerts || s.temperature_alerts { JNI_TRUE } else { JNI_FALSE }
 }
 
 /// `external fun notifications(dataDir: String, language: String): String` —

@@ -28,6 +28,7 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val CHANNEL_MORNING = "morning"
         const val CHANNEL_RAIN = "rain"
         const val CHANNEL_WARNING = "warning"
+        const val CHANNEL_TEMPERATURE = "temperature"
     }
 
     override suspend fun doWork(): Result {
@@ -62,6 +63,7 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             NotificationManagerCompat.from(applicationContext).notify(
                 when (kind) {
                     CHANNEL_RAIN -> 2
+                    CHANNEL_TEMPERATURE -> 3
                     // Each warning keeps its own notification.
                     CHANNEL_WARNING -> 100 + (n.getString("text").hashCode() and 0xffff)
                     else -> 1

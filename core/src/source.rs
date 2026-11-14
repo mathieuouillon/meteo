@@ -236,6 +236,9 @@ pub struct Settings {
     /// Orange and red official weather warnings (MeteoAlarm).
     #[serde(default)]
     pub warning_alerts: bool,
+    /// Frost tonight (in the evening) and heat today (in the morning).
+    #[serde(default)]
+    pub temperature_alerts: bool,
 }
 
 /// Where the UI's colours come from.

@@ -61,6 +61,13 @@ class MeteoApp : Application() {
                 NotificationManager.IMPORTANCE_HIGH,
             ),
         )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                NotifyWorker.CHANNEL_TEMPERATURE,
+                if (fr) "Gel et chaleur" else "Frost and heat",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ),
+        )
         val request = PeriodicWorkRequestBuilder<NotifyWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
