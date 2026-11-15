@@ -716,17 +716,23 @@ fn device_location(quiet: bool) -> Result<Location, String> {
         if quiet {
             return Err(String::new());
         }
-        loc::request_permission(app);
+        let _ = loc::request_permission(app);
         if !loc::wait_for_permission(app, Duration::from_secs(60)) {
             return Err(lang().permission_denied().into());
         }
+    } else if !quiet && !loc::has_precise(app) {
+        // Approximate only: Android offers to switch to precise; carry on
+        // with approximate if the user keeps it.
+        let _ = loc::request_permission(app);
+        loc::wait_for_dialog(app, Duration::from_secs(60));
     }
-    let (lat, lon) = loc::current_position(app, Duration::from_secs(15)).ok_or(lang().no_fix())?;
+    let (exact_lat, exact_lon) = loc::current_position(app, Duration::from_secs(15)).ok_or(lang().no_fix())?;
     // About 1 km is plenty for the weather, and that's all that leaves the
-    // phone (see docs/privacy-policy.md).
+    // phone for it (see docs/privacy-policy.md). The town is named from the
+    // exact position, by Android's own geocoder.
     let round = |x: f64| (x * 100.0).round() / 100.0;
-    let (lat, lon) = (round(lat), round(lon));
-    Ok(match loc::place_name(app, lat, lon) {
+    let (lat, lon) = (round(exact_lat), round(exact_lon));
+    Ok(match loc::place_name(app, exact_lat, exact_lon) {
         Some(p) => Location::new(p.name, p.detail, lat, lon).with_areas(p.country_code, p.areas),
         None => Location::new(lang().my_location(), "", lat, lon),
     })

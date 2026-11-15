@@ -398,9 +398,11 @@ Tap the city name to open the city picker:
   cache. Tap one to switch, ✕ to remove it. The list is never empty (Paris by default).
 - **Swipe** the top of the page left or right for the next or previous saved city;
   dots under the city name show which one it is.
-- **Use my location** asks for approximate location permission, finds the device's
-  position (rounded to about 1 km),
-  and names it with Android's `Geocoder`. It becomes a "📍" entry at
+- **Use my location** asks for location (Android lets the user pick precise or
+  approximate; with approximate only, tapping it again offers precise). It takes the
+  most accurate fresh fix from the fused, GPS and network providers, names it with
+  Android's `Geocoder` from the exact position, and keeps only a position rounded to
+  about 1 km for the weather. It becomes a "📍" entry at
   the top of the list, refreshed each time the app opens. This is all JNI from Rust
   ([app/src/android.rs](app/src/android.rs)). A NativeActivity gets
   no Java callbacks, so the code polls the permission state, and it starts location
@@ -432,7 +434,8 @@ match). The home-screen widget reads the same files.
   closed test). Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md).
 - **Guidelines met:** targets Android 16 (API 36) with the predictive back
   gesture (back closes the settings, city or source picker, then leaves);
-  approximate location only, rounded to about 1 km; 48 dp touch targets;
+  precise or approximate location as the user chooses, rounded to about 1 km for the
+  weather; 48 dp touch targets;
   16 KB page-aligned native libraries; R8 shrinking for the Kotlin side.
 
 ## Notes

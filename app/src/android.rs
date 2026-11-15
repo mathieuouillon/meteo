@@ -14,14 +14,18 @@ use jni::objects::{JObject, JString, JValue};
 use jni::{JNIEnv, JavaVM};
 use slint::android::AndroidApp;
 
-/// Approximate location is plenty for the weather (and what Android's
-/// guidelines ask an app like this to request).
-const PERMISSIONS: [&str; 1] = ["android.permission.ACCESS_COARSE_LOCATION"];
-/// Providers that work with approximate location. "fused" exists from
-/// Android 12; unknown providers are skipped.
-const PROVIDERS: [&str; 2] = ["fused", "network"];
-/// A last known position this recent is used straight away.
-const FRESH_ENOUGH: Duration = Duration::from_secs(15 * 60);
+/// Precise and approximate together: Android 12+ shows one dialog where the
+/// user picks either (precise names the right town; approximate is blurred
+/// by about 2 km).
+const PERMISSIONS: [&str; 2] = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"];
+const FINE: &str = PERMISSIONS[0];
+const COARSE: &str = PERMISSIONS[1];
+/// "fused" exists from Android 12, "gps" needs precise location; providers
+/// that are missing or not allowed are skipped.
+const PROVIDERS: [&str; 3] = ["fused", "gps", "network"];
+/// A last known position this recent and this accurate is used straight away.
+const FRESH_ENOUGH: Duration = Duration::from_secs(5 * 60);
+const GOOD_ENOUGH_M: f32 = 100.0;
 
 type Result<T> = std::result::Result<T, jni::errors::Error>;
 
@@ -47,9 +51,9 @@ fn ok_or_clear<T>(env: &mut JNIEnv, r: Result<T>) -> Option<T> {
     r.ok()
 }
 
-pub fn has_permission(app: &AndroidApp) -> bool {
+fn granted(app: &AndroidApp, permission: &str) -> bool {
     with_activity(app, |env, activity| {
-        let perm = env.new_string(PERMISSIONS[0])?;
+        let perm = env.new_string(permission)?;
         let state =
             env.call_method(activity, "checkSelfPermission", "(Ljava/lang/String;)I", &[JValue::Object(&perm)])?.i()?;
         Ok(state == 0) // PackageManager.PERMISSION_GRANTED
@@ -57,9 +61,36 @@ pub fn has_permission(app: &AndroidApp) -> bool {
     .unwrap_or(false)
 }
 
+/// Some location (approximate at least).
+pub fn has_permission(app: &AndroidApp) -> bool {
+    granted(app, COARSE) || granted(app, FINE)
+}
+
+pub fn has_precise(app: &AndroidApp) -> bool {
+    granted(app, FINE)
+}
+
+/// Whether the app's window has the focus (it loses it while a system
+/// dialog is shown over it).
+fn has_focus(app: &AndroidApp) -> bool {
+    with_activity(app, |env, activity| env.call_method(activity, "hasWindowFocus", "()Z", &[])?.z()).unwrap_or(true)
+}
+
+/// Waits for a dialog shown over the app (permission request) to be
+/// answered: it takes the focus within a moment, and gives it back.
+pub fn wait_for_dialog(app: &AndroidApp, timeout: Duration) {
+    let start = Instant::now();
+    while has_focus(app) && start.elapsed() < Duration::from_millis(1500) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    while !has_focus(app) && start.elapsed() < timeout {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 /// Shows the system permission dialog.
-pub fn request_permission(app: &AndroidApp) {
-    let _ = with_activity(app, |env, activity| {
+pub fn request_permission(app: &AndroidApp) -> std::result::Result<(), String> {
+    with_activity(app, |env, activity| {
         let array = env.new_object_array(PERMISSIONS.len() as i32, "java/lang/String", JObject::null())?;
         for (i, p) in PERMISSIONS.iter().enumerate() {
             let s = env.new_string(p)?;
@@ -72,7 +103,8 @@ pub fn request_permission(app: &AndroidApp) {
             &[JValue::Object(&array), JValue::Int(1)],
         )?;
         Ok(())
-    });
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// Waits up to `timeout` for the user to answer the permission dialog.
@@ -101,7 +133,7 @@ pub fn current_position(app: &AndroidApp, timeout: Duration) -> Option<(f64, f64
             )?
             .l()?;
 
-        if let Some(fix) = last_known(env, &manager).filter(|f| f.age < FRESH_ENOUGH) {
+        if let Some(fix) = last_known(env, &manager).filter(|f| f.age < FRESH_ENOUGH && f.accuracy <= GOOD_ENOUGH_M) {
             return Ok(Some((fix.latitude, fix.longitude)));
         }
 
@@ -134,12 +166,18 @@ pub fn current_position(app: &AndroidApp, timeout: Duration) -> Option<(f64, f64
             ok_or_clear(env, r);
         }
 
+        // A fresh, accurate fix; failing that, the best fresh one by the end.
         let start = Instant::now();
-        let mut found = None;
+        let mut found: Option<Fix> = None;
         while start.elapsed() < timeout {
             if let Some(fix) = last_known(env, &manager).filter(|f| f.age < Duration::from_secs(60)) {
-                found = Some(fix);
-                break;
+                let good = fix.accuracy <= GOOD_ENOUGH_M;
+                if found.as_ref().is_none_or(|f| fix.accuracy < f.accuracy) {
+                    found = Some(fix);
+                }
+                if good {
+                    break;
+                }
             }
             std::thread::sleep(Duration::from_millis(500));
         }
@@ -157,9 +195,12 @@ struct Fix {
     latitude: f64,
     longitude: f64,
     age: Duration,
+    /// Radius in metres (68 % confidence).
+    accuracy: f32,
 }
 
-/// The most recent last known position across providers.
+/// The best last known position across providers: among those from the
+/// last two minutes the most accurate, otherwise the most recent.
 fn last_known(env: &mut JNIEnv, manager: &JObject) -> Option<Fix> {
     let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_millis() as i64;
     let mut best: Option<Fix> = None;
@@ -180,12 +221,22 @@ fn last_known(env: &mut JNIEnv, manager: &JObject) -> Option<Fix> {
             continue;
         };
         let time = env.call_method(&loc, "getTime", "()J", &[]).and_then(|v| v.j()).unwrap_or(0);
+        let accuracy = env.call_method(&loc, "getAccuracy", "()F", &[]).and_then(|v| v.f()).unwrap_or(f32::MAX);
+        let _ = env.exception_clear();
         let age = Duration::from_millis(now_ms.saturating_sub(time).max(0) as u64);
-        if best.as_ref().is_none_or(|b| age < b.age) {
-            best = Some(Fix { latitude, longitude, age });
+        let fix = Fix { latitude, longitude, age, accuracy };
+        if best.as_ref().is_none_or(|b| better(&fix, b)) {
+            best = Some(fix);
         }
     }
     best
+}
+
+/// Within two minutes of each other, the more accurate fix wins; otherwise
+/// the more recent.
+fn better(a: &Fix, b: &Fix) -> bool {
+    let recent = Duration::from_secs(120);
+    if a.age < recent && b.age < recent { a.accuracy < b.accuracy } else { a.age < b.age }
 }
 
 /// Town name and "region, country" for a position, from Android's Geocoder.

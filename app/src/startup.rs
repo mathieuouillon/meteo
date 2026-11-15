@@ -48,7 +48,7 @@ pub fn after_first_frame(ui: &crate::MainWindow) {
 }
 
 #[cfg(target_os = "android")]
-fn log(text: &str) {
+pub fn log(text: &str) {
     use std::ffi::{CString, c_char, c_int};
     #[link(name = "log")]
     unsafe extern "C" {
@@ -62,6 +62,6 @@ fn log(text: &str) {
 }
 
 #[cfg(not(target_os = "android"))]
-fn log(text: &str) {
+pub fn log(text: &str) {
     eprintln!("{text}");
 }

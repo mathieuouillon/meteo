@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Precise location names the right town; only a position rounded to
+         about 1 km is sent for the weather. Android 12+ lets the user keep
+         approximate. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The small click when pull-to-refresh is reached. -->
     <uses-permission android:name="android.permission.VIBRATE" />
