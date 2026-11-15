@@ -164,6 +164,53 @@ pub fn due(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
     out
 }
 
+/// One notification of each kind, from the current forecast, for the
+/// "Send test notifications" button: whatever the time, and without
+/// counting as sent.
+pub fn samples(dir: &Path, unix_now: i64, system_lang: Lang) -> Vec<Notification> {
+    let settings = Settings::load(dir);
+    let lang = settings.lang(system_lang);
+    let city = Places::load(dir).selected().clone();
+    let Some(cached) = cache::load(dir, &city, settings.source, unix_now) else {
+        return Vec::new();
+    };
+    let f = &cached.forecast;
+    let screen = MainScreen::from_forecast(f, lang, settings.units);
+    let mut text = format!("{} · {}", screen.condition, screen.high_low);
+    if let Some(day) = screen.days.first().filter(|d| !d.rain_total.is_empty()) {
+        text += &format!(" · {}", day.rain_total);
+    }
+    let night_min = f.hours.iter().take(24).map(|h| h.temperature).reduce(f64::min).unwrap_or(0.0);
+    let warning = f
+        .warnings
+        .first()
+        .map_or_else(|| lang.warning_title(2, "wind"), |w| lang.warning_title(w.level.max(2), &w.kind));
+    // Marked as tests, so they aren't taken for real alerts.
+    let test = |title: String| format!("{} · {title}", lang.notification_test());
+    vec![
+        Notification { kind: "morning".into(), title: test(lang.morning_title(&city.name)), text, starts_at: None },
+        Notification {
+            kind: "rain".into(),
+            title: test(lang.rain_soon_title(&city.name)),
+            text: lang.rain_starting(lang.rain_word(2.0), 10),
+            // A countdown to show what it looks like.
+            starts_at: Some(unix_now + 10 * 60),
+        },
+        Notification {
+            kind: "temperature".into(),
+            title: test(lang.frost_title(&city.name)),
+            text: lang.frost_text(&settings.units.temp(night_min.min(-1.0))),
+            starts_at: None,
+        },
+        Notification {
+            kind: "warning".into(),
+            title: test(lang.warnings_title(&city.name)),
+            text: warning,
+            starts_at: None,
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +317,20 @@ mod tests {
         assert!(n[0].text.starts_with("Down to -3°"), "{}", n[0].text);
         assert!(due(&dir, evening + 1800, Lang::En).is_empty(), "once a day");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_notifications_one_of_each_kind() {
+        let dir = setup("samples", false, false, None);
+        let before = std::fs::read(dir.join(STATE_FILE)).ok();
+        let all = samples(&dir, MORNING_8AM, Lang::En);
+        let kinds: Vec<&str> = all.iter().map(|n| n.kind.as_str()).collect();
+        assert_eq!(kinds, ["morning", "rain", "temperature", "warning"]);
+        assert!(all.iter().all(|n| n.title.starts_with("Test · ") && !n.text.is_empty()));
+        assert_eq!(all[1].text, "Rain starting in about 10 min");
+        assert_eq!(all[3].text, "Orange warning · Wind");
+        assert_eq!(all[1].starts_at, Some(MORNING_8AM + 600));
+        assert_eq!(std::fs::read(dir.join(STATE_FILE)).ok(), before, "nothing counts as sent");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

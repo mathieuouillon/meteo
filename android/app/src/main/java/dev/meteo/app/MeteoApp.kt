@@ -30,6 +30,15 @@ class MeteoApp : Application() {
             WorkManager.getInstance(context).enqueueUniqueWork("meteo-notify-now", ExistingWorkPolicy.REPLACE, request)
         }
 
+        /** Posts one notification of each kind now (the settings' test button). */
+        @JvmStatic
+        fun testNow(context: Context) {
+            val request = OneTimeWorkRequestBuilder<NotifyWorker>()
+                .setInputData(androidx.work.workDataOf(NotifyWorker.TEST to true))
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("meteo-notify-test", ExistingWorkPolicy.REPLACE, request)
+        }
+
         /** Rebuilds the launcher shortcuts (called from Rust when the cities change). */
         @JvmStatic
         fun updateShortcuts(context: Context) = Shortcuts.update(context)

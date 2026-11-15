@@ -197,6 +197,10 @@ impl Lang {
             _ => self.pick("Heavy rain", "Forte pluie"),
         }
     }
+    /// Marks the settings' test notifications.
+    pub fn notification_test(self) -> &'static str {
+        self.pick("Test", "Test")
+    }
     pub fn no_rain_soon(self) -> &'static str {
         self.pick("No rain expected in the next 2 hours", "Pas de pluie prévue dans les 2 prochaines heures")
     }
@@ -665,6 +669,12 @@ impl Lang {
             warnings_source: self.pick("Official warnings · MeteoAlarm", "Vigilances officielles · MeteoAlarm"),
             temperature_alerts: self.pick("Frost and heat", "Gel et chaleur"),
             widgets: self.pick("Widgets", "Widgets"),
+            notifications_blocked: self.pick(
+                "Android is blocking Météo’s notifications: none of these will show.",
+                "Android bloque les notifications de Météo : aucune ne s’affichera.",
+            ),
+            notifications_allow: self.pick("Allow in Android settings ›", "Autoriser dans les réglages Android ›"),
+            notifications_test: self.pick("Send test notifications", "Envoyer des notifications de test"),
             widget_solid: self.pick("Solid", "Opaque"),
             widget_see_through: self.pick("See-through", "Transparent"),
             temperature_alerts_help: self.pick(
@@ -730,6 +740,9 @@ pub struct Labels {
     pub warnings_source: &'static str,
     pub temperature_alerts: &'static str,
     pub widgets: &'static str,
+    pub notifications_blocked: &'static str,
+    pub notifications_allow: &'static str,
+    pub notifications_test: &'static str,
     pub widget_solid: &'static str,
     pub widget_see_through: &'static str,
     pub temperature_alerts_help: &'static str,

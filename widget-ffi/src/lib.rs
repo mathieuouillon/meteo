@@ -78,6 +78,23 @@ pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_notifications<'l>(
     env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
 }
 
+/// `external fun testNotifications(dataDir: String, language: String): String`
+/// — one notification of each kind, for the settings' test button.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_meteo_app_widget_RustBridge_testNotifications<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    dir: JString<'l>,
+    language: JString<'l>,
+) -> jstring {
+    let lang = env.get_string(&language).map(|s| meteo_core::Lang::from_code(&String::from(s))).unwrap_or_default();
+    let all = data_dir(&mut env, &dir)
+        .map(|d| meteo_core::notify::samples(&d, meteo_core::unix_now(), lang))
+        .unwrap_or_default();
+    let json = serde_json::to_string(&all).unwrap_or_else(|_| "[]".into());
+    env.new_string(json).map_or(std::ptr::null_mut(), |s| s.into_raw())
+}
+
 /// `external fun cities(dataDir: String): String` — the saved cities, as a
 /// JSON list of {key, name, detail}, for the launcher shortcuts.
 #[unsafe(no_mangle)]

@@ -281,6 +281,26 @@ pub fn run() -> Result<(), slint::PlatformError> {
             })
         }
     });
+    ui.on_test_notifications(|| {
+        #[cfg(target_os = "android")]
+        if let Some(app) = ANDROID_APP.get() {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                // Asks first if needed; the test still runs (and shows
+                // nothing until allowed).
+                if !android::notifications_allowed(&app) {
+                    android::request_notification_permission(&app);
+                }
+                android::test_notifications(&app);
+            });
+        }
+    });
+    ui.on_open_notification_settings(|| {
+        #[cfg(target_os = "android")]
+        if let Some(app) = ANDROID_APP.get() {
+            android::open_notification_settings(app);
+        }
+    });
     ui.on_set_morning_summary({
         let app = app.clone();
         move |on| {
@@ -392,6 +412,21 @@ impl App {
         ui.set_warning_alerts(s.warning_alerts);
         ui.set_temperature_alerts(s.temperature_alerts);
         ui.set_can_use_wallpaper(cfg!(target_os = "android"));
+        drop(s);
+        self.update_notification_state();
+    }
+
+    /// Shows a warning in the settings when a notification is on but Android
+    /// blocks them (permission refused, or switched off in its settings).
+    fn update_notification_state(&self) {
+        let Some(ui) = self.ui.upgrade() else { return };
+        let s = self.settings.borrow();
+        let wanted = s.morning_summary || s.rain_alerts || s.warning_alerts || s.temperature_alerts;
+        #[cfg(target_os = "android")]
+        let allowed = ANDROID_APP.get().is_none_or(android::notifications_allowed);
+        #[cfg(not(target_os = "android"))]
+        let allowed = true;
+        ui.set_notifications_blocked(wanted && !allowed);
     }
 
     /// Draws the forecast on screen again (after a setting changed).
@@ -950,6 +985,9 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         warnings_source: l.warnings_source.into(),
         temperature_alerts: l.temperature_alerts.into(),
         widgets: l.widgets.into(),
+        notifications_blocked: l.notifications_blocked.into(),
+        notifications_allow: l.notifications_allow.into(),
+        notifications_test: l.notifications_test.into(),
         widget_solid: l.widget_solid.into(),
         widget_see_through: l.widget_see_through.into(),
         temperature_alerts_help: l.temperature_alerts_help.into(),
@@ -1023,6 +1061,16 @@ fn android_main(app: slint::android::AndroidApp) {
         };
         animation::set_running(running);
         android::set_compass_active(running);
+        // Back from Android's settings or the permission dialog.
+        if running {
+            let _ = slint::invoke_from_event_loop(|| {
+                APP.with(|a| {
+                    if let Some(app) = a.get() {
+                        app.update_notification_state();
+                    }
+                })
+            });
+        }
     })
     .expect("Slint Android backend");
     run().expect("Slint event loop");

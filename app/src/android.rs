@@ -355,6 +355,43 @@ pub fn language(app: &AndroidApp) -> Option<String> {
     .ok()
 }
 
+/// Whether Android lets the app post notifications: the permission
+/// (Android 13+) and the app's own switch in the system settings.
+pub fn notifications_allowed(app: &AndroidApp) -> bool {
+    with_activity(app, |env, activity| {
+        let name = env.new_string("notification")?;
+        let manager = env
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[JValue::Object(&name)],
+            )?
+            .l()?;
+        env.call_method(&manager, "areNotificationsEnabled", "()Z", &[])?.z()
+    })
+    .unwrap_or(true) // when in doubt, don't nag
+}
+
+/// Opens the app's notification page in Android's settings, where they can
+/// be allowed even after the permission dialog was refused.
+pub fn open_notification_settings(app: &AndroidApp) {
+    let _ = with_activity(app, |env, activity| {
+        let action = env.new_string("android.settings.APP_NOTIFICATION_SETTINGS")?;
+        let intent = env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&action)])?;
+        let key = env.new_string("android.provider.extra.APP_PACKAGE")?;
+        let package = env.call_method(activity, "getPackageName", "()Ljava/lang/String;", &[])?.l()?;
+        env.call_method(
+            &intent,
+            "putExtra",
+            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+            &[JValue::Object(&key), JValue::Object(&package)],
+        )?;
+        env.call_method(activity, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+        Ok(())
+    });
+}
+
 /// Asks for permission to post notifications (Android 13+; granted
 /// automatically before that).
 pub fn request_notification_permission(app: &AndroidApp) {
@@ -526,6 +563,11 @@ pub fn open_url(app: &AndroidApp, url: &str) {
 /// (`dev.meteo.app.MeteoApp.checkNow`).
 pub fn check_notifications_now(app: &AndroidApp) {
     call_meteo_app(app, "checkNow");
+}
+
+/// One notification of each kind, now (`MeteoApp.testNow`).
+pub fn test_notifications(app: &AndroidApp) {
+    call_meteo_app(app, "testNow");
 }
 
 /// Asks the Kotlin side to rebuild the launcher shortcuts from the saved

@@ -126,6 +126,12 @@ first time):
 - **Frost and heat:** frost tonight (sent in the evening when the night goes to 0° or
   below), heat today (sent in the morning when the day reaches 30°).
 
+If a notification is on but Android blocks them (the permission was refused, or
+they're switched off in Android's settings), the settings say so, with a link to the
+app's page in Android's notification settings; this is checked again each time the app
+comes back to the front. **Send test notifications** (under the switches) posts one of
+each kind at once, from the current forecast, titled "Test ·", without counting as sent.
+
 `MeteoApp.kt` schedules a WorkManager job every 15 minutes. `NotifyWorker` refreshes the
 forecast and asks Rust what to post (`meteo_core::notify::due`). What was already sent is
 kept in `notify-state.json`, so nothing repeats.

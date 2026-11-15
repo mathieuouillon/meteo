@@ -21,6 +21,9 @@ object RustBridge {
     /** The notifications due now, as JSON [{kind, title, text}], in `language`. */
     external fun notifications(dataDir: String, language: String): String
 
+    /** One notification of each kind, for the settings' test button. */
+    external fun testNotifications(dataDir: String, language: String): String
+
     /** The saved cities, as JSON [{key, name, detail, device}]. */
     external fun cities(dataDir: String): String
 

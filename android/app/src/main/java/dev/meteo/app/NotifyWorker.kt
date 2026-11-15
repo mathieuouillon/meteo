@@ -29,11 +29,15 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val CHANNEL_RAIN = "rain"
         const val CHANNEL_WARNING = "warning"
         const val CHANNEL_TEMPERATURE = "temperature"
+
+        /** Input flag: post one of each kind now (the settings' test button). */
+        const val TEST = "test"
     }
 
     override suspend fun doWork(): Result {
         val dir = applicationContext.filesDir.absolutePath
-        if (!RustBridge.notificationsEnabled(dir)) return Result.success()
+        val test = inputData.getBoolean(TEST, false)
+        if (!test && !RustBridge.notificationsEnabled(dir)) return Result.success()
         RustBridge.refresh(dir)
         MeteoWidget().updateAll(applicationContext)
         RainWidget().updateAll(applicationContext)
@@ -43,7 +47,9 @@ class NotifyWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             PackageManager.PERMISSION_GRANTED
         if (!allowed) return Result.success()
         val language = applicationContext.resources.configuration.locales[0].language
-        val due = JSONArray(RustBridge.notifications(dir, language))
+        val due = JSONArray(
+            if (test) RustBridge.testNotifications(dir, language) else RustBridge.notifications(dir, language),
+        )
         val openApp = PendingIntent.getActivity(
             applicationContext, 0,
             Intent().setComponent(ComponentName(applicationContext.packageName, "android.app.NativeActivity")),
