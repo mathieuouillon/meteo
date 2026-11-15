@@ -293,13 +293,22 @@ Above the list:
   the most useful of: rain or snow ("Take an umbrella from 16h"), strong gusts, heat,
   frost tonight, strong sun ("Sunscreen 12h–15h (UV 7)") ([core/src/advice.rs](core/src/advice.rs)).
 - **Next 2 hours:** rain in 15-minute steps, with a sentence like "Rain stopping in 45 min".
-  Tap it for the **rain radar**: the last two hours, every 10 minutes, from
-  [RainViewer](https://www.rainviewer.com/api.html), over OpenStreetMap tiles turned
-  grey (inverted in dark mode) so the rain stands out. The place is marked in the
-  middle; tap the map to pause ([core/src/radar.rs](core/src/radar.rs),
-  [app/src/radar.rs](app/src/radar.rs)). RainViewer's free tiles stop at zoom 7 (about
-  350 km across) and have no forecast frames. OpenStreetMap's tile servers allow light
-  use by apps that identify themselves; a widely used release would need its own tiles.
+  Tap it for the **rain radar**: the last two hours every 10 minutes from
+  [RainViewer](https://www.rainviewer.com/api.html), then the next three hours every
+  15 minutes, forecast at a 15 × 15 grid of points over the map (one Open-Meteo request,
+  `minutely_15`), blended with Catmull-Rom curves into a smooth field in the radar's
+  colours, marked "Forecast". The map is OpenStreetMap turned grey (inverted in dark mode).
+  Also on the page:
+  - a timeline to drag or tap (radar frames, then lighter forecast frames, "Now"
+    between them)
+  - a Region / Wide switch (about 350 or 700 km across)
+  - the colour legend
+  - the place's next 2 hours
+  
+  Tap the map to pause ([core/src/radar.rs](core/src/radar.rs),
+  [app/src/radar.rs](app/src/radar.rs)). RainViewer's free tiles stop at zoom 7 and have
+  no forecast frames, hence the grid. OpenStreetMap's tile servers allow light use by
+  apps that identify themselves; a widely used release would need its own tiles.
 - **Ensemble runs:** for sources that have one on Open-Meteo, each day says what
   the same model run many times from slightly different starting points expects:
   "51 runs: high 12–15° · rain in 35 of them". The sources are ECMWF (51 runs), DWD ICON

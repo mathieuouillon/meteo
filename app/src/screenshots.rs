@@ -63,7 +63,13 @@ fn screenshots() {
         ("main-fr", Lang::Fr, PAGE_HEIGHT, |_| {}),
         ("settings", Lang::En, PHONE_HEIGHT, |ui| ui.set_settings_open(true)),
         ("radar", Lang::En, PHONE_HEIGHT, |ui| {
-            ui.set_radar_time("10:30".into());
+            ui.set_radar_time("Forecast 11:15".into());
+            ui.set_radar_forecast(true);
+            ui.set_radar_count(25);
+            ui.set_radar_now(12);
+            ui.set_radar_index(15);
+            ui.set_radar_start("08:30".into());
+            ui.set_radar_end("13:30".into());
             ui.set_radar_status(Lang::En.labels().radar_hint.into());
             ui.set_radar_open(true);
         }),

@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::time::Duration;
 
-use meteo_core::radar::{self, Frame, GRID, TILE};
+use meteo_core::radar::{self, Block, Frame, GRID, RAIN_GRID, TILE};
 use meteo_core::{Lang, Location};
 use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode, Weak};
 
@@ -12,44 +12,60 @@ use crate::{MainWindow, block_on};
 
 /// The pictures' side, in pixels, centred on the place.
 const SIDE: u32 = 512;
-const STEP: Duration = Duration::from_millis(500);
-/// The newest frame stays this many steps before the loop starts again.
+/// The forecast's pictures are smooth fields: drawn small, scaled up.
+const FORECAST_SIDE: u32 = 128;
+const STEP: Duration = Duration::from_millis(450);
+/// The last frame stays this many steps before the loop starts again.
 const HOLD: u32 = 4;
 
 type Buffer = SharedPixelBuffer<Rgba8Pixel>;
 
+#[derive(Clone)]
+struct View {
+    time: SharedString,
+    image: Image,
+    forecast: bool,
+}
+
 #[derive(Default)]
 struct Player {
-    /// Time label and picture of each frame, oldest first.
-    frames: Vec<(SharedString, Image)>,
+    /// The radar's frames, oldest first, then the forecast's.
+    frames: Vec<View>,
     at: usize,
     hold: u32,
     playing: bool,
     timer: Timer,
     /// Bumped on each opening, so a download for an earlier one is dropped.
     generation: u64,
+    wide: bool,
+    /// What the radar was last opened for, to open it again wider or closer.
+    opened: Option<(Location, i64, Lang)>,
 }
 
 thread_local! {
     static PLAYER: RefCell<Player> = RefCell::default();
 }
 
-/// Opens the radar for `place`: the newest frame first, then the others.
+/// Opens the radar for `place`: the newest radar frame first, then the
+/// older ones and the forecast.
 pub fn open(ui: &MainWindow, place: &Location, utc_offset: i64, lang: Lang) {
-    let generation = PLAYER.with(|p| {
+    let (generation, wide) = PLAYER.with(|p| {
         let mut p = p.borrow_mut();
         p.frames.clear();
         p.timer.stop();
         p.generation += 1;
-        p.generation
+        p.opened = Some((place.clone(), utc_offset, lang));
+        (p.generation, p.wide)
     });
     ui.set_radar_map(Image::default());
     ui.set_radar_rain(Image::default());
     ui.set_radar_time(SharedString::new());
+    ui.set_radar_count(0);
+    ui.set_radar_wide(wide);
     ui.set_radar_status(lang.labels().radar_loading.into());
     let surface = ui.get_theme().surface;
     let dark = u32::from(surface.red()) + u32::from(surface.green()) + u32::from(surface.blue()) < 3 * 128;
-    let block = radar::block(place.latitude, place.longitude);
+    let block = radar::block(place.latitude, place.longitude, if wide { radar::WIDE_ZOOM } else { radar::ZOOM });
     let (origin, marker) = crop(block.place);
     ui.set_radar_marker_x((marker.0 / f64::from(SIDE)) as f32);
     ui.set_radar_marker_y((marker.1 / f64::from(SIDE)) as f32);
@@ -59,18 +75,19 @@ pub fn open(ui: &MainWindow, place: &Location, utc_offset: i64, lang: Lang) {
             let Ok(frames) = radar::frames().await else {
                 return show_failure(&weak, generation, lang);
             };
+            let zoom = block.zoom;
             let last = frames.len() - 1;
-            let map_urls = block.tiles.iter().map(|&t| radar::map_url(t)).collect();
-            let rain_urls = |f: &Frame| block.tiles.iter().map(|&t| radar::radar_url(f, t)).collect::<Vec<_>>();
+            let map_urls = block.tiles.iter().map(|&t| radar::map_url(zoom, t)).collect();
+            let rain_urls = |f: &Frame| block.tiles.iter().map(|&t| radar::radar_url(f, zoom, t)).collect::<Vec<_>>();
             let (map, newest) = tokio::join!(fetch_all(map_urls), fetch_all(rain_urls(&frames[last])));
             if map.iter().all(Option::is_none) {
                 return show_failure(&weak, generation, lang);
             }
             let mut map = compose(&map, origin);
             grey(&mut map, dark);
-            let newest = compose(&newest, origin);
-            let time = clock(frames[last].time, utc_offset);
+            let newest = (frames[last].time, compose(&newest, origin));
             let w = weak.clone();
+            let first = newest.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = w.upgrade() else { return };
                 if !current(generation) {
@@ -78,34 +95,78 @@ pub fn open(ui: &MainWindow, place: &Location, utc_offset: i64, lang: Lang) {
                 }
                 ui.set_radar_map(Image::from_rgba8(map));
                 ui.set_radar_status(lang.labels().radar_hint.into());
-                PLAYER.with(|p| p.borrow_mut().frames.push((time.into(), Image::from_rgba8(newest))));
-                show_frame(&ui, 0);
+                ui.set_radar_time(clock(first.0, utc_offset).into());
+                ui.set_radar_rain(Image::from_rgba8(first.1));
             });
-            // The older frames, all at once, then the loop starts.
-            let older: Vec<(i64, Buffer)> = {
+            // The older frames and the forecast, then the loop starts.
+            let older = async {
                 let mut out = Vec::new();
                 for f in &frames[..last] {
                     out.push((f.time, compose(&fetch_all(rain_urls(f)).await, origin)));
                 }
                 out
             };
+            let points = grid_points(&block, origin);
+            let (older, forecast) = tokio::join!(older, radar::rain_forecast(&points));
+            let forecast: Vec<(i64, Buffer)> = forecast
+                .map(|f| {
+                    f.times
+                        .iter()
+                        .zip(&f.steps)
+                        .filter(|(t, _)| **t > newest.0)
+                        .map(|(t, step)| (*t, rain_field(step)))
+                        .collect()
+                })
+                .unwrap_or_default();
             let _ = slint::invoke_from_event_loop(move || {
                 let Some(ui) = weak.upgrade() else { return };
                 if !current(generation) {
                     return;
                 }
+                let past = |(t, b): (i64, Buffer)| View {
+                    time: clock(t, utc_offset).into(),
+                    image: Image::from_rgba8(b),
+                    forecast: false,
+                };
+                let ahead = |(t, b): (i64, Buffer)| View {
+                    time: format!("{} {}", lang.labels().radar_forecast, clock(t, utc_offset)).into(),
+                    image: Image::from_rgba8(b),
+                    forecast: true,
+                };
+                let mut views: Vec<View> = older.into_iter().map(past).collect();
+                views.push(past(newest));
+                let now = views.len() - 1;
+                views.extend(forecast.into_iter().map(ahead));
+                let start = views.first().map(|v| v.time.clone()).unwrap_or_default();
+                let end = views.last().map(|v| v.time.clone()).unwrap_or_default();
+                let count = views.len();
                 PLAYER.with(|p| {
                     let mut p = p.borrow_mut();
-                    let newest = p.frames.pop();
-                    p.frames =
-                        older.into_iter().map(|(t, b)| (clock(t, utc_offset).into(), Image::from_rgba8(b))).collect();
-                    p.frames.extend(newest);
-                    p.at = p.frames.len() - 1;
+                    p.frames = views;
+                    p.at = 0;
+                    p.hold = 0;
                 });
+                ui.set_radar_count(count as i32);
+                ui.set_radar_now(now as i32);
+                ui.set_radar_start(start);
+                ui.set_radar_end(end.replace(lang.labels().radar_forecast, "").trim().into());
+                show_frame(&ui, 0);
                 play(&ui, true);
             });
         });
     });
+}
+
+/// Region or wide: opens again at the other scale.
+pub fn set_wide(ui: &MainWindow, wide: bool) {
+    let opened = PLAYER.with(|p| {
+        let mut p = p.borrow_mut();
+        p.wide = wide;
+        p.opened.clone()
+    });
+    if let Some((place, offset, lang)) = opened {
+        open(ui, &place, offset, lang);
+    }
 }
 
 /// Closing: stops the loop and lets the pictures go.
@@ -122,6 +183,18 @@ pub fn close() {
 pub fn toggle(ui: &MainWindow) {
     let playing = PLAYER.with(|p| p.borrow().playing);
     play(ui, !playing);
+}
+
+/// A frame picked on the timeline: shown, and the loop paused.
+pub fn seek(ui: &MainWindow, i: i32) {
+    let i = PLAYER.with(|p| {
+        let mut p = p.borrow_mut();
+        let i = (i.max(0) as usize).min(p.frames.len().saturating_sub(1));
+        p.at = i;
+        i
+    });
+    play(ui, false);
+    show_frame(ui, i);
 }
 
 fn play(ui: &MainWindow, on: bool) {
@@ -156,9 +229,11 @@ fn play(ui: &MainWindow, on: bool) {
 
 fn show_frame(ui: &MainWindow, i: usize) {
     let frame = PLAYER.with(|p| p.borrow().frames.get(i).cloned());
-    if let Some((time, image)) = frame {
-        ui.set_radar_time(time);
-        ui.set_radar_rain(image);
+    if let Some(v) = frame {
+        ui.set_radar_time(v.time);
+        ui.set_radar_rain(v.image);
+        ui.set_radar_forecast(v.forecast);
+        ui.set_radar_index(i as i32);
     }
 }
 
@@ -175,6 +250,48 @@ fn show_failure(weak: &Weak<MainWindow>, generation: u64, lang: Lang) {
             ui.set_radar_status(lang.labels().radar_failed.into());
         }
     });
+}
+
+/// The forecast's points, evenly over the picture, row by row.
+fn grid_points(block: &Block, origin: (u32, u32)) -> Vec<(f64, f64)> {
+    let step = f64::from(SIDE - 1) / (RAIN_GRID - 1) as f64;
+    (0..RAIN_GRID)
+        .flat_map(|gy| (0..RAIN_GRID).map(move |gx| (gx, gy)))
+        .map(|(gx, gy)| block.lat_lon(f64::from(origin.0) + gx as f64 * step, f64::from(origin.1) + gy as f64 * step))
+        .collect()
+}
+
+/// A forecast step as a picture: the grid's rain rates, blended smoothly
+/// between points (Catmull-Rom curves), in the radar's colours.
+fn rain_field(rates: &[f64]) -> Buffer {
+    let mut out = Buffer::new(FORECAST_SIDE, FORECAST_SIDE);
+    let n = RAIN_GRID;
+    if rates.len() != n * n {
+        return out;
+    }
+    let at = |gx: isize, gy: isize| {
+        let c = |v: isize| v.clamp(0, n as isize - 1) as usize;
+        rates[c(gy) * n + c(gx)]
+    };
+    // Through p1 and p2, shaped by their neighbours.
+    let curve = |p0: f64, p1: f64, p2: f64, p3: f64, t: f64| {
+        0.5 * (2.0 * p1
+            + (p2 - p0) * t
+            + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t
+            + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t)
+    };
+    let scale = (n - 1) as f64 / f64::from(FORECAST_SIDE - 1);
+    for (i, px) in out.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i as u32 % FORECAST_SIDE) as f64 * scale, (i as u32 / FORECAST_SIDE) as f64 * scale);
+        let (x0, y0) = ((x.floor() as isize).min(n as isize - 2), (y.floor() as isize).min(n as isize - 2));
+        let (fx, fy) = (x - x0 as f64, y - y0 as f64);
+        let row = |gy: isize| curve(at(x0 - 1, gy), at(x0, gy), at(x0 + 1, gy), at(x0 + 2, gy), fx);
+        let rate = curve(row(y0 - 1), row(y0), row(y0 + 1), row(y0 + 2), fy).max(0.0);
+        if let Some([r, g, b, a]) = radar::rain_colour(rate) {
+            *px = Rgba8Pixel::new(r, g, b, a);
+        }
+    }
+    out
 }
 
 /// "10:20", local time at the place.
@@ -257,6 +374,22 @@ fn decode(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forecast_fields_blend_between_points() {
+        let n = RAIN_GRID;
+        let mut rates = vec![0.0; n * n];
+        rates[0] = 10.0; // heavy rain at the top left point only
+        let f = rain_field(&rates);
+        let px = f.as_slice();
+        assert!(px[0].a > 0 && px[0].r > 200, "heavy: yellow-orange");
+        assert_eq!(px[(FORECAST_SIDE * FORECAST_SIDE - 1) as usize].a, 0, "dry far away");
+        // Fading out towards the next point (9 pixels away): lighter rain,
+        // blue, a few pixels on.
+        let mid = px[5];
+        assert!(mid.a > 0 && mid.b > mid.r, "lighter rain is blue: {mid:?}");
+        assert_eq!(rain_field(&[1.0]).as_slice()[0].a, 0, "a wrong-sized grid draws nothing");
+    }
 
     #[test]
     fn crop_keeps_the_place_in_the_middle() {

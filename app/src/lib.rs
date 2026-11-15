@@ -211,6 +211,22 @@ pub fn run() -> Result<(), slint::PlatformError> {
         }
     });
     ui.on_radar_closed(radar::close);
+    ui.on_radar_seek({
+        let app = app.clone();
+        move |i| {
+            if let Some(ui) = app.ui.upgrade() {
+                radar::seek(&ui, i);
+            }
+        }
+    });
+    ui.on_radar_set_wide({
+        let app = app.clone();
+        move |wide| {
+            if let Some(ui) = app.ui.upgrade() {
+                radar::set_wide(&ui, wide);
+            }
+        }
+    });
     ui.on_radar_toggle({
         let app = app.clone();
         move || {
@@ -906,6 +922,13 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         radar: l.radar.into(),
         radar_link: l.radar_link.into(),
         radar_credit: l.radar_credit.into(),
+        radar_region: l.radar_region.into(),
+        radar_wide: l.radar_wide.into(),
+        rain_light: l.rain_light.into(),
+        rain_moderate: l.rain_moderate.into(),
+        rain_heavy: l.rain_heavy.into(),
+        rain_violent: l.rain_violent.into(),
+        now: lang().now().into(),
         air_quality: l.air_quality.into(),
         pollen: l.pollen.into(),
         settings: l.settings.into(),
