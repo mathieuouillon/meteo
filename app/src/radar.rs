@@ -40,7 +40,14 @@ struct Player {
     wide: bool,
     /// What the radar was last opened for, to open it again wider or closer.
     opened: Option<(Location, i64, Lang)>,
+    /// The last forecasts per place and scale, with when they were fetched:
+    /// switching Region/Wide back and forth doesn't ask again (each point
+    /// counts as one request for Open-Meteo's per-minute limit).
+    forecasts: Vec<(String, u32, i64, radar::RainForecast)>,
 }
+
+/// How long a forecast grid is reused.
+const FORECAST_REUSE_SECS: i64 = 10 * 60;
 
 thread_local! {
     static PLAYER: RefCell<Player> = RefCell::default();
@@ -67,6 +74,17 @@ pub fn open(ui: &MainWindow, place: &Location, utc_offset: i64, lang: Lang) {
     let dark = u32::from(surface.red()) + u32::from(surface.green()) + u32::from(surface.blue()) < 3 * 128;
     let block = radar::block(place.latitude, place.longitude, if wide { radar::WIDE_ZOOM } else { radar::ZOOM });
     let (origin, marker) = crop(block.place);
+    let place_key = place.key();
+    // A recent forecast for this place and scale (read here: the player
+    // lives on this thread).
+    let saved = PLAYER.with(|p| {
+        let now = meteo_core::unix_now();
+        p.borrow()
+            .forecasts
+            .iter()
+            .find(|(k, z, at, _)| *k == place_key && *z == block.zoom && now - at < FORECAST_REUSE_SECS)
+            .map(|f| f.3.clone())
+    });
     ui.set_radar_marker_x((marker.0 / f64::from(SIDE)) as f32);
     ui.set_radar_marker_y((marker.1 / f64::from(SIDE)) as f32);
     let weak = ui.as_weak();
@@ -107,7 +125,25 @@ pub fn open(ui: &MainWindow, place: &Location, utc_offset: i64, lang: Lang) {
                 out
             };
             let points = grid_points(&block, origin);
-            let (older, forecast) = tokio::join!(older, radar::rain_forecast(&points));
+            let forecast = async {
+                match saved {
+                    Some(f) => Ok(f),
+                    None => radar::rain_forecast(&points).await,
+                }
+            };
+            let (older, forecast) = tokio::join!(older, forecast);
+            if let Ok(f) = &forecast {
+                let f = f.clone();
+                let key = place_key.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    PLAYER.with(|p| {
+                        let mut p = p.borrow_mut();
+                        p.forecasts.retain(|(k, z, _, _)| !(*k == key && *z == zoom));
+                        p.forecasts.truncate(3);
+                        p.forecasts.push((key, zoom, meteo_core::unix_now(), f));
+                    });
+                });
+            }
             let forecast: Vec<(i64, Buffer)> = forecast
                 .map(|f| {
                     f.times

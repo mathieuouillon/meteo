@@ -1235,7 +1235,15 @@ component RadarScreen inherits Rectangle {
                             : root.theme.on-surface-variant.with-alpha(0.35);
                     }
                 }
-                Text { x: 0; y: 20px; text: root.first-time; color: root.theme.on-surface-variant; font-size: 12px; }
+                // The first and last times give way to "Now" when it's close.
+                first-label := Text {
+                    x: 0;
+                    y: 20px;
+                    text: root.first-time;
+                    color: root.theme.on-surface-variant;
+                    font-size: 12px;
+                    visible: self.width + 8px < now-label.x;
+                }
                 now-label := Text {
                     x: max(0px, min(parent.width - self.width, parent.width * (root.now + 0.5) / root.count - self.width / 2));
                     y: 20px;
@@ -1244,7 +1252,14 @@ component RadarScreen inherits Rectangle {
                     font-size: 12px;
                     font-weight: 600;
                 }
-                Text { x: parent.width - self.width; y: 20px; text: root.last-time; color: root.theme.on-surface-variant; font-size: 12px; }
+                last-label := Text {
+                    x: parent.width - self.width;
+                    y: 20px;
+                    text: root.last-time;
+                    color: root.theme.on-surface-variant;
+                    font-size: 12px;
+                    visible: now-label.x + now-label.width + 8px < self.x;
+                }
                 timeline := TouchArea {
                     function pick() {
                         root.seek(floor(max(0, min(0.999, self.mouse-x / self.width)) * root.count));

@@ -73,6 +73,18 @@ fn screenshots() {
             ui.set_radar_status(Lang::En.labels().radar_hint.into());
             ui.set_radar_open(true);
         }),
+        // No forecast frames: "Now" is the last frame, and the last time
+        // gives way to it.
+        ("radar-past-only", Lang::Fr, PHONE_HEIGHT, |ui| {
+            ui.set_radar_time("10:20".into());
+            ui.set_radar_forecast(false);
+            ui.set_radar_count(13);
+            ui.set_radar_now(12);
+            ui.set_radar_index(5);
+            ui.set_radar_start("08:20".into());
+            ui.set_radar_end("10:20".into());
+            ui.set_radar_open(true);
+        }),
     ] {
         CURRENT_LANG.store(u8::from(lang == Lang::Fr), Ordering::Relaxed);
         ui.set_settings_open(false);
