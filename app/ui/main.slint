@@ -115,6 +115,10 @@ export struct DayHour {
     icon: string,
     icon-kind: string,
     precipitation: string,
+    /// The chance of rain, 0–1, and what a tap on the hour shows.
+    chance: float,
+    tip: string,
+    tip-range: string,
     rain: string,
     rain-height: float,
     // The models' range of rain ("0.4–2.1") and its heights; empty when they agree.
@@ -259,10 +263,13 @@ component Landscape inherits Rectangle {
     in property <color> ground;
     /// Where the landscape's bottom edge sits.
     in property <length> horizon;
+    /// How far the page is scrolled: the layers rise with it, the far ones
+    /// slower than the near ones (parallax).
+    in property <length> scroll;
     property <length> box-height: self.width * 0.75;
-    for layer in root.layers: Path {
+    for layer[i] in root.layers: Path {
         x: 0;
-        y: root.horizon - root.box-height;
+        y: root.horizon - root.box-height - root.scroll * (0.12 + 0.12 * i);
         width: root.width;
         height: root.box-height;
         viewbox-width: 400;
@@ -275,8 +282,9 @@ component Landscape inherits Rectangle {
         stroke-width: 0px;
     }
     Rectangle {
-        y: root.horizon - 1px;
-        height: root.height - root.horizon + 1px;
+        // Moves with the nearest layer (the fourth).
+        y: root.horizon - 1px - root.scroll * 0.48;
+        height: root.height - self.y;
         background: root.ground;
         animate background { duration: 800ms; easing: ease-in-out; }
     }
@@ -489,12 +497,11 @@ component DayChart inherits Rectangle {
     // only if some hour has one, the bars only as tall as the wettest hour.
     property <length> bar-max: 40px;
     property <length> icon-y: root.curve + 6px;
-    property <length> chance-y: root.curve + 36px;
-    property <length> rain-top: root.curve + (root.day.has-chance ? 54px : 38px);
+    property <length> rain-top: root.curve + 38px;
     // Room for the amount label above the tallest bar (none on a dry day).
-    // Room for the amount label above the tallest bar (none on a dry day),
-    // and a second line for the models' range.
-    property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + (root.day.has-range ? 30px : 16px) : 3px;
+    property <length> rain-room: root.day.rain-peak > 0 ? max(4px, root.day.rain-peak * root.bar-max) + 16px : 3px;
+    /// The tapped hour (-1: none): its chance and the runs' range show above it.
+    in-out property <int> picked: -1;
     property <length> rain-base: root.rain-top + root.rain-room;
     // Room for "Models agree 82%" above the chart.
     property <length> head: root.day.agreement != "" ? head-text.preferred-height + 8px : 0px;
@@ -563,7 +570,7 @@ component DayChart inherits Rectangle {
             }
         }
 
-        for h in root.day.hours: column := Rectangle {
+        for h[hour-index] in root.day.hours: column := Rectangle {
             x: h.x * 1px - root.step / 2;
             y: 0;
             width: root.step;
@@ -597,21 +604,9 @@ component DayChart inherits Rectangle {
                 ink: root.theme.on-surface-variant;
                 cloud-fill: root.theme.surface-container;
             }
-            Text {
-                y: root.chance-y;
-                width: parent.width;
-                text: h.precipitation; color: root.theme.on-surface-variant; font-size: 11px;
-                horizontal-alignment: center;
-            }
-            // Rain: the amount above a bar growing up from the baseline, and
-            // above that, the range the models give.
-            if h.rain-range != "": Text {
-                y: root.rain-base - parent.top - (h.rain == "" ? 16px : 30px);
-                width: parent.width;
-                text: h.rain-range; color: root.theme.on-surface-variant.transparentize(25%); font-size: 10px;
-                horizontal-alignment: center;
-            }
-            // The models' range: a faint wider bar behind the forecast's.
+            // Rain: the amount above a bar growing up from the baseline, the
+            // bar as strong as the chance; the runs' range a faint wider bar
+            // behind it.
             if h.rain-range != "": Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: root.rain-base - h.range-high * root.bar-max;
@@ -635,6 +630,7 @@ component DayChart inherits Rectangle {
                 height: parent.bar;
                 border-radius: 6px;
                 background: h.rain == "" ? root.theme.outline-variant : @linear-gradient(180deg, #8fd0ff 0%, #3d8fe0 100%);
+                opacity: h.rain == "" ? 1 : 0.3 + 0.7 * h.chance;
             }
             // "Now" in a pill.
             Rectangle {
@@ -650,6 +646,30 @@ component DayChart inherits Rectangle {
                     font-size: 12px;
                     font-weight: column.now ? 600 : 400;
                 }
+            }
+            TouchArea {
+                clicked => { root.picked = root.picked == hour-index || h.tip == "" ? -1 : hour-index; }
+            }
+        }
+
+        // The tapped hour's details, over its neighbours.
+        if root.picked >= 0 && root.picked < root.day.hours.length: tip := Rectangle {
+            property <DayHour> h: root.day.hours[root.picked];
+            property <length> top: self.h.rain-range == "" ? max(3px, self.h.rain-height * root.bar-max) : max(self.h.rain-height, self.h.range-high) * root.bar-max;
+            x: max(4px, min(root.day.chart-width * 1px - self.width - 4px, self.h.x * 1px - self.width / 2));
+            y: max(root.rain-top - 12px, root.rain-base - self.top - 18px - self.height);
+            width: tip-layout.preferred-width;
+            height: tip-layout.preferred-height;
+            border-radius: 10px;
+            background: root.theme.surface;
+            border-width: 1px;
+            border-color: root.theme.primary;
+            tip-layout := VerticalLayout {
+                padding: 6px;
+                padding-left: 10px;
+                padding-right: 10px;
+                Text { text: tip.h.tip; color: root.theme.on-surface; font-size: 12px; font-weight: 500; horizontal-alignment: center; }
+                if tip.h.tip-range != "": Text { text: tip.h.tip-range; color: root.theme.on-surface-variant; font-size: 11px; horizontal-alignment: center; }
             }
         }
     }
@@ -712,6 +732,8 @@ component NowcastCard inherits Rectangle {
     border-radius: 28px;
     TouchArea { clicked => { root.clicked(); } }
     background: root.theme.surface-container;
+    border-width: 1px;
+    border-color: root.theme.on-surface.transparentize(88%);
     VerticalLayout {
         padding: 16px;
         spacing: 8px;
@@ -818,6 +840,23 @@ component SwitchRow inherits Rectangle {
     TouchArea { clicked => { root.toggled(!root.on); } }
 }
 
+/// A group of settings on a card.
+component SettingsCard inherits Rectangle {
+    in property <Theme> theme;
+    border-radius: 24px;
+    background: root.theme.surface-container;
+    border-width: 1px;
+    border-color: root.theme.on-surface.transparentize(88%);
+}
+
+/// A setting's name, over its choices.
+component SettingLabel inherits Text {
+    in property <Theme> theme;
+    color: root.theme.primary;
+    font-size: 14px;
+    font-weight: 600;
+}
+
 /// The settings screen.
 component SettingsScreen inherits Rectangle {
     in property <Theme> theme;
@@ -869,109 +908,134 @@ component SettingsScreen inherits Rectangle {
             settings-list := VerticalLayout {
                 width: parent.width;
                 alignment: start;
-                spacing: 10px;
-                padding: 8px;
-                Text { text: root.labels.units; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                Segmented {
+                spacing: 14px;
+                padding: 4px;
+                padding-bottom: 32px;
+                // Display: units, colours, widgets, language.
+                SettingsCard {
                     theme: root.theme;
-                    options: [root.labels.metric, root.labels.imperial];
-                    selected: root.units-index;
-                    chosen(i) => { root.set-units(i); }
-                }
-                if root.can-use-wallpaper: Text { text: root.labels.colors; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                if root.can-use-wallpaper: Segmented {
-                    theme: root.theme;
-                    options: [root.labels.colors-weather, root.labels.colors-wallpaper];
-                    selected: root.colors-index;
-                    chosen(i) => { root.set-colors(i); }
-                }
-                Text { text: root.labels.widgets; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                Segmented {
-                    theme: root.theme;
-                    options: [root.labels.widget-solid, root.labels.widget-see-through + " 20%", root.labels.widget-see-through + " 40%"];
-                    selected: root.widget-transparency-index;
-                    chosen(i) => { root.set-widget-transparency(i); }
-                }
-                if root.can-use-wallpaper: Segmented {
-                    theme: root.theme;
-                    options: [root.labels.colors-weather, root.labels.colors-wallpaper];
-                    selected: root.widget-colors-index;
-                    chosen(i) => { root.set-widget-colors(i); }
-                }
-                Text { text: root.labels.language; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                Segmented {
-                    theme: root.theme;
-                    options: [root.labels.language-system, "English", "Français"];
-                    selected: root.language-index;
-                    chosen(i) => { root.set-language(i); }
-                }
-                Text { text: root.labels.notifications; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                if root.notifications-blocked: Rectangle {
-                    border-radius: 20px;
-                    background: blocked-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
                     VerticalLayout {
-                        padding: 16px;
-                        spacing: 6px;
-                        Text {
-                            text: root.labels.notifications-blocked;
-                            color: root.theme.on-primary-container;
-                            font-size: 14px;
-                            wrap: word-wrap;
+                        padding: 14px;
+                        spacing: 8px;
+                        SettingLabel { theme: root.theme; text: root.labels.units; }
+                        Segmented {
+                            theme: root.theme;
+                            options: [root.labels.metric, root.labels.imperial];
+                            selected: root.units-index;
+                            chosen(i) => { root.set-units(i); }
                         }
-                        Text {
-                            text: root.labels.notifications-allow;
-                            color: root.theme.on-primary-container;
-                            font-size: 15px;
-                            font-weight: 600;
+                        if root.can-use-wallpaper: SettingLabel { theme: root.theme; text: root.labels.colors; }
+                        if root.can-use-wallpaper: Segmented {
+                            theme: root.theme;
+                            options: [root.labels.colors-weather, root.labels.colors-wallpaper];
+                            selected: root.colors-index;
+                            chosen(i) => { root.set-colors(i); }
+                        }
+                        SettingLabel { theme: root.theme; text: root.labels.widgets; }
+                        Segmented {
+                            theme: root.theme;
+                            options: [root.labels.widget-solid, root.labels.widget-see-through + " 20%", root.labels.widget-see-through + " 40%"];
+                            selected: root.widget-transparency-index;
+                            chosen(i) => { root.set-widget-transparency(i); }
+                        }
+                        if root.can-use-wallpaper: Segmented {
+                            theme: root.theme;
+                            options: [root.labels.colors-weather, root.labels.colors-wallpaper];
+                            selected: root.widget-colors-index;
+                            chosen(i) => { root.set-widget-colors(i); }
+                        }
+                        SettingLabel { theme: root.theme; text: root.labels.language; }
+                        Segmented {
+                            theme: root.theme;
+                            options: [root.labels.language-system, "English", "Français"];
+                            selected: root.language-index;
+                            chosen(i) => { root.set-language(i); }
                         }
                     }
-                    blocked-touch := TouchArea { clicked => { root.open-notification-settings(); } }
                 }
-                SwitchRow {
+                // Notifications: the switches, one card.
+                SettingsCard {
                     theme: root.theme;
-                    title: root.labels.morning-summary; help: root.labels.morning-summary-help;
-                    on: root.morning-summary;
-                    toggled(on) => { root.set-morning-summary(on); }
-                }
-                SwitchRow {
-                    theme: root.theme;
-                    title: root.labels.rain-alerts; help: root.labels.rain-alerts-help;
-                    on: root.rain-alerts;
-                    toggled(on) => { root.set-rain-alerts(on); }
-                }
-                SwitchRow {
-                    theme: root.theme;
-                    title: root.labels.warning-alerts; help: root.labels.warning-alerts-help;
-                    on: root.warning-alerts;
-                    toggled(on) => { root.set-warning-alerts(on); }
-                }
-                SwitchRow {
-                    theme: root.theme;
-                    title: root.labels.temperature-alerts; help: root.labels.temperature-alerts-help;
-                    on: root.temperature-alerts;
-                    toggled(on) => { root.set-temperature-alerts(on); }
-                }
-                HorizontalLayout {
-                    alignment: start;
-                    Rectangle {
-                        height: 44px;
-                        width: test-text.preferred-width + 32px;
-                        border-radius: 22px;
-                        border-width: 1px;
-                        border-color: root.theme.outline-variant;
-                        background: test-touch.pressed ? root.theme.surface-container-high : transparent;
-                        test-text := Text { text: root.labels.notifications-test; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                        test-touch := TouchArea { clicked => { root.test-notifications(); } }
+                    VerticalLayout {
+                        padding: 14px;
+                        padding-top: 10px;
+                        padding-bottom: 6px;
+                        spacing: 0px;
+                        SettingLabel { theme: root.theme; text: root.labels.notifications; }
+                        if root.notifications-blocked: Rectangle {
+                            border-radius: 16px;
+                            background: blocked-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+                                Text {
+                                    text: root.labels.notifications-blocked;
+                                    color: root.theme.on-primary-container;
+                                    font-size: 14px;
+                                    wrap: word-wrap;
+                                }
+                                Text {
+                                    text: root.labels.notifications-allow;
+                                    color: root.theme.on-primary-container;
+                                    font-size: 15px;
+                                    font-weight: 600;
+                                }
+                            }
+                            blocked-touch := TouchArea { clicked => { root.open-notification-settings(); } }
+                        }
+                        SwitchRow {
+                            theme: root.theme;
+                            title: root.labels.morning-summary; help: root.labels.morning-summary-help;
+                            on: root.morning-summary;
+                            toggled(on) => { root.set-morning-summary(on); }
+                        }
+                        Rectangle { height: 1px; background: root.theme.outline-variant.transparentize(40%); }
+                        SwitchRow {
+                            theme: root.theme;
+                            title: root.labels.rain-alerts; help: root.labels.rain-alerts-help;
+                            on: root.rain-alerts;
+                            toggled(on) => { root.set-rain-alerts(on); }
+                        }
+                        Rectangle { height: 1px; background: root.theme.outline-variant.transparentize(40%); }
+                        SwitchRow {
+                            theme: root.theme;
+                            title: root.labels.warning-alerts; help: root.labels.warning-alerts-help;
+                            on: root.warning-alerts;
+                            toggled(on) => { root.set-warning-alerts(on); }
+                        }
+                        Rectangle { height: 1px; background: root.theme.outline-variant.transparentize(40%); }
+                        SwitchRow {
+                            theme: root.theme;
+                            title: root.labels.temperature-alerts; help: root.labels.temperature-alerts-help;
+                            on: root.temperature-alerts;
+                            toggled(on) => { root.set-temperature-alerts(on); }
+                        }
+                        // A quiet link: try every kind of notification.
+                        Rectangle {
+                            height: 44px;
+                            Text {
+                                x: 0;
+                                text: root.labels.notifications-test;
+                                color: test-touch.pressed ? root.theme.on-surface : root.theme.primary;
+                                font-size: 14px;
+                                font-weight: 600;
+                            }
+                            test-touch := TouchArea { clicked => { root.test-notifications(); } }
+                        }
                     }
                 }
-                Text { text: root.labels.data-source; color: root.theme.primary; font-size: 14px; font-weight: 600; }
-                Rectangle {
-                    height: 56px;
-                    border-radius: 20px;
+                // Where the forecast comes from.
+                SettingsCard {
+                    theme: root.theme;
+                    height: 64px;
                     background: src-touch.pressed ? root.theme.surface-container-high : root.theme.surface-container;
                     HorizontalLayout {
                         padding-left: 16px; padding-right: 16px;
-                        Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 15px; vertical-alignment: center; }
+                        VerticalLayout {
+                            alignment: center;
+                            Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 12px; }
+                            Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 15px; }
+                        }
                         Text { text: "›"; color: root.theme.primary; font-size: 22px; vertical-alignment: center; horizontal-alignment: right; }
                     }
                     src-touch := TouchArea { clicked => { root.open-sources(); } }
@@ -1205,22 +1269,20 @@ component RadarScreen inherits Rectangle {
                     TouchArea { clicked => { root.close(); } }
                 }
             }
-            Segmented {
-                theme: root.theme;
-                options: [root.labels.radar-region, root.labels.radar-wide];
-                selected: root.wide ? 1 : 0;
-                chosen(i) => { root.set-wide(i == 1); }
-            }
-            Rectangle {
-                height: self.width;
+            // The map, taller than wide (the square tiles are cropped at the
+            // sides): Region/Wide and the time over it.
+            map-box := Rectangle {
+                height: min(self.width * 1.3, root.height - 260px);
                 border-radius: 28px;
                 clip: true;
                 background: root.theme.surface-container;
-                Image { width: parent.width; height: parent.height; source: root.map; image-fit: fill; }
-                Image { width: parent.width; height: parent.height; source: root.rain; image-fit: fill; opacity: 0.85; }
+                // Square images as tall as the box, centred.
+                property <length> side: max(self.width, self.height);
+                Image { x: (parent.width - parent.side) / 2; y: (parent.height - parent.side) / 2; width: parent.side; height: parent.side; source: root.map; image-fit: fill; }
+                Image { x: (parent.width - parent.side) / 2; y: (parent.height - parent.side) / 2; width: parent.side; height: parent.side; source: root.rain; image-fit: fill; opacity: 0.85; }
                 Rectangle {
-                    x: parent.width * root.marker-x - self.width / 2;
-                    y: parent.height * root.marker-y - self.height / 2;
+                    x: (parent.width - parent.side) / 2 + parent.side * root.marker-x - self.width / 2;
+                    y: (parent.height - parent.side) / 2 + parent.side * root.marker-y - self.height / 2;
                     width: 16px;
                     height: 16px;
                     border-radius: 8px;
@@ -1228,12 +1290,13 @@ component RadarScreen inherits Rectangle {
                     border-width: 3px;
                     border-color: #ffffff;
                 }
+                TouchArea { clicked => { root.toggle(); } }
                 if root.time != "": Rectangle {
                     x: 12px;
-                    y: 12px;
+                    y: parent.height - self.height - 12px;
                     width: time-row.preferred-width;
-                    height: 32px;
-                    border-radius: 16px;
+                    height: 34px;
+                    border-radius: 17px;
                     background: root.forecast ? root.theme.primary-container.with-alpha(0.92) : root.theme.surface.with-alpha(0.85);
                     time-row := HorizontalLayout {
                         padding-left: 12px;
@@ -1258,27 +1321,98 @@ component RadarScreen inherits Rectangle {
                         }
                     }
                 }
-                TouchArea { clicked => { root.toggle(); } }
+                // Region / Wide, a small switch in the corner.
+                Rectangle {
+                    x: parent.width - self.width - 12px;
+                    y: 12px;
+                    width: zoom-row.preferred-width;
+                    height: 34px;
+                    border-radius: 17px;
+                    background: root.theme.surface.with-alpha(0.85);
+                    zoom-row := HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        for option[i] in [root.labels.radar-region, root.labels.radar-wide]: Rectangle {
+                            property <bool> on: (i == 1) == root.wide;
+                            width: zoom-text.preferred-width + 22px;
+                            border-radius: 14px;
+                            background: self.on ? root.theme.primary : transparent;
+                            zoom-text := Text {
+                                text: option;
+                                color: parent.on ? root.theme.on-primary : root.theme.on-surface;
+                                font-size: 13px;
+                                font-weight: parent.on ? 600 : 400;
+                            }
+                            TouchArea { y: -8px; height: parent.height + 16px; clicked => { root.set-wide(i == 1); } }
+                        }
+                    }
+                }
             }
-            // Timeline: the radar's frames, then the forecast's (lighter);
-            // drag or tap to pick one.
-            if root.count > 1: Rectangle {
-                height: 40px;
-                HorizontalLayout {
-                    y: 4px;
-                    height: 12px;
-                    spacing: 2px;
-                    for _[i] in root.count: Rectangle {
-                        border-radius: 3px;
-                        background: i == root.index ? root.theme.primary
-                            : i > root.now ? root.theme.primary.with-alpha(0.22)
-                            : root.theme.on-surface-variant.with-alpha(0.35);
+            if root.nowcast.summary != "": Text {
+                text: root.nowcast.summary;
+                color: root.theme.on-surface;
+                font-size: 15px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            // Timeline: one track, the radar's part then the forecast's
+            // (lighter), filled up to the frame shown, with a thumb to drag.
+            // Over the forecast's first frames, the next 2 hours' rain.
+            if root.count > 1: line := Rectangle {
+                property <float> step: 1 / root.count;
+                property <length> rain-room: root.nowcast.wet ? 28px : 0px;
+                height: self.rain-room + 46px;
+                for bar[b] in root.nowcast.bars: Rectangle {
+                    x: parent.width * (root.now + 1 + b) * parent.step + 1px;
+                    width: parent.width * parent.step - 2px;
+                    visible: root.nowcast.wet && root.now + 1 + b < root.count;
+                    y: parent.rain-room - 4px - self.height;
+                    height: bar.wet ? max(3px, bar.height * (parent.rain-room - 6px)) : 0px;
+                    border-radius: 3px;
+                    background: #3d8fe0.transparentize(35%);
+                }
+                Rectangle {
+                    y: parent.rain-room + 6px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: root.theme.on-surface-variant.with-alpha(0.3);
+                    // The forecast's part.
+                    Rectangle {
+                        x: parent.width * (root.now + 1) * line.step;
+                        width: parent.width - self.x;
+                        border-radius: 4px;
+                        background: root.theme.primary.with-alpha(0.22);
+                    }
+                    // Up to the frame shown.
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * (root.index + 0.5) * line.step;
+                        border-radius: 4px;
+                        background: root.theme.primary;
+                    }
+                    // "Now": a tick across the track.
+                    Rectangle {
+                        x: parent.width * (root.now + 0.5) * line.step - 1px;
+                        y: -3px;
+                        width: 2px;
+                        height: parent.height + 6px;
+                        background: root.theme.on-surface;
+                    }
+                    Rectangle {
+                        x: parent.width * (root.index + 0.5) * line.step - self.width / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 11px;
+                        background: #ffffff;
+                        border-width: 4px;
+                        border-color: root.theme.primary;
                     }
                 }
                 // The first and last times give way to "Now" when it's close.
                 first-label := Text {
                     x: 0;
-                    y: 20px;
+                    y: parent.rain-room + 26px;
                     text: root.first-time;
                     color: root.theme.on-surface-variant;
                     font-size: 12px;
@@ -1286,7 +1420,7 @@ component RadarScreen inherits Rectangle {
                 }
                 now-label := Text {
                     x: max(0px, min(parent.width - self.width, parent.width * (root.now + 0.5) / root.count - self.width / 2));
-                    y: 20px;
+                    y: parent.rain-room + 26px;
                     text: root.labels.now;
                     color: root.theme.on-surface;
                     font-size: 12px;
@@ -1294,7 +1428,7 @@ component RadarScreen inherits Rectangle {
                 }
                 last-label := Text {
                     x: parent.width - self.width;
-                    y: 20px;
+                    y: parent.rain-room + 26px;
                     text: root.last-time;
                     color: root.theme.on-surface-variant;
                     font-size: 12px;
@@ -1318,13 +1452,7 @@ component RadarScreen inherits Rectangle {
                 RainChip { theme: root.theme; colour: #f7d23e; label: root.labels.rain-heavy; }
                 RainChip { theme: root.theme; colour: #d7263d; label: root.labels.rain-violent; }
             }
-            Text { text: root.status; color: root.theme.on-surface-variant; font-size: 14px; wrap: word-wrap; }
-            if root.nowcast.summary != "": NowcastCard {
-                nowcast: root.nowcast;
-                title: root.labels.next-hours;
-                link: "";
-                theme: root.theme;
-            }
+            Text { text: root.status; color: root.theme.on-surface-variant; font-size: 13px; wrap: word-wrap; }
             Text { text: root.labels.radar-credit; color: root.theme.on-surface-variant; font-size: 11px; wrap: word-wrap; }
         }
     }
@@ -1427,6 +1555,8 @@ export component MainWindow inherits Window {
     // "Updated 5 min ago", in the footer.
     in property <string> updated;
     in property <[DayItem]> days;
+    /// The next hours, from now, for the strip under the temperature.
+    in property <[DayHour]> next-hours;
     in property <string> error;
     // "Offline · updated 2 h ago" when a refresh failed; empty otherwise.
     in property <string> status;
@@ -1616,6 +1746,7 @@ export component MainWindow inherits Window {
         layers: root.land-layers;
         ground: root.ground;
         horizon: root.horizon;
+        scroll: max(0px, -content-flick.content-y - root.pull-zone);
     }
 
     // ── In front: mist, rain, snow, lightning ──
@@ -1712,7 +1843,9 @@ export component MainWindow inherits Window {
             // Hero: city, icon, big temperature, condition — centred. Swipe it
             // left or right for the next or previous saved city.
             Rectangle {
-                height: root.horizon - 40px;
+                // Down to the landscape, or taller when the hero needs it
+                // (a short screen).
+                height: max(root.horizon - 40px, hero.preferred-height + 8px);
                 swipe := SwipeGestureHandler {
                     handle-swipe-left: root.city-count > 1;
                     handle-swipe-right: root.city-count > 1;
@@ -1724,7 +1857,7 @@ export component MainWindow inherits Window {
                             root.swipe-city(-1);
                         }
                     }
-                VerticalLayout {
+                hero := VerticalLayout {
                     // Follows the finger, a little damped, and fades.
                     x: swipe.dx * 0.6;
                     animate x { duration: 220ms; easing: ease-out; }
@@ -1852,14 +1985,60 @@ export component MainWindow inherits Window {
                         text: root.error; color: root.shown-theme.on-surface; font-size: 13px; wrap: word-wrap;
                         horizontal-alignment: center;
                     }
+                    // The next hours, floating on the sky.
+                    if root.next-hours.length > 0: Rectangle {
+                        height: 84px;
+                        Rectangle {
+                            y: 14px;
+                            height: 70px;
+                            border-radius: 20px;
+                            background: root.shown-theme.surface-container.transparentize(45%);
+                            border-width: 1px;
+                            border-color: root.shown-theme.on-surface.transparentize(88%);
+                            HorizontalLayout {
+                                padding-left: 4px;
+                                padding-right: 4px;
+                                for h in root.next-hours: VerticalLayout {
+                                    alignment: center;
+                                    spacing: 1px;
+                                    Text {
+                                        text: h.label;
+                                        color: h.is-now ? root.shown-theme.on-surface : root.shown-theme.on-surface-variant;
+                                        font-size: 11px; font-weight: h.is-now ? 600 : 400;
+                                        horizontal-alignment: center;
+                                    }
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        WeatherIcon {
+                                            width: 24px; height: 24px;
+                                            kind: h.icon-kind;
+                                            ink: root.shown-theme.on-surface-variant;
+                                            cloud-fill: root.shown-theme.surface-container;
+                                        }
+                                    }
+                                    Text {
+                                        text: h.temperature;
+                                        color: root.shown-theme.on-surface;
+                                        font-size: 14px; font-weight: 600;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 }
             }
 
-            // Cards, floating on the gradient.
+            // Cards, floating on the gradient. They rise and fade in once the
+            // first frame is up.
             Rectangle {
                 min-height: root.height - root.horizon + 40px;
+                opacity: root.settled ? 1 : 0;
+                animate opacity { duration: 450ms; easing: ease-out; }
                 VerticalLayout {
+                    y: root.settled ? 0px : 40px;
+                    animate y { duration: 450ms; easing: ease-out; }
                     padding: 14px;
                     padding-top: 0px;
                     // Room above Android's gesture bar.
@@ -1884,6 +2063,8 @@ export component MainWindow inherits Window {
                     forecast-card := Rectangle {
                         background: root.shown-theme.surface-container;
                         border-radius: 28px;
+                        border-width: 1px;
+                        border-color: root.shown-theme.on-surface.transparentize(88%);
                         VerticalLayout {
                             padding: 10px;
                             padding-top: 18px;
@@ -1915,6 +2096,8 @@ export component MainWindow inherits Window {
                         cache-rendering-hint: true;
                         border-radius: 28px;
                         background: root.shown-theme.surface-container;
+                        border-width: 1px;
+                        border-color: root.shown-theme.on-surface.transparentize(88%);
                         VerticalLayout {
                             padding-left: 16px;
                             padding-right: 18px;
@@ -1948,6 +2131,8 @@ export component MainWindow inherits Window {
                         cache-rendering-hint: true;
                         border-radius: 22px;
                         background: root.shown-theme.surface-container;
+                        border-width: 1px;
+                        border-color: root.shown-theme.on-surface.transparentize(88%);
                         VerticalLayout {
                             padding: 4px;
                             spacing: 0px;

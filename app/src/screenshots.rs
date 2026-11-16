@@ -61,6 +61,9 @@ fn screenshots() {
     for (name, lang, height, setup) in [
         ("main-en", Lang::En, PAGE_HEIGHT, (|_: &MainWindow| {}) as fn(&MainWindow)),
         ("main-fr", Lang::Fr, PAGE_HEIGHT, |_| {}),
+        // The first screen on a phone: the hero and the hours strip must
+        // fit above the cards.
+        ("main-phone", Lang::En, PHONE_HEIGHT, |_| {}),
         ("settings", Lang::En, PHONE_HEIGHT, |ui| ui.set_settings_open(true)),
         ("radar", Lang::En, PHONE_HEIGHT, |ui| {
             ui.set_radar_time("Forecast 11:15".into());

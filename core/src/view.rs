@@ -451,6 +451,12 @@ pub struct DayHourView {
     pub icon_kind: String,
     /// Chance of rain, e.g. "40%"; empty when unlikely.
     pub precipitation: String,
+    /// The same chance, 0–1: how strongly the rain bar is drawn.
+    pub chance: f64,
+    /// Shown when the hour is tapped: "94% · 1.5 mm", and the runs' range
+    /// "0.1–1.5 mm" (empty without one).
+    pub tip: String,
+    pub tip_range: String,
     /// Expected amount, e.g. "1.2"; empty when dry.
     pub rain: String,
     /// Rain bar height, 0–1, on a scale shared by the whole week.
@@ -523,6 +529,13 @@ impl DayView {
                             icon: h.condition.icon(h.is_day).into(),
                             icon_kind: icon_kind(h.condition, h.is_day).into(),
                             precipitation: rain_chance(h.precipitation_probability),
+                            chance: (h.precipitation_probability / 100.0).clamp(0.0, 1.0),
+                            tip: [rain_chance(h.precipitation_probability), units.rain(h.precipitation, true)]
+                                .into_iter()
+                                .filter(|t| !t.is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" · "),
+                            tip_range: range.map(|(lo, hi)| rain_span_text(units, lo, hi)).unwrap_or_default(),
                             rain: units.rain(h.precipitation, false),
                             rain_height: (h.precipitation / wettest).clamp(0.0, 1.0),
                             rain_range: range.map(|(lo, hi)| rain_range(units, lo, hi)).unwrap_or_default(),
@@ -577,6 +590,13 @@ fn rain_differs(low: f64, high: f64) -> bool {
 }
 
 /// "0–1.2", "0.4–2.1" (no unit; the chart's amounts have none).
+/// "0.1–1.5 mm": a range with its unit.
+fn rain_span_text(units: Units, low: f64, high: f64) -> String {
+    let low = units.rain(low, false);
+    let low = if low.is_empty() { "0".to_string() } else { low };
+    format!("{low}–{}", units.rain(high, true))
+}
+
 fn rain_range(units: Units, low: f64, high: f64) -> String {
     let low = units.rain(low, false);
     let low = if low.is_empty() { "0".to_string() } else { low };

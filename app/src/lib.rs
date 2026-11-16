@@ -778,6 +778,7 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     ui.set_details(Details::default());
     ui.set_updated(SharedString::new());
     ui.set_days(ModelRc::default());
+    ui.set_next_hours(ModelRc::default());
 }
 
 fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
@@ -896,29 +897,39 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
             band_path: d.chart.band.as_str().into(),
             agreement: d.agreement.as_str().into(),
             has_range: d.has_range,
-            hours: ModelRc::from(Rc::new(VecModel::from(
-                d.hours
-                    .iter()
-                    .map(|h| DayHour {
-                        label: h.label.as_str().into(),
-                        temperature: h.temperature.as_str().into(),
-                        icon: h.icon.as_str().into(),
-                        icon_kind: h.icon_kind.as_str().into(),
-                        precipitation: h.precipitation.as_str().into(),
-                        rain: h.rain.as_str().into(),
-                        rain_height: h.rain_height as f32,
-                        rain_range: h.rain_range.as_str().into(),
-                        range_low: h.range_low as f32,
-                        range_high: h.range_high as f32,
-                        is_now: h.is_now,
-                        x: h.x as f32,
-                        y: h.y as f32,
-                    })
-                    .collect::<Vec<_>>(),
-            ))),
+            hours: ModelRc::from(Rc::new(VecModel::from(d.hours.iter().map(day_hour).collect::<Vec<_>>()))),
         })
         .collect();
     ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
+
+    // The strip in the sky: from now, the next hours (into tomorrow).
+    let next: Vec<DayHour> =
+        s.days.iter().flat_map(|d| &d.hours).skip_while(|h| !h.is_now).take(NEXT_HOURS).map(day_hour).collect();
+    ui.set_next_hours(ModelRc::from(Rc::new(VecModel::from(next))));
+}
+
+/// Hours in the strip under the temperature.
+const NEXT_HOURS: usize = 6;
+
+fn day_hour(h: &meteo_core::DayHourView) -> DayHour {
+    DayHour {
+        label: h.label.as_str().into(),
+        temperature: h.temperature.as_str().into(),
+        icon: h.icon.as_str().into(),
+        icon_kind: h.icon_kind.as_str().into(),
+        precipitation: h.precipitation.as_str().into(),
+        chance: h.chance as f32,
+        tip: h.tip.as_str().into(),
+        tip_range: h.tip_range.as_str().into(),
+        rain: h.rain.as_str().into(),
+        rain_height: h.rain_height as f32,
+        rain_range: h.rain_range.as_str().into(),
+        range_low: h.range_low as f32,
+        range_high: h.range_high as f32,
+        is_now: h.is_now,
+        x: h.x as f32,
+        y: h.y as f32,
+    }
 }
 
 fn ui_details(d: &meteo_core::DetailsView) -> Details {
