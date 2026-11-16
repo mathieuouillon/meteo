@@ -14,7 +14,7 @@ use std::time::Duration;
 use meteo_core::{ColorMode, Forecast, Lang, MainScreen, Units};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
-use slint::{ComponentHandle, PhysicalSize};
+use slint::{ComponentHandle, Model, PhysicalSize};
 
 use crate::{CURRENT_LANG, MainWindow, apply, ui_labels};
 
@@ -103,6 +103,26 @@ fn screenshots() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+
+    // A finger dragged up the main page scrolls it (an animated `y` on the
+    // cards once stopped that).
+    ui.set_settings_open(false);
+    ui.set_radar_open(false);
+    window.set_size(PhysicalSize::new((WIDTH as f32 * SCALE) as u32, (PHONE_HEIGHT as f32 * SCALE) as u32));
+    draw(&window);
+    let top = || ui.get_surface_tops().row_data(0).expect("a card");
+    let before = top();
+    let at = |y: f32| slint::LogicalPosition::new(206.0, y);
+    let left = slint::platform::PointerEventButton::Left;
+    window.dispatch_event(WindowEvent::PointerPressed { position: at(500.0), button: left });
+    for i in 1..=20 {
+        CLOCK_MS.fetch_add(16, Ordering::Relaxed);
+        slint::platform::update_timers_and_animations();
+        window.dispatch_event(WindowEvent::PointerMoved { position: at(500.0 - 10.0 * i as f32) });
+    }
+    window.dispatch_event(WindowEvent::PointerReleased { position: at(300.0), button: left });
+    draw(&window);
+    assert!(top() < before - 100.0, "the page didn't scroll: first card at {before} then {}", top());
 }
 
 /// Moves the clock past every animation and draws a frame.

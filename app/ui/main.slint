@@ -1985,15 +1985,14 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Cards, floating on the gradient. They rise and fade in once the
-            // first frame is up.
+            // Cards, floating on the gradient. They fade in once the first
+            // frame is up. (Not a slide: an animated `y` on this layout stops
+            // the page from scrolling with Slint 1.19.)
             Rectangle {
                 min-height: root.height - root.horizon + 40px;
                 opacity: root.settled ? 1 : 0;
                 animate opacity { duration: 450ms; easing: ease-out; }
                 VerticalLayout {
-                    y: root.settled ? 0px : 40px;
-                    animate y { duration: 450ms; easing: ease-out; }
                     padding: 14px;
                     padding-top: 0px;
                     // Room above Android's gesture bar.
