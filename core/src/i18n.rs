@@ -469,12 +469,29 @@ impl Lang {
             (Lang::Fr, true) => format!("Neige jusqu’à {at}"),
         }
     }
-    pub fn advice_all_day(self, snow: bool) -> String {
-        match (self, snow) {
-            (Lang::En, false) => "Rain all day: take an umbrella".into(),
-            (Lang::Fr, false) => "Pluie toute la journée : prenez un parapluie".into(),
-            (Lang::En, true) => "Snow all day".into(),
-            (Lang::Fr, true) => "Neige toute la journée".into(),
+    /// Rain (or snow) from now until midnight: "all day" in the morning,
+    /// "the rest of the day" in the afternoon, "all evening" from 18h.
+    pub fn advice_rest_of_day(self, snow: bool, hour: u32) -> String {
+        let part = if hour < 12 {
+            0
+        } else if hour < 18 {
+            1
+        } else {
+            2
+        };
+        match (self, snow, part) {
+            (Lang::En, false, 0) => "Rain all day: take an umbrella".into(),
+            (Lang::Fr, false, 0) => "Pluie toute la journée : prenez un parapluie".into(),
+            (Lang::En, false, 1) => "Rain for the rest of the day: take an umbrella".into(),
+            (Lang::Fr, false, 1) => "Pluie jusqu’à ce soir : prenez un parapluie".into(),
+            (Lang::En, false, _) => "Rain all evening".into(),
+            (Lang::Fr, false, _) => "Pluie toute la soirée".into(),
+            (Lang::En, true, 0) => "Snow all day".into(),
+            (Lang::Fr, true, 0) => "Neige toute la journée".into(),
+            (Lang::En, true, 1) => "Snow for the rest of the day".into(),
+            (Lang::Fr, true, 1) => "Neige jusqu’à ce soir".into(),
+            (Lang::En, true, _) => "Snow all evening".into(),
+            (Lang::Fr, true, _) => "Neige toute la soirée".into(),
         }
     }
     pub fn advice_gusts(self, wind: &str) -> String {

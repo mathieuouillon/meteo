@@ -7,9 +7,13 @@ use crate::i18n::Lang;
 use crate::model::{Forecast, Hour};
 use crate::units::Units;
 
-/// Rain worth an umbrella: a real amount, or a likely shower.
+/// Rain worth an umbrella: a real amount, or a likely shower that still
+/// brings some (a high chance with almost nothing expected isn't rain).
 const WET_MM: f64 = 0.2;
 const WET_CHANCE: f64 = 60.0;
+const LIKELY_MM: f64 = 0.1;
+/// Rain in a 15-minute step (mm), as in the "next 2 hours" (view.rs).
+const QUARTER_WET_MM: f64 = 0.03;
 const GUSTS_KMH: f64 = 60.0;
 const HOT_C: f64 = 30.0;
 const UV_HIGH: f64 = 6.0;
@@ -24,16 +28,26 @@ pub fn advice(f: &Forecast, lang: Lang, units: Units) -> Option<String> {
         return None;
     }
     let clock = |h: &Hour| format!("{}h", h.time.get(11..13).unwrap_or("?"));
-    let wet = |h: &&Hour| h.precipitation >= WET_MM || h.precipitation_probability >= WET_CHANCE;
+    let wet = |h: &&Hour| {
+        h.precipitation >= WET_MM || (h.precipitation_probability >= WET_CHANCE && h.precipitation >= LIKELY_MM)
+    };
+    // The 15-minute forecast knows better than the hour whether it's raining
+    // now: when it says dry for the next half hour, the current hour doesn't
+    // count, whatever its total.
+    let quarters = &f.nowcast;
+    let dry_now = quarters.len() >= 2 && quarters.iter().take(2).all(|q| q.precipitation < QUARTER_WET_MM);
+    let ahead = if dry_now { &rest[1..] } else { &rest[..] };
 
     // Rain or snow: when it starts, or until when it lasts.
-    if let Some(first) = rest.iter().find(|h| wet(h)) {
+    if let Some(first) = ahead.iter().find(|h| wet(h)) {
         let snow = first.condition == Condition::Snow;
-        let raining_now = wet(&rest[0]);
+        let raining_now = !dry_now && wet(&rest[0]);
         return Some(if raining_now {
             match rest.iter().find(|h| !wet(h)) {
                 Some(dry) => lang.advice_until(snow, &clock(dry)),
-                None => lang.advice_all_day(snow),
+                // "All day" only says something in the morning; later it's
+                // the rest of the afternoon or the evening.
+                None => lang.advice_rest_of_day(snow, now_hour),
             }
         } else {
             lang.advice_from(snow, &clock(first))
@@ -119,9 +133,39 @@ mod tests {
         assert_eq!(say(&forecast("2026-11-14T09:00", day(9, 12.0, &[9, 10, 11]))).unwrap(), "Rain until 12h");
         let all: Vec<u32> = (9..24).collect();
         assert_eq!(say(&forecast("2026-11-14T09:00", day(9, 12.0, &all))).unwrap(), "Rain all day: take an umbrella");
+        let evening: Vec<u32> = (21..24).collect();
+        assert_eq!(say(&forecast("2026-11-14T21:00", day(21, 12.0, &evening))).unwrap(), "Rain all evening");
+        let afternoon: Vec<u32> = (14..24).collect();
+        assert_eq!(
+            say(&forecast("2026-11-14T14:00", day(14, 12.0, &afternoon))).unwrap(),
+            "Rain for the rest of the day: take an umbrella"
+        );
         let mut snow = day(9, -1.0, &[15]);
         snow[6].condition = Condition::Snow;
         assert_eq!(say(&forecast("2026-11-14T09:00", snow)).unwrap(), "Snow from 15h");
+    }
+
+    #[test]
+    fn a_high_chance_without_rain_is_not_rain() {
+        // 80 % chance but 0.0 mm every hour: nothing to say about rain.
+        let mut cloudy = day(21, 11.0, &[]);
+        for h in &mut cloudy {
+            h.precipitation_probability = 80.0;
+        }
+        assert_eq!(say(&forecast("2026-11-14T21:00", cloudy)), None);
+    }
+
+    #[test]
+    fn the_next_quarters_say_whether_it_rains_now() {
+        let mut f = forecast("2026-11-14T21:00", day(21, 11.0, &[21, 22, 23]));
+        // The hour's total says rain, the 15-minute steps say dry for now.
+        f.nowcast = (0..8)
+            .map(|k| crate::model::Quarter {
+                time: format!("2026-11-14T{:02}:{:02}", 21 + k / 4, k % 4 * 15),
+                precipitation: if k >= 4 { 0.3 } else { 0.0 },
+            })
+            .collect();
+        assert_eq!(say(&f).unwrap(), "Take an umbrella from 22h");
     }
 
     #[test]
