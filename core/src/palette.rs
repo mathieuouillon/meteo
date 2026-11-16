@@ -1,6 +1,8 @@
-//! The UI's colours follow the weather: warm amber on a clear afternoon,
-//! cool blue-white in the rain, charcoal in a storm, deep blue at night.
-//! One palette per condition and time of day; the UI binds its roles.
+//! The UI's colours, in an editorial style: paper and ink. By day a paper
+//! tone that follows the weather (warm in the sun, cool grey in the rain),
+//! with dark ink and one accent; at night the same page inverted, ink-dark
+//! with light text and a warm accent. The landscape is drawn tone on tone
+//! in those colours.
 
 use serde::Serialize;
 
@@ -10,55 +12,40 @@ use crate::landscape::{Phase, mix};
 /// Colours as 0xRRGGBB.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Palette {
-    /// Background gradient.
+    /// The page: a faint wash from the top to the paper.
     pub top: u32,
     pub bottom: u32,
-    /// Cards on top of it.
+    /// Panels on the page (pickers, the widget); the paper itself here.
     pub card: u32,
-    /// A slightly stronger card tone (chips, tracks, pressed rows).
+    /// A step toward the ink (pressed rows, tracks, chips).
     pub card_strong: u32,
     /// Main text and its quieter version.
     pub ink: u32,
     pub ink_soft: u32,
-    /// Accent for highlights, the curve, buttons.
+    /// The one colour: rain, links, the selected things.
     pub accent: u32,
     pub on_accent: u32,
-    /// Rain/snow streaks and clouds drawn over the background.
+    /// Rain/snow streaks and clouds drawn over the page.
     pub particle: u32,
     pub cloud: u32,
-    /// True for the dark palettes (night, storm, fog).
+    /// True for the dark pages (night, storm).
     pub dark: bool,
 }
 
-const fn light(top: u32, bottom: u32, card: u32, ink: u32, ink_soft: u32, accent: u32) -> Palette {
+/// A page from its paper, ink, quieter ink and accent.
+const fn page(paper: u32, ink: u32, ink_soft: u32, accent: u32, dark: bool) -> Palette {
     Palette {
-        top,
-        bottom,
-        card,
-        card_strong: card,
+        top: paper,
+        bottom: paper,
+        card: paper,
+        card_strong: paper,
         ink,
         ink_soft,
         accent,
-        on_accent: 0xFFFFFF,
-        particle: accent,
-        cloud: 0xFFFFFF,
-        dark: false,
-    }
-}
-
-const fn dark(top: u32, bottom: u32, card: u32, ink: u32, ink_soft: u32, accent: u32) -> Palette {
-    Palette {
-        top,
-        bottom,
-        card,
-        card_strong: card,
-        ink,
-        ink_soft,
-        accent,
-        on_accent: 0x10131A,
-        particle: 0xFFFFFF,
-        cloud: 0x5E6675,
-        dark: true,
+        on_accent: paper,
+        particle: ink_soft,
+        cloud: paper,
+        dark,
     }
 }
 
@@ -68,33 +55,36 @@ impl Palette {
         let night = phase == Phase::Night;
         let twilight = matches!(phase, Phase::Dawn | Phase::Dusk);
         let mut p = match (condition, night) {
-            (Thunderstorm, _) => dark(0x3B4049, 0x1E2227, 0x464C57, 0xF1F3F6, 0xB9C0CA, 0xF2C14E),
-            (Fog, false) => light(0xE3E4E6, 0xC9CBCF, 0xF2F3F4, 0x24272C, 0x5F646B, 0x7D8590),
-            (Fog, true) => dark(0x3A3E44, 0x23262B, 0x474C53, 0xEEF0F2, 0xB4B9C0, 0xC9CED6),
-            (Clear | PartlyCloudy, true) => dark(0x1E2747, 0x0E1430, 0x2A3460, 0xEAF0FB, 0xA9B6D6, 0xBFD2FF),
-            (_, true) => dark(0x232B3A, 0x111620, 0x2F3849, 0xE8EDF5, 0xA8B2C2, 0x9CC3FF),
-            (Clear, false) if twilight => light(0xF8DCC6, 0xEDB4A2, 0xFFF1E8, 0x40231A, 0x8A5E50, 0xE0704F),
-            (Clear, false) => light(0xF8E9D2, 0xF2D3A6, 0xFFF7EC, 0x3B2A12, 0x7D6446, 0xE8902A),
-            (PartlyCloudy, false) => light(0xF1ECE4, 0xDCE3EC, 0xFFFFFF, 0x262C35, 0x66707D, 0xE59A3A),
-            (Cloudy, false) => light(0xE6E9EE, 0xCDD4DD, 0xF6F8FA, 0x222831, 0x5D6672, 0x5E7896),
-            (Drizzle | Rain, false) => light(0xE4EDF8, 0xC7D7EC, 0xF7FAFE, 0x172436, 0x56677F, 0x3D7BD9),
-            (Snow, false) => light(0xF3F7FB, 0xDCE6F1, 0xFFFFFF, 0x1C2836, 0x5D6B7C, 0x5E9AD6),
+            (Thunderstorm, _) => page(0x17181C, 0xEDE9E2, 0x8F9197, 0xF0C24B, true),
+            (Fog, true) => page(0x1A1C20, 0xE7E5E0, 0x8E9096, 0xBFC6CF, true),
+            (Clear | PartlyCloudy, true) => page(0x12151D, 0xEDE6DA, 0x8E909A, 0xE7B15A, true),
+            (_, true) => page(0x15181E, 0xE6E2DA, 0x8D9097, 0x9DB8D9, true),
+            (Fog, false) => page(0xE9E8E5, 0x23252A, 0x72757A, 0x6E7887, false),
+            (Clear, false) if twilight => page(0xF4E6DC, 0x2A1C18, 0x80665A, 0xC24E36, false),
+            (Clear, false) => page(0xF5EFE4, 0x1E1A15, 0x7A6F60, 0xC0581F, false),
+            (PartlyCloudy, false) => page(0xF2EEE7, 0x1E1D1A, 0x77716A, 0xB8682A, false),
+            (Cloudy, false) => page(0xEEEDEA, 0x1C1D20, 0x6F7277, 0x4F6A86, false),
+            (Drizzle | Rain, false) => page(0xEDEFEE, 0x15191F, 0x68707A, 0x2F5D8A, false),
+            (Snow, false) => page(0xF5F6F6, 0x18202A, 0x6A7480, 0x4C7DAF, false),
         };
-        // Chips and tracks: a step from the card toward the ink.
+        // A faint wash at the top of the page, toward white by day and black
+        // at night.
+        p.top = if p.dark { mix(p.bottom, 0x000000, 0.25) } else { mix(p.bottom, 0xFFFFFF, 0.5) };
         p.card_strong = mix(p.card, p.ink, if p.dark { 0.10 } else { 0.07 });
-        if !p.dark {
-            // Streaks a little softer than the accent, clouds a touch tinted.
-            p.particle = mix(p.accent, p.bottom, 0.25);
-            p.cloud = mix(0xFFFFFF, p.bottom, 0.15);
-        }
+        p.cloud = mix(p.bottom, p.ink, if p.dark { 0.08 } else { 0.06 });
         p
     }
 
-    /// Tone-on-tone hills for the landscape, far to near: the background
-    /// colour with more and more ink, so the scene stays quiet.
+    /// The landscape, far to near, tone on tone: by day the paper with more
+    /// and more ink (a touch of the accent in it), so the far ridge is the
+    /// palest; at night the far ridge is the lightest against the dark page.
     pub fn hills(&self) -> [u32; 4] {
-        let amounts = if self.dark { [0.05, 0.09, 0.13, 0.18] } else { [0.06, 0.10, 0.15, 0.21] };
-        amounts.map(|t| mix(self.bottom, self.ink, t))
+        let tint = mix(self.bottom, self.accent, 0.12);
+        if self.dark {
+            [0.16, 0.11, 0.07, 0.035].map(|t| mix(tint, self.ink, t))
+        } else {
+            [0.13, 0.22, 0.34, 0.48].map(|t| mix(tint, self.ink, t))
+        }
     }
 }
 

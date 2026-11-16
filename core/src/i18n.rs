@@ -611,6 +611,7 @@ impl Lang {
             sun: self.pick("Sun", "Soleil"),
             uv_index: self.pick("UV index", "Indice UV"),
             pressure: self.pick("Pressure", "Pression"),
+            details: self.pick("Details", "Détails"),
             refresh: self.pick("Refresh", "Actualiser"),
             data_credit: self.pick("Weather data by Open-Meteo.com (CC BY 4.0)", "Données météo : Open-Meteo.com (CC BY 4.0)"),
             data_source: self.pick("Data source", "Source des données"),
@@ -695,6 +696,7 @@ pub struct Labels {
     pub sun: &'static str,
     pub uv_index: &'static str,
     pub pressure: &'static str,
+    pub details: &'static str,
     pub refresh: &'static str,
     /// Credit the Open-Meteo licence asks for; opens their site.
     pub data_credit: &'static str,

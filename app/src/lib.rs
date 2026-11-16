@@ -953,6 +953,7 @@ fn ui_labels(l: &meteo_core::Labels) -> Labels {
         sun: l.sun.into(),
         uv_index: l.uv_index.into(),
         pressure: l.pressure.into(),
+        details: l.details.into(),
         refresh: l.refresh.into(),
         data_credit: l.data_credit.into(),
         data_source: l.data_source.into(),

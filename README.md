@@ -246,28 +246,33 @@ METEO_WEATHER=storm cargo run -p meteo   # clear, night, partly, cloudy, fog, dr
 
 ## Look
 
-The whole UI takes the colours of the weather: warm amber on a clear afternoon, peach at
-dawn and dusk, cool blue-white in the rain, grey in fog, deep charcoal in a storm, and deep
-blue at night. Inspired by Gradient Weather.
+The app is laid out like a page of a newspaper: paper and ink, serif numbers and
+headlines, sections under thin rules instead of cards. The paper follows the weather:
+warm in the sun, peach at dawn and dusk, cool grey in the rain and fog, white in the
+snow. At night and in a storm the page turns to ink, with light text and a warm accent.
 
 - **Palettes** ([core/src/palette.rs](core/src/palette.rs)): one for each condition and
-  time of day. Each gives the background gradient, the cards, the text, the accent (curve,
-  "Now", buttons), the rain and snow streaks, and the clouds.
-- **Hero:** centred, with a city pill, a line-drawn weather icon, a large bold
-  temperature, the condition, and "Feels like · Day · Night". Cards float on the
-  gradient.
+  time of day: the paper, the ink and a quieter ink, and one accent (rain, links, "Now").
+- **Masthead and headline:** the city in small capitals over a rule, a large light
+  serif temperature, the weather in italics and what to do about it in the accent
+  ("Take an umbrella from 16h").
+- **Sections:** next 2 hours as stems on a baseline, the week as a ruled table (a day
+  opens hour by hour; tap an hour for its chance and range), the details in two columns,
+  then the source and the credit.
 - **Weather icons** ([app/ui/icons.slint](app/ui/icons.slint)): our own line icons drawn
   as paths in one consistent style: sun, moon, partly cloudy (day and night), cloud,
   fog, drizzle, rain, snow and storm. Core picks which one to draw (`icon_kind`).
-- **Font:** [Lexend](https://github.com/googlefonts/lexend), a rounded sans-serif,
-  embedded in the app (`app/ui/fonts/`, SIL Open Font License in `OFL.txt`). The widgets
-  use the phone's font.
+- **Fonts:** [Newsreader](https://github.com/productiontype/Newsreader), a newspaper
+  serif, for the numbers and headlines, and [Lexend](https://github.com/googlefonts/lexend)
+  for the small text, both embedded in the app (`app/ui/fonts/`, SIL Open Font License).
+  The widgets use the phone's font.
 - **Landscape** ([core/src/landscape.rs](core/src/landscape.rs)): mountains, hills and
-  pines (each city its own skyline), drawn tone-on-tone in the palette's colours at the
-  bottom of the hero. Clouds pass behind them; rain and snow fall in front.
+  pines (each city its own skyline), a band across the page drawn tone on tone in the
+  palette's colours. The paper slides over it as the page scrolls, the far ridges
+  lagging behind. Rain and snow fall over the page above it.
 
 When the city, the weather or the time of day changes, every colour fades to the
-new one (0.8 s): the sky, the hills, the cards and the text.
+new one (0.8 s): the paper, the hills and the text.
 
 To preview a weather or time of day: `METEO_WEATHER=snow METEO_TIME=dusk cargo run -p meteo`
 on the desktop, or on Android `adb shell setprop debug.meteo.weather snow` and
@@ -476,12 +481,13 @@ match). The home-screen widget reads the same files.
   License 2.0 (see `vendor/i-slint-core/LICENSES/`):
 
   <a href="https://slint.dev"><img src="https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png" alt="Made with Slint" height="60"></a>
-- Font: [Lexend](https://github.com/googlefonts/lexend), SIL Open Font License
-  (`app/ui/fonts/OFL.txt`).
+- Fonts: [Newsreader](https://github.com/productiontype/Newsreader) and
+  [Lexend](https://github.com/googlefonts/lexend), SIL Open Font License
+  (`app/ui/fonts/Newsreader-OFL.txt`, `app/ui/fonts/OFL.txt`).
 
 ## License
 
 Météo's own code is under the [MIT License](LICENSE). The copies of Slint in
-`vendor/` keep their own licences (`vendor/*/LICENSES/`), and the Lexend font
-its SIL Open Font License.
+`vendor/` keep their own licences (`vendor/*/LICENSES/`), and the Newsreader and
+Lexend fonts their SIL Open Font License.
 

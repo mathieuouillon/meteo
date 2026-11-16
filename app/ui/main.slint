@@ -1,9 +1,14 @@
-// Météo — a UI whose colours follow the weather, over a quiet animated
-// landscape, with drawn line icons.
+// Météo — an editorial page: paper and ink whose tones follow the weather,
+// serif numbers and headlines, sections ruled like a newspaper column, and
+// a quiet landscape drawn tone on tone.
 
 import { WeatherIcon } from "icons.slint";
-// Lexend (SIL Open Font License, fonts/OFL.txt), embedded in the app.
+// Lexend for the small text and Newsreader, a newspaper serif, for the
+// numbers and headlines (both SIL Open Font License, fonts/), embedded in
+// the app.
 import "fonts/Lexend.ttf";
+import "fonts/Newsreader.ttf";
+import "fonts/Newsreader-Italic.ttf";
 //
 // All values (texts, colours, chart and landscape geometry) come ready-made
 // from Rust (meteo-core); this file only lays them out.
@@ -40,6 +45,7 @@ export struct Labels {
     sun: string,
     uv-index: string,
     pressure: string,
+    details: string,
     refresh: string,
     data-credit: string,
     data-source: string,
@@ -256,22 +262,17 @@ component Cloud inherits Rectangle {
     Puff { tint: root.tint; k: root.k; x: 115px * k; y: 22px * k; width: 50px * k; height: self.width; }
 }
 
-/// Mountains, hills and pines, drawn in a 400×300 box scaled to the width,
-/// with the ground colour continuing below to the bottom of the screen.
+/// Mountains, hills and pines (400×300 box, scaled to this band), tone on
+/// tone. As the page scrolls the far layers lag behind (parallax).
 component Landscape inherits Rectangle {
     in property <[LandLayer]> layers;
-    in property <color> ground;
-    /// Where the landscape's bottom edge sits.
-    in property <length> horizon;
-    /// How far the page is scrolled: the layers rise with it, the far ones
-    /// slower than the near ones (parallax).
+    /// How far the page is scrolled.
     in property <length> scroll;
-    property <length> box-height: self.width * 0.75;
     for layer[i] in root.layers: Path {
         x: 0;
-        y: root.horizon - root.box-height - root.scroll * (0.12 + 0.12 * i);
+        y: root.scroll * (0.32 - 0.08 * i);
         width: root.width;
-        height: root.box-height;
+        height: root.height;
         viewbox-width: 400;
         viewbox-height: 300;
         fit: fill;
@@ -281,192 +282,181 @@ component Landscape inherits Rectangle {
         animate fill { duration: 800ms; easing: ease-in-out; }
         stroke-width: 0px;
     }
-    Rectangle {
-        // Moves with the nearest layer (the fourth).
-        y: root.horizon - 1px - root.scroll * 0.48;
-        height: root.height - self.y;
-        background: root.ground;
-        animate background { duration: 800ms; easing: ease-in-out; }
-    }
 }
 
-// ── Material 3 pieces ───────────────────────────────────────────────────
+/// The serif, for numbers and headlines.
+global Type {
+    out property <string> serif: "Newsreader";
+}
 
-/// A pill-shaped tonal button.
-component TonalButton inherits Rectangle {
+/// A section's name in small spaced capitals over a rule, with an optional
+/// link on the right ("RADAR ›").
+component SectionHead inherits VerticalLayout {
     in property <string> text;
+    in property <string> link;
     in property <Theme> theme;
     callback clicked();
-    height: 52px;
-    border-radius: self.height / 2;
-    background: touch.pressed ? root.theme.secondary-container.darker(8%) : root.theme.secondary-container;
-    in property <length> font-size: 16px;
-    Text { text: root.text; color: root.theme.on-secondary-container; font-size: root.font-size; font-weight: 500; }
-    // At least 48px to tap (Material), however small it's drawn.
-    touch := TouchArea {
-        y: min(0px, (root.height - 48px) / 2);
-        height: max(root.height, 48px);
-        clicked => { root.clicked(); }
+    spacing: 7px;
+    HorizontalLayout {
+        Text {
+            text: root.text.to-uppercase();
+            color: root.theme.on-surface-variant;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1.6px;
+            vertical-alignment: bottom;
+        }
+        if root.link != "": Rectangle {
+            width: link-text.preferred-width;
+            link-text := Text {
+                x: 0;
+                text: root.link.to-uppercase();
+                color: link-touch.pressed ? root.theme.on-surface : root.theme.primary;
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 1.6px;
+                vertical-alignment: bottom;
+            }
+            link-touch := TouchArea { y: -14px; height: parent.height + 22px; x: -12px; width: parent.width + 24px; clicked => { root.clicked(); } }
+        }
     }
+    Rectangle { height: 1px; background: root.theme.on-surface; }
 }
 
-/// One line of the details list: an icon, what it is with a short
-/// explanation under it, and the value on the right.
-component DetailRow inherits Rectangle {
+/// One detail: what it is, the value in the serif, and a note.
+component DetailCell inherits Rectangle {
     in property <Theme> theme;
     in property <string> label;
-    in property <string> note;
     in property <string> value;
-    /// Line icon, as path commands in a 24×24 box (see `RowIcons`).
-    in property <string> icon;
-    /// For the wind: a small compass instead of the icon. The arrow points
-    /// where the wind goes; the dial turns against the phone's heading.
+    in property <string> note;
+    /// For the wind: a small compass beside the value. The arrow points where
+    /// the wind goes; the dial turns against the phone's heading.
     in property <string> arrow;
     in property <float> heading;
-    in property <bool> last;
-    HorizontalLayout {
-        padding-top: 12px;
+    // Two equal columns, whatever the values.
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 0px;
+    VerticalLayout {
+        padding-top: 10px;
         padding-bottom: 12px;
-        spacing: 14px;
-        Rectangle {
-            width: 30px;
-            if root.arrow == "": Path {
-                width: 24px; height: 24px;
-                viewbox-width: 24; viewbox-height: 24;
-                fit: fill;
-                commands: root.icon;
-                stroke: root.theme.on-surface-variant;
-                stroke-width: 1.7px;
-                stroke-line-cap: round;
-                stroke-line-join: round;
+        spacing: 1px;
+        Text { text: root.label; color: root.theme.on-surface-variant; font-size: 11.5px; overflow: elide; }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.value;
+                color: root.theme.on-surface;
+                font-family: Type.serif;
+                font-size: 23px;
+                vertical-alignment: center;
+                overflow: elide;
             }
-            if root.arrow != "": Rectangle {
-                width: 30px; height: 30px;
-                border-radius: 15px;
-                border-width: 1.5px;
-                border-color: root.theme.outline-variant;
+            if root.arrow != "": VerticalLayout {
+                alignment: center;
                 Rectangle {
-                    width: 30px; height: 30px;
-                    transform-rotation: -root.heading * 1deg;
-                    Text { y: 1px; text: "N"; color: root.theme.on-surface-variant; font-size: 7px; font-weight: 600; }
-                    Path {
-                        width: 30px; height: 30px;
-                        viewbox-width: 64; viewbox-height: 64;
-                        fit: fill;
-                        commands: root.arrow;
-                        fill: root.theme.primary;
-                        stroke-width: 0px;
+                    width: 24px; height: 24px;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: root.theme.outline-variant;
+                    Rectangle {
+                        width: 24px; height: 24px;
+                        transform-rotation: -root.heading * 1deg;
+                        Path {
+                            width: 24px; height: 24px;
+                            viewbox-width: 64; viewbox-height: 64;
+                            fit: fill;
+                            commands: root.arrow;
+                            fill: root.theme.primary;
+                            stroke-width: 0px;
+                        }
                     }
                 }
             }
+            Rectangle { horizontal-stretch: 1; }
         }
-        VerticalLayout {
-            alignment: center;
-            spacing: 1px;
-            horizontal-stretch: 1;
-            Text { text: root.label; color: root.theme.on-surface; font-size: 14px; font-weight: 500; }
-            if root.note != "": Text {
-                text: root.note; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap;
-            }
-        }
-        Text {
-            text: root.value;
-            color: root.theme.on-surface;
-            font-size: 17px; font-weight: 600;
-            vertical-alignment: center;
-            horizontal-alignment: right;
-        }
-    }
-    if !root.last: Rectangle {
-        x: 44px; y: parent.height - 1px;
-        width: parent.width - 44px; height: 1px;
-        background: root.theme.outline-variant;
-        opacity: 0.6;
+        if root.note != "": Text { text: root.note; color: root.theme.on-surface-variant; font-size: 11.5px; wrap: word-wrap; }
     }
 }
 
-/// The details list's icons: line drawings in a 24×24 box.
-global RowIcons {
-    out property <string> thermometer: "M 10 13.5 V 5 A 2 2 0 0 1 14 5 V 13.5 A 4 4 0 1 1 10 13.5 Z M 12 9 V 16";
-    out property <string> droplet: "M 12 3 C 12 3 5.5 10.5 5.5 14.5 A 6.5 6.5 0 0 0 18.5 14.5 C 18.5 10.5 12 3 12 3 Z";
-    out property <string> uv: "M 16 12 A 4 4 0 1 1 8 12 A 4 4 0 1 1 16 12 Z M 12 2.5 V 4.5 M 12 19.5 V 21.5 M 2.5 12 H 4.5 M 19.5 12 H 21.5 M 5.3 5.3 L 6.7 6.7 M 17.3 17.3 L 18.7 18.7 M 5.3 18.7 L 6.7 17.3 M 17.3 6.7 L 18.7 5.3";
-    out property <string> pressure: "M 4.5 17 A 8 8 0 1 1 19.5 17 M 12 14 L 15.5 9 M 13 14 A 1 1 0 1 1 11 14 A 1 1 0 1 1 13 14 Z";
-    out property <string> leaf: "M 5 19 C 5 10 10 5 19 5 C 19 14 14 19 5 19 Z M 5 19 L 13 11";
-    out property <string> flower: "M 14 12 A 2 2 0 1 1 10 12 A 2 2 0 1 1 14 12 Z M 15 6.5 A 3 3 0 1 1 9 6.5 A 3 3 0 1 1 15 6.5 Z M 15 17.5 A 3 3 0 1 1 9 17.5 A 3 3 0 1 1 15 17.5 Z M 9.5 12 A 3 3 0 1 1 3.5 12 A 3 3 0 1 1 9.5 12 Z M 20.5 12 A 3 3 0 1 1 14.5 12 A 3 3 0 1 1 20.5 12 Z";
-    out property <string> sun: "M 3 18 H 21 M 7 18 A 5 5 0 0 1 17 18 M 12 4 V 9 M 9.5 6.5 L 12 4 L 14.5 6.5 M 4.5 12.5 L 6 14 M 19.5 12.5 L 18 14";
-}
+// ── The week ────────────────────────────────────────────────────────────
 
-/// One day of the 7-day list; tap it to open its hour-by-hour chart.
 component DayRow inherits Rectangle {
     in property <DayItem> day;
     in property <bool> open;
+    in property <bool> last;
     in property <Theme> theme;
     callback clicked();
     // Drawn once into an image and reused (text is the costliest part of a frame).
     cache-rendering-hint: true;
-    height: 52px;
-    border-radius: 18px;
-    background: touch.pressed || root.open ? root.theme.surface-container-high : transparent;
+    height: 50px;
+    background: touch.pressed ? root.theme.surface-container-high : transparent;
     touch := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 8px;
+        spacing: 10px;
         Text {
-            text: root.day.label; width: 54px;
-            color: root.theme.on-surface; font-size: 16px; font-weight: root.day.label == "Today" ? 600 : 400;
+            text: root.day.label; width: 92px;
+            color: root.theme.on-surface;
+            font-family: Type.serif;
+            font-size: 19px;
+            font-italic: root.open;
             vertical-alignment: center;
+            overflow: elide;
         }
         VerticalLayout {
-            width: 30px;
+            width: 26px;
             alignment: center;
             WeatherIcon {
-                width: 30px; height: 30px;
+                width: 26px; height: 26px;
                 kind: root.day.icon-kind;
                 ink: root.theme.on-surface-variant;
-                cloud-fill: root.theme.surface-container;
+                cloud-fill: root.theme.surface;
             }
         }
-        // Rain: a small tonal chip with the day's total (or the chance).
-        chip := Rectangle {
-            width: 62px;
-            property <string> label: root.day.rain-total != "" ? root.day.rain-total : root.day.precipitation;
-            if chip.label != "": Rectangle {
-                y: (chip.height - self.height) / 2;
-                height: 24px;
-                border-radius: 12px;
-                background: root.theme.primary-container;
-                Text { text: chip.label; color: root.theme.on-primary-container; font-size: 12px; font-weight: 500; }
-            }
+        // Rain: the day's total (or the chance), in the accent.
+        Text {
+            width: 56px;
+            text: root.day.rain-total != "" ? root.day.rain-total : root.day.precipitation;
+            color: root.theme.primary;
+            font-size: 13px;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
         }
         Text {
             text: root.day.min; width: 30px;
-            color: root.theme.on-surface-variant; font-size: 16px;
+            color: root.theme.on-surface-variant; font-size: 15px;
             horizontal-alignment: right; vertical-alignment: center;
         }
-        // Min–max bar on the whole week's temperature scale.
+        // Min–max on the whole week's scale: a hairline with an ink stroke.
         Rectangle {
             horizontal-stretch: 1;
             Rectangle {
                 y: (parent.height - self.height) / 2;
-                height: 8px;
-                border-radius: 4px;
-                background: root.theme.surface-container-high;
-                Rectangle {
-                    x: parent.width * root.day.bar-start;
-                    y: 0;
-                    width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
-                    height: parent.height;
-                    border-radius: 4px;
-                    background: @linear-gradient(90deg, #6ec1ff 0%, #ffb84d 100%);
-                }
+                height: 1px;
+                background: root.theme.outline-variant;
+            }
+            Rectangle {
+                x: parent.width * root.day.bar-start;
+                y: (parent.height - self.height) / 2;
+                width: max(self.height, parent.width * (root.day.bar-end - root.day.bar-start));
+                height: 3px;
+                border-radius: 1.5px;
+                background: root.theme.on-surface;
             }
         }
         Text {
-            text: root.day.max; width: 34px;
-            color: root.theme.on-surface; font-size: 16px; font-weight: 600;
+            text: root.day.max; width: 38px;
+            color: root.theme.on-surface;
+            font-family: Type.serif;
+            font-size: 19px;
             horizontal-alignment: right; vertical-alignment: center;
         }
+    }
+    if !root.last: Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: root.theme.outline-variant;
     }
 }
 
@@ -509,9 +499,10 @@ component DayChart inherits Rectangle {
 
     head-text := Text {
         visible: root.day.agreement != "";
-        x: 10px; y: 2px;
+        x: 0px; y: 4px;
         text: root.day.agreement;
         color: root.theme.on-surface-variant; font-size: 12px;
+        font-family: Type.serif; font-italic: true;
     }
 
     Flickable {
@@ -542,7 +533,7 @@ component DayChart inherits Rectangle {
                 viewbox-height: root.day.chart-height;
                 fit: fill;
                 commands: root.day.band-path;
-                fill: root.theme.primary.transparentize(82%);
+                fill: root.theme.on-surface.transparentize(90%);
                 stroke-width: 0px;
             }
             Path {
@@ -554,7 +545,7 @@ component DayChart inherits Rectangle {
                 // Map the viewbox 1:1 (the default `contain` rescales a stroked path).
                 fit: fill;
                 commands: root.day.area-path == "" ? "M 0 0" : root.day.area-path;
-                fill: @linear-gradient(180deg, root.theme.primary.transparentize(75%) 0%, root.theme.primary.transparentize(100%) 100%);
+                fill: transparent;
                 stroke-width: 0px;
             }
             Path {
@@ -565,8 +556,8 @@ component DayChart inherits Rectangle {
                 viewbox-height: root.day.chart-height;
                 fit: fill;
                 commands: root.day.line-path == "" ? "M 0 0" : root.day.line-path;
-                stroke: root.theme.primary;
-                stroke-width: 3px;
+                stroke: root.theme.on-surface;
+                stroke-width: 1.5px;
             }
         }
 
@@ -585,24 +576,25 @@ component DayChart inherits Rectangle {
                 y: h.y * 1px - 24px;
                 width: parent.width;
                 text: h.temperature;
-                color: root.theme.on-surface; font-size: 14px; font-weight: 600;
+                color: root.theme.on-surface; font-size: 16px;
+                font-family: Type.serif;
                 horizontal-alignment: center;
             }
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: h.y * 1px - self.height / 2;
-                width: column.now ? 12px : 8px; height: self.width; border-radius: self.width / 2;
-                background: root.theme.primary;
-                border-width: column.now ? 3px : 0px;
-                border-color: root.theme.surface-container;
+                width: column.now ? 11px : 5px; height: self.width; border-radius: self.width / 2;
+                background: column.now ? root.theme.surface : root.theme.on-surface;
+                border-width: column.now ? 1.5px : 0px;
+                border-color: root.theme.on-surface;
             }
             WeatherIcon {
                 x: (column.width - self.width) / 2;
                 y: root.icon-y;
-                width: 26px; height: 26px;
+                width: 24px; height: 24px;
                 kind: h.icon-kind;
                 ink: root.theme.on-surface-variant;
-                cloud-fill: root.theme.surface-container;
+                cloud-fill: root.theme.surface;
             }
             // Rain: the amount above a bar growing up from the baseline, the
             // bar as strong as the chance; the runs' range a faint wider bar
@@ -610,41 +602,42 @@ component DayChart inherits Rectangle {
             if h.rain-range != "": Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: root.rain-base - h.range-high * root.bar-max;
-                width: 28px;
+                width: 16px;
                 height: max(4px, (h.range-high - h.range-low) * root.bar-max);
-                border-radius: 8px;
-                background: #3d8fe0.transparentize(80%);
-                border-width: 1px;
-                border-color: #3d8fe0.transparentize(55%);
+                border-radius: 2px;
+                background: root.theme.primary.transparentize(84%);
             }
             Text {
                 y: root.rain-base - parent.top - 16px;
                 width: parent.width;
-                text: h.rain; color: root.theme.on-surface-variant; font-size: 11px; font-weight: 500;
+                text: h.rain; color: root.theme.primary; font-size: 11px; font-weight: 500;
                 horizontal-alignment: center;
             }
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: root.rain-base - parent.bar;
-                width: 18px;
-                height: parent.bar;
-                border-radius: 6px;
-                background: h.rain == "" ? root.theme.outline-variant : @linear-gradient(180deg, #8fd0ff 0%, #3d8fe0 100%);
+                width: h.rain == "" ? 14px : 6px;
+                height: h.rain == "" ? 1px : parent.bar;
+                border-radius: 1px;
+                background: h.rain == "" ? root.theme.outline-variant : root.theme.primary;
                 opacity: h.rain == "" ? 1 : 0.3 + 0.7 * h.chance;
             }
-            // "Now" in a pill.
+            // The hour; "Now" in ink, underlined in the accent.
             Rectangle {
-                x: (parent.width - self.width) / 2;
-                y: root.rain-base + 4px;
-                width: column.now ? now-label.preferred-width + 16px : column.width;
+                y: root.rain-base + 6px;
                 height: 22px;
-                border-radius: 11px;
-                background: column.now ? root.theme.primary : transparent;
                 now-label := Text {
                     text: h.label;
-                    color: column.now ? root.theme.on-primary : root.theme.on-surface-variant;
+                    color: column.now ? root.theme.on-surface : root.theme.on-surface-variant;
                     font-size: 12px;
                     font-weight: column.now ? 600 : 400;
+                }
+                if column.now: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - 1px;
+                    width: now-label.preferred-width;
+                    height: 2px;
+                    background: root.theme.primary;
                 }
             }
             TouchArea {
@@ -660,15 +653,15 @@ component DayChart inherits Rectangle {
             y: max(root.rain-top - 12px, root.rain-base - self.top - 18px - self.height);
             width: tip-layout.preferred-width;
             height: tip-layout.preferred-height;
-            border-radius: 10px;
+            border-radius: 3px;
             background: root.theme.surface;
             border-width: 1px;
-            border-color: root.theme.primary;
+            border-color: root.theme.on-surface;
             tip-layout := VerticalLayout {
                 padding: 6px;
                 padding-left: 10px;
                 padding-right: 10px;
-                Text { text: tip.h.tip; color: root.theme.on-surface; font-size: 12px; font-weight: 500; horizontal-alignment: center; }
+                Text { text: tip.h.tip; color: root.theme.on-surface; font-family: Type.serif; font-size: 14px; horizontal-alignment: center; }
                 if tip.h.tip-range != "": Text { text: tip.h.tip-range; color: root.theme.on-surface-variant; font-size: 11px; horizontal-alignment: center; }
             }
         }
@@ -682,7 +675,7 @@ component WarningsCard inherits Rectangle {
     in property <[WarningItem]> warnings;
     in property <string> source;
     callback open();
-    border-radius: 28px;
+    border-radius: 4px;
     // The strongest level sets the card's colour.
     property <int> top: root.warnings.length > 0 ? root.warnings[0].level : 1;
     background: root.top >= 3 ? #d93a2b : root.top == 2 ? #f08a24 : #f6c945;
@@ -712,7 +705,7 @@ component WarningsCard inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;
-                Text { text: w.title; color: root.ink; font-size: 15px; font-weight: 600; wrap: word-wrap; }
+                Text { text: w.title; color: root.ink; font-family: Type.serif; font-size: 18px; wrap: word-wrap; }
                 Text { text: w.detail; color: root.ink.transparentize(20%); font-size: 12px; }
             }
         }
@@ -721,51 +714,45 @@ component WarningsCard inherits Rectangle {
     TouchArea { clicked => { root.open(); } }
 }
 
-component NowcastCard inherits Rectangle {
-    // Drawn once into an image and reused (text is the costliest part of a frame).
-    cache-rendering-hint: true;
+component NowcastCard inherits VerticalLayout {
     in property <Nowcast> nowcast;
     in property <string> title;
     in property <string> link;
     in property <Theme> theme;
     callback clicked();
-    border-radius: 28px;
-    TouchArea { clicked => { root.clicked(); } }
-    background: root.theme.surface-container;
-    border-width: 1px;
-    border-color: root.theme.on-surface.transparentize(88%);
-    VerticalLayout {
-        padding: 16px;
-        spacing: 8px;
+    spacing: 8px;
+    SectionHead {
+        theme: root.theme;
+        text: root.title;
+        link: root.link;
+        clicked => { root.clicked(); }
+    }
+    Text {
+        text: root.nowcast.summary;
+        color: root.theme.on-surface;
+        font-family: Type.serif;
+        font-size: 21px;
+        wrap: word-wrap;
+    }
+    // 15 minutes a stem, on a baseline.
+    if root.nowcast.wet: Rectangle {
+        height: 54px;
+        Rectangle { y: 34px; height: 1px; background: root.theme.on-surface; }
         HorizontalLayout {
-            spacing: 10px;
-            WeatherIcon {
-                width: 28px; height: 28px;
-                kind: root.nowcast.wet ? "rain" : "cloudy";
-                ink: root.theme.on-surface-variant;
-                cloud-fill: root.theme.surface-container;
-            }
-            VerticalLayout {
-                alignment: center;
-                Text { text: root.title; color: root.theme.on-surface-variant; font-size: 12px; font-weight: 500; }
-                Text { text: root.nowcast.summary; color: root.theme.on-surface; font-size: 15px; font-weight: 600; wrap: word-wrap; }
-            }
-            Text { text: root.link; color: root.theme.primary; font-size: 13px; font-weight: 600; vertical-alignment: center; }
-        }
-        if root.nowcast.wet: HorizontalLayout {
             spacing: 6px;
-            height: 64px;
             for bar in root.nowcast.bars: Rectangle {
                 Rectangle {
-                    y: 44px - self.height;
-                    height: bar.wet ? max(4px, bar.height * 44px) : 3px;
-                    border-radius: 5px;
-                    background: bar.wet ? @linear-gradient(180deg, #8fd0ff 0%, #3d8fe0 100%) : root.theme.outline-variant;
+                    x: 0;
+                    y: 34px - self.height;
+                    width: 4px;
+                    height: bar.wet ? max(3px, bar.height * 30px) : 0px;
+                    border-radius: 1px;
+                    background: root.theme.primary;
                 }
                 Text {
-                    // From the bar's left edge: "Now" starts with the first bar.
+                    // From the stem: "Now" starts with the first.
                     x: 0;
-                    y: 48px;
+                    y: 40px;
                     width: parent.width * 2;
                     text: bar.label;
                     color: root.theme.on-surface-variant; font-size: 11px;
@@ -775,30 +762,30 @@ component NowcastCard inherits Rectangle {
     }
 }
 
-/// A row of choices, one selected (Material 3 segmented button).
+/// A row of choices, one selected: framed in ink, the chosen one inverted.
 component Segmented inherits Rectangle {
     in property <[string]> options;
     in property <int> selected;
     in property <Theme> theme;
     callback chosen(int);
-    height: 44px;
-    border-radius: 22px;
+    height: 40px;
+    border-radius: 4px;
     border-width: 1px;
-    border-color: root.theme.outline-variant;
+    border-color: root.theme.on-surface;
     HorizontalLayout {
         padding: 3px;
         spacing: 3px;
         for option[i] in root.options: Rectangle {
-            border-radius: 19px;
-            background: i == root.selected ? root.theme.primary : (option-touch.pressed ? root.theme.surface-container-high : transparent);
+            border-radius: 2px;
+            background: i == root.selected ? root.theme.on-surface : (option-touch.pressed ? root.theme.surface-container-high : transparent);
             Text {
                 text: option;
-                color: i == root.selected ? root.theme.on-primary : root.theme.on-surface;
+                color: i == root.selected ? root.theme.surface : root.theme.on-surface;
                 font-size: 13px; font-weight: i == root.selected ? 600 : 400;
                 horizontal-alignment: center;
                 overflow: elide;
             }
-            // Reaches past the outline so the target is 48px tall.
+            // Reaches past the frame so the target is 48px tall.
             option-touch := TouchArea { y: -5px; height: parent.height + 10px; clicked => { root.chosen(i); } }
         }
     }
@@ -816,23 +803,23 @@ component SwitchRow inherits Rectangle {
         spacing: 12px;
         VerticalLayout {
             alignment: center;
-            Text { text: root.title; color: root.theme.on-surface; font-size: 16px; }
+            Text { text: root.title; color: root.theme.on-surface; font-family: Type.serif; font-size: 18px; }
             Text { text: root.help; color: root.theme.on-surface-variant; font-size: 12px; wrap: word-wrap; }
         }
         // The switch: a track with a sliding thumb.
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 52px; height: 32px;
-                border-radius: 16px;
-                background: root.on ? root.theme.primary : root.theme.surface-container-high;
-                border-width: root.on ? 0px : 2px;
-                border-color: root.theme.on-surface-variant;
+                width: 44px; height: 26px;
+                border-radius: 13px;
+                background: root.on ? root.theme.on-surface : transparent;
+                border-width: 1.5px;
+                border-color: root.theme.on-surface;
                 Rectangle {
-                    x: root.on ? parent.width - self.width - 4px : 6px;
+                    x: root.on ? parent.width - self.width - 4px : 4px;
                     animate x { duration: 150ms; easing: ease-out; }
-                    width: root.on ? 24px : 18px; height: self.width; border-radius: self.width / 2;
-                    background: root.on ? root.theme.on-primary : root.theme.on-surface-variant;
+                    width: 18px; height: self.width; border-radius: self.width / 2;
+                    background: root.on ? root.theme.surface : root.theme.on-surface;
                 }
             }
         }
@@ -840,21 +827,21 @@ component SwitchRow inherits Rectangle {
     TouchArea { clicked => { root.toggled(!root.on); } }
 }
 
-/// A group of settings on a card.
+/// A group of settings: under a rule, no card.
 component SettingsCard inherits Rectangle {
     in property <Theme> theme;
-    border-radius: 24px;
-    background: root.theme.surface-container;
-    border-width: 1px;
-    border-color: root.theme.on-surface.transparentize(88%);
+    Rectangle { y: 0; height: 1px; background: root.theme.on-surface; }
 }
 
-/// A setting's name, over its choices.
+/// A setting's name in small spaced capitals, over its choices.
 component SettingLabel inherits Text {
     in property <Theme> theme;
-    color: root.theme.primary;
-    font-size: 14px;
-    font-weight: 600;
+    in property <string> label;
+    text: root.label.to-uppercase();
+    color: root.theme.on-surface-variant;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.6px;
 }
 
 /// The settings screen.
@@ -894,10 +881,10 @@ component SettingsScreen inherits Rectangle {
         spacing: 8px;
         HorizontalLayout {
             padding-left: 8px;
-            Text { text: root.labels.settings; color: root.theme.on-surface; font-size: 26px; font-weight: 600; vertical-alignment: center; }
+            Text { text: root.labels.settings; color: root.theme.on-surface; font-family: Type.serif; font-size: 34px; vertical-alignment: center; }
             Rectangle {
                 width: 72px; height: 48px;
-                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                Text { text: root.labels.done.to-uppercase(); color: root.theme.primary; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
@@ -908,30 +895,31 @@ component SettingsScreen inherits Rectangle {
             settings-list := VerticalLayout {
                 width: parent.width;
                 alignment: start;
-                spacing: 14px;
-                padding: 4px;
+                spacing: 22px;
+                padding: 8px;
                 padding-bottom: 32px;
                 // Display: units, colours, widgets, language.
                 SettingsCard {
                     theme: root.theme;
                     VerticalLayout {
-                        padding: 14px;
+                        padding-top: 14px;
+                        padding-bottom: 6px;
                         spacing: 8px;
-                        SettingLabel { theme: root.theme; text: root.labels.units; }
+                        SettingLabel { theme: root.theme; label: root.labels.units; }
                         Segmented {
                             theme: root.theme;
                             options: [root.labels.metric, root.labels.imperial];
                             selected: root.units-index;
                             chosen(i) => { root.set-units(i); }
                         }
-                        if root.can-use-wallpaper: SettingLabel { theme: root.theme; text: root.labels.colors; }
+                        if root.can-use-wallpaper: SettingLabel { theme: root.theme; label: root.labels.colors; }
                         if root.can-use-wallpaper: Segmented {
                             theme: root.theme;
                             options: [root.labels.colors-weather, root.labels.colors-wallpaper];
                             selected: root.colors-index;
                             chosen(i) => { root.set-colors(i); }
                         }
-                        SettingLabel { theme: root.theme; text: root.labels.widgets; }
+                        SettingLabel { theme: root.theme; label: root.labels.widgets; }
                         Segmented {
                             theme: root.theme;
                             options: [root.labels.widget-solid, root.labels.widget-see-through + " 20%", root.labels.widget-see-through + " 40%"];
@@ -944,7 +932,7 @@ component SettingsScreen inherits Rectangle {
                             selected: root.widget-colors-index;
                             chosen(i) => { root.set-widget-colors(i); }
                         }
-                        SettingLabel { theme: root.theme; text: root.labels.language; }
+                        SettingLabel { theme: root.theme; label: root.labels.language; }
                         Segmented {
                             theme: root.theme;
                             options: [root.labels.language-system, "English", "Français"];
@@ -957,13 +945,12 @@ component SettingsScreen inherits Rectangle {
                 SettingsCard {
                     theme: root.theme;
                     VerticalLayout {
-                        padding: 14px;
-                        padding-top: 10px;
-                        padding-bottom: 6px;
+                        padding-top: 14px;
+                        padding-bottom: 0px;
                         spacing: 0px;
-                        SettingLabel { theme: root.theme; text: root.labels.notifications; }
+                        SettingLabel { theme: root.theme; label: root.labels.notifications; }
                         if root.notifications-blocked: Rectangle {
-                            border-radius: 16px;
+                            border-radius: 4px;
                             background: blocked-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
                             VerticalLayout {
                                 padding: 14px;
@@ -1028,13 +1015,13 @@ component SettingsScreen inherits Rectangle {
                 SettingsCard {
                     theme: root.theme;
                     height: 64px;
-                    background: src-touch.pressed ? root.theme.surface-container-high : root.theme.surface-container;
+                    background: src-touch.pressed ? root.theme.surface-container-high : transparent;
                     HorizontalLayout {
-                        padding-left: 16px; padding-right: 16px;
+                        padding-left: 0px; padding-right: 4px;
                         VerticalLayout {
                             alignment: center;
                             Text { text: root.labels.data-source; color: root.theme.on-surface-variant; font-size: 12px; }
-                            Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-size: 15px; }
+                            Text { text: root.source-name + " · Open-Meteo"; color: root.theme.on-surface; font-family: Type.serif; font-size: 19px; }
                         }
                         Text { text: "›"; color: root.theme.primary; font-size: 22px; vertical-alignment: center; horizontal-alignment: right; }
                     }
@@ -1055,7 +1042,7 @@ component CityRow inherits Rectangle {
     callback clicked();
     callback remove();
     min-height: 64px;
-    border-radius: 20px;
+    border-radius: 4px;
     background: root.city.selected ? root.theme.secondary-container
         : (touch.pressed ? root.theme.surface-container-high : transparent);
     touch := TouchArea { clicked => { root.clicked(); } }
@@ -1124,11 +1111,11 @@ component CityPicker inherits Rectangle {
             spacing: 8px;
             // Material 3 search bar.
             Rectangle {
-                height: 56px;
-                border-radius: 28px;
-                background: root.theme.surface-container-high;
-                border-width: input.has-focus ? 2px : 0px;
-                border-color: root.theme.primary;
+                height: 52px;
+                border-radius: 4px;
+                background: transparent;
+                border-width: input.has-focus ? 2px : 1px;
+                border-color: input.has-focus ? root.theme.primary : root.theme.on-surface;
                 // Back while typing closes the picker too (keys go to the
                 // focused field first, then up to here).
                 FocusScope {
@@ -1159,7 +1146,7 @@ component CityPicker inherits Rectangle {
             }
             Rectangle {
                 width: 72px;
-                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                Text { text: root.labels.done.to-uppercase(); color: root.theme.primary; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
@@ -1180,8 +1167,8 @@ component CityPicker inherits Rectangle {
                 alignment: start;
                 spacing: 4px;
                 if input.text == "" && root.can-locate: Rectangle {
-                    height: 56px;
-                    border-radius: 28px;
+                    height: 52px;
+                    border-radius: 4px;
                     background: locate-touch.pressed ? root.theme.primary-container.darker(8%) : root.theme.primary-container;
                     Text { text: "📍  " + root.labels.use-location; color: root.theme.on-primary-container; font-size: 16px; font-weight: 500; }
                     locate-touch := TouchArea { clicked => { root.locate(); } }
@@ -1219,8 +1206,8 @@ component RainChip inherits HorizontalLayout {
     in property <string> label;
     in property <Theme> theme;
     spacing: 6px;
-    Rectangle { width: 14px; height: 14px; y: (parent.height - self.height) / 2; border-radius: 4px; background: root.colour; }
-    Text { text: root.label; color: root.theme.on-surface-variant; font-size: 12px; vertical-alignment: center; }
+    Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 1px; background: root.colour; }
+    Text { text: root.label.to-uppercase(); color: root.theme.on-surface-variant; font-size: 10.5px; letter-spacing: 1.2px; vertical-alignment: center; }
 }
 
 /// The rain radar: the last two hours over a map, then the next three hours
@@ -1261,11 +1248,11 @@ component RadarScreen inherits Rectangle {
             alignment: start;
             HorizontalLayout {
                 padding-left: 8px;
-                Text { text: root.labels.radar; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
+                Text { text: root.labels.radar; color: root.theme.on-surface; font-family: Type.serif; font-size: 32px; vertical-alignment: center; }
                 Rectangle {
                     width: 72px;
                     height: 48px;
-                    Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                    Text { text: root.labels.done.to-uppercase(); color: root.theme.primary; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; }
                     TouchArea { clicked => { root.close(); } }
                 }
             }
@@ -1273,7 +1260,9 @@ component RadarScreen inherits Rectangle {
             // sides): Region/Wide and the time over it.
             map-box := Rectangle {
                 height: min(self.width * 1.3, root.height - 260px);
-                border-radius: 28px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: root.theme.outline-variant;
                 clip: true;
                 background: root.theme.surface-container;
                 // Square images as tall as the box, centred.
@@ -1283,10 +1272,10 @@ component RadarScreen inherits Rectangle {
                 Rectangle {
                     x: (parent.width - parent.side) / 2 + parent.side * root.marker-x - self.width / 2;
                     y: (parent.height - parent.side) / 2 + parent.side * root.marker-y - self.height / 2;
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 8px;
-                    background: root.theme.primary;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 7px;
+                    background: #1c1a17;
                     border-width: 3px;
                     border-color: #ffffff;
                 }
@@ -1295,9 +1284,9 @@ component RadarScreen inherits Rectangle {
                     x: 12px;
                     y: parent.height - self.height - 12px;
                     width: time-row.preferred-width;
-                    height: 34px;
-                    border-radius: 17px;
-                    background: root.forecast ? root.theme.primary-container.with-alpha(0.92) : root.theme.surface.with-alpha(0.85);
+                    height: 30px;
+                    border-radius: 2px;
+                    background: root.theme.surface.with-alpha(0.92);
                     time-row := HorizontalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
@@ -1313,10 +1302,11 @@ component RadarScreen inherits Rectangle {
                             commands: root.playing ? "M 0 0 L 10 6 L 0 12 Z" : "M 0 0 L 3.5 0 L 3.5 12 L 0 12 Z M 6.5 0 L 10 0 L 10 12 L 6.5 12 Z";
                         }
                         Text {
-                            text: root.time;
-                            color: root.theme.on-surface;
-                            font-size: 15px;
+                            text: root.time.to-uppercase();
+                            color: root.forecast ? root.theme.primary : root.theme.on-surface;
+                            font-size: 12px;
                             font-weight: 600;
+                            letter-spacing: 1.2px;
                             vertical-alignment: center;
                         }
                     }
@@ -1326,22 +1316,23 @@ component RadarScreen inherits Rectangle {
                     x: parent.width - self.width - 12px;
                     y: 12px;
                     width: zoom-row.preferred-width;
-                    height: 34px;
-                    border-radius: 17px;
-                    background: root.theme.surface.with-alpha(0.85);
+                    height: 30px;
+                    border-radius: 2px;
+                    background: root.theme.surface.with-alpha(0.92);
                     zoom-row := HorizontalLayout {
                         padding: 3px;
                         spacing: 2px;
                         for option[i] in [root.labels.radar-region, root.labels.radar-wide]: Rectangle {
                             property <bool> on: (i == 1) == root.wide;
-                            width: zoom-text.preferred-width + 22px;
-                            border-radius: 14px;
-                            background: self.on ? root.theme.primary : transparent;
+                            width: zoom-text.preferred-width + 18px;
+                            border-radius: 1px;
+                            background: self.on ? root.theme.on-surface : transparent;
                             zoom-text := Text {
-                                text: option;
-                                color: parent.on ? root.theme.on-primary : root.theme.on-surface;
-                                font-size: 13px;
-                                font-weight: parent.on ? 600 : 400;
+                                text: option.to-uppercase();
+                                color: parent.on ? root.theme.surface : root.theme.on-surface-variant;
+                                font-size: 11px;
+                                font-weight: 600;
+                                letter-spacing: 1.2px;
                             }
                             TouchArea { y: -8px; height: parent.height + 16px; clicked => { root.set-wide(i == 1); } }
                         }
@@ -1351,8 +1342,8 @@ component RadarScreen inherits Rectangle {
             if root.nowcast.summary != "": Text {
                 text: root.nowcast.summary;
                 color: root.theme.on-surface;
-                font-size: 15px;
-                font-weight: 600;
+                font-family: Type.serif;
+                font-size: 20px;
                 wrap: word-wrap;
             }
             // Timeline: one track, the radar's part then the forecast's
@@ -1368,45 +1359,37 @@ component RadarScreen inherits Rectangle {
                     visible: root.nowcast.wet && root.now + 1 + b < root.count;
                     y: parent.rain-room - 4px - self.height;
                     height: bar.wet ? max(3px, bar.height * (parent.rain-room - 6px)) : 0px;
-                    border-radius: 3px;
-                    background: #3d8fe0.transparentize(35%);
+                    border-radius: 1px;
+                    background: root.theme.primary.transparentize(30%);
                 }
                 Rectangle {
-                    y: parent.rain-room + 6px;
-                    height: 8px;
-                    border-radius: 4px;
-                    background: root.theme.on-surface-variant.with-alpha(0.3);
-                    // The forecast's part.
+                    y: line.rain-room + 9px;
+                    height: 2px;
+                    // The radar's part a rule, the forecast's a fainter one.
+                    background: root.theme.on-surface;
                     Rectangle {
                         x: parent.width * (root.now + 1) * line.step;
                         width: parent.width - self.x;
-                        border-radius: 4px;
-                        background: root.theme.primary.with-alpha(0.22);
+                        background: root.theme.outline-variant;
                     }
-                    // Up to the frame shown.
+                    // "Now": a tick across the rule.
                     Rectangle {
-                        x: 0;
-                        width: parent.width * (root.index + 0.5) * line.step;
-                        border-radius: 4px;
-                        background: root.theme.primary;
-                    }
-                    // "Now": a tick across the track.
-                    Rectangle {
-                        x: parent.width * (root.now + 0.5) * line.step - 1px;
-                        y: -3px;
-                        width: 2px;
-                        height: parent.height + 6px;
+                        x: parent.width * (root.now + 0.5) * line.step - 0.5px;
+                        y: -6px;
+                        width: 1px;
+                        height: 14px;
                         background: root.theme.on-surface;
                     }
+                    // The frame shown.
                     Rectangle {
                         x: parent.width * (root.index + 0.5) * line.step - self.width / 2;
                         y: (parent.height - self.height) / 2;
-                        width: 22px;
-                        height: 22px;
-                        border-radius: 11px;
-                        background: #ffffff;
-                        border-width: 4px;
-                        border-color: root.theme.primary;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 8px;
+                        background: root.theme.primary;
+                        border-width: 3px;
+                        border-color: root.theme.surface;
                     }
                 }
                 // The first and last times give way to "Now" when it's close.
@@ -1474,11 +1457,11 @@ component SourcePicker inherits Rectangle {
         spacing: 12px;
         HorizontalLayout {
             padding-left: 8px;
-            Text { text: root.labels.data-source; color: root.theme.on-surface; font-size: 24px; font-weight: 500; vertical-alignment: center; }
+            Text { text: root.labels.data-source; color: root.theme.on-surface; font-family: Type.serif; font-size: 30px; vertical-alignment: center; }
             Rectangle {
                 width: 72px;
                 height: 48px;
-                Text { text: root.labels.done; color: root.theme.primary; font-size: 16px; font-weight: 600; }
+                Text { text: root.labels.done.to-uppercase(); color: root.theme.primary; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; }
                 TouchArea { clicked => { root.close(); } }
             }
         }
@@ -1726,28 +1709,15 @@ export component MainWindow inherits Window {
     callback open-notification-settings();
     callback test-notifications();
 
-    // Where the landscape meets the content cards.
-    property <length> horizon: root.height * 0.56;
-    property <length> land-height: root.width * 0.75;
+    // The page: a faint wash from the top into the paper.
+    background: @linear-gradient(180deg, root.shown-theme.bg-top 0%, root.shown-theme.bg-bottom 45%);
 
-    // The theme's colours fade on a change (see shown-theme).
-    background: @linear-gradient(180deg, root.shown-theme.bg-top 0%, root.shown-theme.bg-bottom 100%);
-
-    // ── Behind: stars (at night), clouds ──
-    Particles { d: root.stars-dim; stroke: #ffffff4d; stroke-width: 2px; }
-    Particles { d: root.stars-mid; stroke: #ffffff99; stroke-width: 2.5px; }
-    Particles { d: root.stars-bright; stroke: #ffffffee; stroke-width: 3px; }
-    for c in root.clouds: Cloud { cloud: c; tint: root.shown-theme.cloud; }
-
-    // ── The land, tone on tone ──
-    Landscape {
-        layers: root.land-layers;
-        ground: root.ground;
-        horizon: root.horizon;
-        scroll: max(0px, -content-flick.content-y - root.pull-zone);
-    }
-
-    // ── In front: mist, rain, snow, lightning ──
+    // ── Behind the text: stars (at night), a few clouds ──
+    Particles { d: root.stars-dim; stroke: root.shown-theme.on-surface.transparentize(75%); stroke-width: 1.5px; }
+    Particles { d: root.stars-mid; stroke: root.shown-theme.on-surface.transparentize(55%); stroke-width: 2px; }
+    Particles { d: root.stars-bright; stroke: root.shown-theme.on-surface.transparentize(25%); stroke-width: 2.5px; }
+    // Faint: they drift behind the headline.
+    for c in root.clouds: Cloud { cloud: c; tint: root.shown-theme.cloud; opacity: 0.5; }
     for f in root.fog: Rectangle {
         x: f.x * 1px; y: f.y * 1px;
         width: f.width * 1px; height: f.height * 1px;
@@ -1755,22 +1725,20 @@ export component MainWindow inherits Window {
         background: root.shown-theme.cloud;
         opacity: f.opacity;
     }
-    Particles { d: root.rain-far; stroke: root.shown-theme.particle.transparentize(70%); stroke-width: 1px; }
-    Particles { d: root.rain-near; stroke: root.shown-theme.particle.transparentize(40%); stroke-width: 1.6px; }
-    Particles { d: root.snow-small; stroke: root.shown-theme.particle.transparentize(25%); stroke-width: 4px; }
-    Particles { d: root.snow-large; stroke: root.shown-theme.particle; stroke-width: 7px; }
-    Particles { d: root.bolt; stroke: #c8d8ff66; stroke-width: 10px; stroke-line-join: round; }
-    Particles { d: root.bolt; stroke: white; stroke-width: 2.5px; stroke-line-join: round; }
-    if root.flash > 0.01: Rectangle { background: #e8eeff; opacity: root.flash * 0.45; }
+    // Rain and snow: fine strokes in the quiet ink.
+    Particles { d: root.rain-far; stroke: root.shown-theme.particle.transparentize(70%); stroke-width: 0.8px; }
+    Particles { d: root.rain-near; stroke: root.shown-theme.particle.transparentize(45%); stroke-width: 1.2px; }
+    Particles { d: root.snow-small; stroke: root.shown-theme.particle.transparentize(35%); stroke-width: 3px; }
+    Particles { d: root.snow-large; stroke: root.shown-theme.particle.transparentize(10%); stroke-width: 5px; }
+    Particles { d: root.bolt; stroke: root.shown-theme.primary.transparentize(60%); stroke-width: 8px; stroke-line-join: round; }
+    Particles { d: root.bolt; stroke: root.shown-theme.primary; stroke-width: 2px; stroke-line-join: round; }
+    if root.flash > 0.01: Rectangle { background: root.shown-theme.on-surface; opacity: root.flash * 0.25; }
 
-    // ── Content: scrolls over the scene ──
-    // Tops of the cards, in window coordinates, for drops to land on.
-    out property <[length]> surface-tops: [
-        forecast-card.absolute-position.y,
-        details-card.absolute-position.y,
-        footer-card.absolute-position.y,
-    ];
+    // ── The page: masthead, headline, landscape, then the sections on paper ──
+    // Where drops land: the top of the paper below the landscape.
+    out property <[length]> surface-tops: [sheet.absolute-position.y];
     in property <float> compass-heading;
+    property <length> scroll: max(0px, -content-flick.content-y - root.pull-zone);
 
     // Pull to refresh with plain scrolling: the content starts with a strip
     // (`pull-zone`) scrolled just out of view. Pulling down from the top
@@ -1832,16 +1800,16 @@ export component MainWindow inherits Window {
                     fit: fill;
                     commands: "M 19 12 A 7 7 0 1 1 16.5 6.6 M 16.5 2.5 L 16.5 6.6 L 12.4 6.6";
                     stroke: root.pull > root.pull-zone - 16px ? root.shown-theme.primary : root.shown-theme.on-surface-variant;
-                    stroke-width: 2.4px;
+                    stroke-width: 2px;
                     stroke-line-cap: round;
                     stroke-line-join: round;
                 }
             }
 
-            // Hero: city, icon, big temperature, condition — centred. Swipe it
-            // left or right for the next or previous saved city.
+            // Masthead and headline. Swipe sideways for the next or previous
+            // saved city.
             Rectangle {
-                height: root.horizon - 40px;
+                height: hero.preferred-height;
                 swipe := SwipeGestureHandler {
                     handle-swipe-left: root.city-count > 1;
                     handle-swipe-right: root.city-count > 1;
@@ -1853,53 +1821,63 @@ export component MainWindow inherits Window {
                             root.swipe-city(-1);
                         }
                     }
-                VerticalLayout {
+                hero := VerticalLayout {
                     // Follows the finger, a little damped, and fades.
                     x: swipe.dx * 0.6;
                     animate x { duration: 220ms; easing: ease-out; }
                     opacity: 1 - min(0.6, abs(swipe.dx) / 400px);
-                    padding-left: 24px;
-                    padding-right: 24px;
-                    padding-top: 40px;
-                    spacing: 2px;
+                    padding-left: 22px;
+                    padding-right: 22px;
+                    padding-top: 52px;
+                    padding-bottom: 8px;
+                    spacing: 0px;
                     alignment: start;
-                    // City pill: tap to switch or add cities.
+                    // Masthead: the city (tap to switch or add), the saved
+                    // cities as dots, settings.
                     HorizontalLayout {
-                        alignment: center;
-                        // Balances the settings button on the right.
-                        Rectangle { width: 44px; }
-                        Rectangle { horizontal-stretch: 1; }
+                        height: 44px;
+                        spacing: 10px;
                         Rectangle {
-                            height: 36px;
                             width: city-row.preferred-width;
-                            border-radius: 18px;
-                            background: city-touch.pressed ? root.shown-theme.surface-container-high : root.shown-theme.surface-container.transparentize(35%);
                             city-row := HorizontalLayout {
-                                padding-left: 16px;
-                                padding-right: 14px;
                                 spacing: 8px;
-                                Text { text: root.city; color: root.shown-theme.on-surface; font-size: 16px; font-weight: 600; vertical-alignment: center; }
+                                Text {
+                                    text: root.city.to-uppercase();
+                                    color: root.shown-theme.on-surface;
+                                    font-size: 13px; font-weight: 600;
+                                    letter-spacing: 1.8px;
+                                    vertical-alignment: center;
+                                }
                                 // Chevron drawn as a path ("▾" is missing from Android's font).
                                 VerticalLayout {
                                     alignment: center;
                                     Path {
-                                        width: 12px; height: 7px;
+                                        width: 10px; height: 6px;
                                         viewbox-width: 14; viewbox-height: 8;
                                         fit: fill;
                                         commands: "M 1 1 L 7 7 L 13 1";
-                                        stroke: root.shown-theme.on-surface-variant;
-                                        stroke-width: 2px;
+                                        stroke: root.shown-theme.on-surface;
+                                        stroke-width: 1.6px;
                                     }
                                 }
                             }
-                            // 48px tall to tap; the pill is drawn at 36px.
-                            city-touch := TouchArea { y: -6px; height: parent.height + 12px; clicked => { root.picker-open = true; } }
+                            city-touch := TouchArea { x: -10px; width: parent.width + 20px; clicked => { root.picker-open = true; } }
+                        }
+                        if root.city-count > 1: HorizontalLayout {
+                            alignment: center;
+                            spacing: 5px;
+                            for i in root.city-count: VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 5px; height: 5px; border-radius: 2.5px;
+                                    background: i == root.city-index ? root.shown-theme.on-surface : root.shown-theme.on-surface.transparentize(70%);
+                                }
+                            }
                         }
                         Rectangle { horizontal-stretch: 1; }
                         // Settings: a "tune" icon (two sliders).
                         Rectangle {
-                            width: 48px; height: 36px;
-                            border-radius: 18px;
+                            width: 40px;
                             background: gear-touch.pressed ? root.shown-theme.surface-container-high : transparent;
                             Path {
                                 width: 20px; height: 20px;
@@ -1907,97 +1885,103 @@ export component MainWindow inherits Window {
                                 fit: fill;
                                 commands: "M 3 6 L 17 6 M 3 14 L 17 14 M 7 3.5 L 7 8.5 M 13 11.5 L 13 16.5";
                                 stroke: root.shown-theme.on-surface;
-                                stroke-width: 2px;
+                                stroke-width: 1.6px;
                                 stroke-line-cap: round;
                             }
-                            gear-touch := TouchArea { y: -6px; height: parent.height + 12px; clicked => { root.settings-open = true; } }
+                            gear-touch := TouchArea { x: -4px; width: parent.width + 8px; clicked => { root.settings-open = true; } }
                         }
                     }
-                    // Which of the saved cities this is.
-                    if root.city-count > 1: HorizontalLayout {
-                        alignment: center;
-                        padding-top: 8px;
-                        spacing: 6px;
-                        for i in root.city-count: Rectangle {
-                            width: 6px; height: 6px; border-radius: 3px;
-                            background: i == root.city-index ? root.shown-theme.on-surface : root.shown-theme.on-surface.transparentize(70%);
-                        }
+                    Rectangle { height: 1.5px; background: root.shown-theme.on-surface; }
+                    if root.status != "": Text {
+                        text: root.status.to-uppercase();
+                        color: root.shown-theme.primary;
+                        font-size: 10.5px; font-weight: 600;
+                        letter-spacing: 1.4px;
                     }
-                    if root.status != "": HorizontalLayout {
-                        alignment: center;
-                        padding-top: 6px;
-                        Rectangle {
-                            height: 26px;
-                            width: status-text.preferred-width + 20px;
-                            border-radius: 13px;
-                            background: root.shown-theme.surface-container-high;
-                            status-text := Text { text: root.status; color: root.shown-theme.on-surface-variant; font-size: 12px; }
-                        }
-                    }
-                    Rectangle { height: 14px; }
+                    // The temperature, large, and the weather beside it.
                     HorizontalLayout {
-                        alignment: center;
-                        WeatherIcon {
-                            width: 76px; height: 76px;
-                            kind: root.icon-kind;
-                            ink: root.shown-theme.on-surface-variant;
-                            cloud-fill: root.shown-theme.bg-top;
+                        padding-top: 16px;
+                        spacing: 8px;
+                        Text {
+                            text: root.temperature;
+                            color: root.shown-theme.on-surface;
+                            font-family: Type.serif;
+                            font-size: 128px;
+                            font-weight: 300;
+                            letter-spacing: -3px;
+                            vertical-alignment: center;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        VerticalLayout {
+                            alignment: center;
+                            WeatherIcon {
+                                width: 64px; height: 64px;
+                                kind: root.icon-kind;
+                                ink: root.shown-theme.on-surface;
+                                cloud-fill: root.shown-theme.bg-bottom;
+                            }
                         }
                     }
-                    Text {
-                        text: root.temperature;
-                        color: root.shown-theme.on-surface; font-size: 104px; font-weight: 700;
-                        horizontal-alignment: center;
-                    }
+                    // The headline: the weather, then what to do about it.
                     Text {
                         text: root.condition;
-                        color: root.shown-theme.on-surface; font-size: 20px; font-weight: 600;
-                        horizontal-alignment: center;
-                    }
-                    Text {
-                        text: root.subline;
-                        color: root.shown-theme.on-surface-variant; font-size: 14px;
-                        horizontal-alignment: center;
-                    }
-                    // One practical tip: "Take an umbrella from 16h".
-                    if root.advice != "": Text {
-                        text: "→ " + root.advice;
-                        color: root.shown-theme.on-surface; font-size: 14px; font-weight: 500;
-                        horizontal-alignment: center;
+                        color: root.shown-theme.on-surface;
+                        font-family: Type.serif;
+                        font-italic: true;
+                        font-size: 30px;
                         wrap: word-wrap;
                     }
-                    if root.vs-normal != "": HorizontalLayout {
-                        alignment: center;
-                        padding-top: 8px;
-                        Rectangle {
-                            height: 26px;
-                            width: normal-text.preferred-width + 20px;
-                            border-radius: 13px;
-                            background: root.shown-theme.surface-container.transparentize(35%);
-                            normal-text := Text { text: root.vs-normal; color: root.shown-theme.on-surface; font-size: 12px; font-weight: 500; }
-                        }
+                    if root.advice != "": Text {
+                        text: root.advice;
+                        color: root.shown-theme.primary;
+                        font-family: Type.serif;
+                        font-italic: true;
+                        font-size: 22px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 8px; }
+                    Text {
+                        text: root.subline;
+                        color: root.shown-theme.on-surface-variant; font-size: 13px;
+                        wrap: word-wrap;
+                    }
+                    if root.vs-normal != "": Text {
+                        text: root.vs-normal.to-uppercase();
+                        color: root.shown-theme.on-surface-variant;
+                        font-size: 10.5px; font-weight: 500;
+                        letter-spacing: 1.4px;
                     }
                     if root.error != "": Text {
                         text: root.error; color: root.shown-theme.on-surface; font-size: 13px; wrap: word-wrap;
-                        horizontal-alignment: center;
                     }
                 }
                 }
             }
 
-            // Cards, floating on the gradient. They fade in once the first
-            // frame is up. (Not a slide: an animated `y` on this layout stops
-            // the page from scrolling with Slint 1.19.)
-            Rectangle {
-                min-height: root.height - root.horizon + 40px;
+            // The landscape, a band across the page; the paper slides over it.
+            Landscape {
+                height: root.width * 0.46;
+                layers: root.land-layers;
+                scroll: root.scroll;
+            }
+
+            // The sections, on paper. They fade in once the first frame is up.
+            // (Not a slide: an animated `y` on this layout stops the page
+            // from scrolling with Slint 1.19.)
+            sheet := Rectangle {
+                background: root.shown-theme.bg-bottom;
+                // At least a screen: the page must always scroll past the
+                // pull strip above it.
+                min-height: root.height;
                 opacity: root.settled ? 1 : 0;
                 animate opacity { duration: 450ms; easing: ease-out; }
                 VerticalLayout {
-                    padding: 14px;
-                    padding-top: 0px;
+                    padding-left: 22px;
+                    padding-right: 22px;
+                    padding-top: 20px;
                     // Room above Android's gesture bar.
-                    padding-bottom: 40px;
-                    spacing: 12px;
+                    padding-bottom: 48px;
+                    spacing: 30px;
                     alignment: start;
                     // Official warnings first: the most important thing to see.
                     if root.warnings.length > 0: WarningsCard {
@@ -2013,130 +1997,115 @@ export component MainWindow inherits Window {
                         clicked => { root.radar-open = true; }
                     }
 
-                    // 7-day forecast; a day opens hour by hour.
-                    forecast-card := Rectangle {
-                        background: root.shown-theme.surface-container;
-                        border-radius: 28px;
-                        border-width: 1px;
-                        border-color: root.shown-theme.on-surface.transparentize(88%);
-                        VerticalLayout {
-                            padding: 10px;
-                            padding-top: 18px;
-                            spacing: 2px;
-                            Text {
-                                x: 10px;
-                                text: root.labels.forecast;
-                                color: root.shown-theme.on-surface; font-size: 18px; font-weight: 600;
+                    // The week; a day opens hour by hour.
+                    VerticalLayout {
+                        spacing: 0px;
+                        SectionHead { theme: root.shown-theme; text: root.labels.forecast; }
+                        for d[i] in root.days: VerticalLayout {
+                            DayRow {
+                                day: d;
+                                theme: root.shown-theme;
+                                open: root.open-day == i;
+                                last: i == root.days.length - 1 && root.open-day != i;
+                                clicked => { root.open-day = root.open-day == i ? -1 : i; }
                             }
-                            Rectangle { height: 6px; }
-                            for d[i] in root.days: VerticalLayout {
-                                DayRow {
-                                    day: d;
-                                    theme: root.shown-theme;
-                                    open: root.open-day == i;
-                                    clicked => { root.open-day = root.open-day == i ? -1 : i; }
-                                }
-                                if root.open-day == i && root.settled: DayChart {
-                                    day: d; theme: root.shown-theme;
-                                    changed panning => { root.chart-panning = self.panning; }
-                                }
+                            if root.open-day == i && root.settled: DayChart {
+                                day: d; theme: root.shown-theme;
+                                changed panning => { root.chart-panning = self.panning; }
+                            }
+                            if root.open-day == i && i < root.days.length - 1: Rectangle {
+                                height: 1px;
+                                background: root.shown-theme.outline-variant;
                             }
                         }
                     }
 
-                    // Details: one list.
-                    details-card := Rectangle {
-                        // Drawn once into an image and reused while other parts move.
-                        cache-rendering-hint: true;
-                        border-radius: 28px;
-                        background: root.shown-theme.surface-container;
-                        border-width: 1px;
-                        border-color: root.shown-theme.on-surface.transparentize(88%);
-                        VerticalLayout {
-                            padding-left: 16px;
-                            padding-right: 18px;
-                            padding-top: 2px;
-                            padding-bottom: 2px;
-                            DetailRow {
+                    // Details, two columns.
+                    VerticalLayout {
+                        spacing: 0px;
+                        SectionHead { theme: root.shown-theme; text: root.labels.details; }
+                        HorizontalLayout {
+                            spacing: 18px;
+                            DetailCell {
                                 theme: root.shown-theme; label: root.labels.wind;
-                                note: root.details.wind-gusts == "" ? root.details.wind-from : root.details.wind-from + " · " + root.details.wind-gusts;
                                 value: root.details.wind-speed + " " + root.details.wind-unit;
-                                arrow: root.details.wind-arrow-path == "" ? "M 0 0" : root.details.wind-arrow-path;
+                                note: root.details.wind-gusts == "" ? root.details.wind-from : root.details.wind-from + " · " + root.details.wind-gusts;
+                                arrow: root.details.wind-arrow-path;
                                 heading: root.compass-heading;
                             }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.thermometer; label: root.labels.feels-like; note: root.details.feels-note; value: root.details.feels-like; }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.droplet; label: root.labels.humidity; note: root.details.dew-point; value: root.details.humidity; }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.uv; label: root.labels.uv-index; note: root.details.uv-level; value: root.details.uv; }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.pressure; label: root.labels.pressure; note: root.details.pressure-note; value: root.details.pressure; }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.leaf; label: root.labels.air-quality; note: root.air.aqi-level; value: root.air.aqi; }
-                            DetailRow { theme: root.shown-theme; icon: RowIcons.flower; label: root.labels.pollen; note: root.air.pollen-outlook == "" ? root.air.pollen-level : root.air.pollen-level + "\n" + root.air.pollen-outlook; value: root.air.pollen; }
-                            DetailRow {
-                                theme: root.shown-theme; icon: RowIcons.sun; label: root.labels.sun;
-                                note: root.details.daylight;
-                                value: root.details.sunrise + " – " + root.details.sunset;
-                                last: true;
+                            DetailCell { theme: root.shown-theme; label: root.labels.feels-like; value: root.details.feels-like; note: root.details.feels-note; }
+                        }
+                        Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
+                        HorizontalLayout {
+                            spacing: 18px;
+                            DetailCell { theme: root.shown-theme; label: root.labels.humidity; value: root.details.humidity; note: root.details.dew-point; }
+                            DetailCell { theme: root.shown-theme; label: root.labels.uv-index; value: root.details.uv; note: root.details.uv-level; }
+                        }
+                        Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
+                        HorizontalLayout {
+                            spacing: 18px;
+                            DetailCell { theme: root.shown-theme; label: root.labels.pressure; value: root.details.pressure; note: root.details.pressure-note; }
+                            DetailCell { theme: root.shown-theme; label: root.labels.air-quality; value: root.air.aqi; note: root.air.aqi-level; }
+                        }
+                        Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
+                        HorizontalLayout {
+                            spacing: 18px;
+                            DetailCell {
+                                theme: root.shown-theme; label: root.labels.pollen; value: root.air.pollen;
+                                note: root.air.pollen-outlook == "" ? root.air.pollen-level : root.air.pollen-level + "\n" + root.air.pollen-outlook;
                             }
+                            DetailCell { theme: root.shown-theme; label: root.labels.sun; value: root.details.sunrise + " – " + root.details.sunset; note: root.details.daylight; }
                         }
                     }
 
-                    // Footer: where the data comes from, and when it was updated.
-                    footer-card := Rectangle {
-                        // Drawn once into an image and reused while other parts move.
-                        cache-rendering-hint: true;
-                        border-radius: 22px;
-                        background: root.shown-theme.surface-container;
-                        border-width: 1px;
-                        border-color: root.shown-theme.on-surface.transparentize(88%);
-                        VerticalLayout {
-                            padding: 4px;
-                            spacing: 0px;
-                            // Data source: opens the list of models.
-                            Rectangle {
-                                height: 48px;
-                                border-radius: 18px;
-                                background: source-touch.pressed ? root.shown-theme.surface-container-high : transparent;
-                                HorizontalLayout {
-                                    padding-left: 12px;
-                                    padding-right: 12px;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: root.labels.data-source; color: root.shown-theme.on-surface-variant; font-size: 11px; }
-                                        Text { text: root.source-name + " · Open-Meteo"; color: root.shown-theme.on-surface; font-size: 14px; font-weight: 500; }
-                                    }
-                                    Text { text: "›"; color: root.shown-theme.primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
-                                }
-                                source-touch := TouchArea { clicked => { root.source-open = true; } }
-                            }
-                            Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
-                            // When it was updated, and refresh.
+                    // Colophon: where the data comes from, when it was
+                    // updated, and the credit Open-Meteo's licence asks for.
+                    VerticalLayout {
+                        spacing: 0px;
+                        Rectangle { height: 1.5px; background: root.shown-theme.on-surface; }
+                        Rectangle {
+                            height: 56px;
+                            background: source-touch.pressed ? root.shown-theme.surface-container-high : transparent;
                             HorizontalLayout {
-                                padding: 4px;
-                                padding-left: 12px;
-                                spacing: 8px;
-                                Text {
-                                    text: root.updated;
-                                    color: root.shown-theme.on-surface-variant; font-size: 12px;
-                                    vertical-alignment: center; overflow: elide;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text { text: root.labels.data-source.to-uppercase(); color: root.shown-theme.on-surface-variant; font-size: 10.5px; letter-spacing: 1.4px; }
+                                    Text { text: root.source-name + " · Open-Meteo"; color: root.shown-theme.on-surface; font-family: Type.serif; font-size: 18px; }
                                 }
-                                TonalButton {
-                                    width: 104px; height: 36px; font-size: 14px;
-                                    text: root.labels.refresh; theme: root.shown-theme;
-                                    clicked => { root.refresh(); }
-                                }
+                                Text { text: "›"; color: root.shown-theme.primary; font-size: 20px; vertical-alignment: center; horizontal-alignment: right; }
                             }
-                            // The credit Open-Meteo's licence asks for, linking to them.
+                            source-touch := TouchArea { clicked => { root.source-open = true; } }
+                        }
+                        Rectangle { height: 1px; background: root.shown-theme.outline-variant; }
+                        HorizontalLayout {
+                            height: 44px;
+                            spacing: 8px;
+                            Text {
+                                text: root.updated;
+                                color: root.shown-theme.on-surface-variant; font-size: 12px;
+                                vertical-alignment: center; overflow: elide;
+                            }
                             Rectangle {
-                                height: 30px;
-                                Text {
-                                    text: root.labels.data-credit;
-                                    color: credit-touch.pressed ? root.shown-theme.on-surface : root.shown-theme.on-surface-variant;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
+                                width: refresh-text.preferred-width;
+                                refresh-text := Text {
+                                    text: root.labels.refresh.to-uppercase();
+                                    color: refresh-touch.pressed ? root.shown-theme.on-surface : root.shown-theme.primary;
+                                    font-size: 11px; font-weight: 600; letter-spacing: 1.6px;
                                 }
-                                credit-touch := TouchArea {
-                                    y: -9px; height: parent.height + 18px;
-                                    clicked => { root.open-url("https://open-meteo.com/"); }
-                                }
+                                refresh-touch := TouchArea { x: -12px; width: parent.width + 24px; clicked => { root.refresh(); } }
+                            }
+                        }
+                        Rectangle {
+                            height: 28px;
+                            Text {
+                                x: 0;
+                                text: root.labels.data-credit;
+                                color: credit-touch.pressed ? root.shown-theme.on-surface : root.shown-theme.on-surface-variant;
+                                font-size: 11px;
+                            }
+                            credit-touch := TouchArea {
+                                y: -9px; height: parent.height + 18px;
+                                clicked => { root.open-url("https://open-meteo.com/"); }
                             }
                         }
                     }
@@ -2145,7 +2114,6 @@ export component MainWindow inherits Window {
         }
     }
 
-
     // Splashes land on the cards, so they're drawn in front of them.
     Particles { d: root.splashes; stroke: root.shown-theme.particle.transparentize(20%); stroke-width: 2.5px; }
 
@@ -2153,11 +2121,11 @@ export component MainWindow inherits Window {
     if root.refreshing: Rectangle {
         x: (root.width - self.width) / 2;
         y: 92px;
-        width: 44px; height: 44px;
-        border-radius: 22px;
-        background: root.shown-theme.surface-container;
-        drop-shadow-color: #0000002a;
-        drop-shadow-blur: 8px;
+        width: 40px; height: 40px;
+        border-radius: 20px;
+        background: root.shown-theme.bg-bottom;
+        border-width: 1px;
+        border-color: root.shown-theme.on-surface;
         Path {
             width: 22px; height: 22px;
             viewbox-width: 24; viewbox-height: 24;
