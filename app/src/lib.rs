@@ -778,7 +778,6 @@ fn show_loading(ui: &MainWindow, city: &Location) {
     ui.set_details(Details::default());
     ui.set_updated(SharedString::new());
     ui.set_days(ModelRc::default());
-    ui.set_next_hours(ModelRc::default());
 }
 
 fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
@@ -901,15 +900,7 @@ fn apply(ui: &MainWindow, s: &MainScreen, colors: ColorMode) {
         })
         .collect();
     ui.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
-
-    // The strip in the sky: from now, the next hours (into tomorrow).
-    let next: Vec<DayHour> =
-        s.days.iter().flat_map(|d| &d.hours).skip_while(|h| !h.is_now).take(NEXT_HOURS).map(day_hour).collect();
-    ui.set_next_hours(ModelRc::from(Rc::new(VecModel::from(next))));
 }
-
-/// Hours in the strip under the temperature.
-const NEXT_HOURS: usize = 6;
 
 fn day_hour(h: &meteo_core::DayHourView) -> DayHour {
     DayHour {

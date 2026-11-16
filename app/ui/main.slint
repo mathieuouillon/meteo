@@ -1555,8 +1555,6 @@ export component MainWindow inherits Window {
     // "Updated 5 min ago", in the footer.
     in property <string> updated;
     in property <[DayItem]> days;
-    /// The next hours, from now, for the strip under the temperature.
-    in property <[DayHour]> next-hours;
     in property <string> error;
     // "Offline · updated 2 h ago" when a refresh failed; empty otherwise.
     in property <string> status;
@@ -1843,9 +1841,7 @@ export component MainWindow inherits Window {
             // Hero: city, icon, big temperature, condition — centred. Swipe it
             // left or right for the next or previous saved city.
             Rectangle {
-                // Down to the landscape, or taller when the hero needs it
-                // (a short screen).
-                height: max(root.horizon - 40px, hero.preferred-height + 8px);
+                height: root.horizon - 40px;
                 swipe := SwipeGestureHandler {
                     handle-swipe-left: root.city-count > 1;
                     handle-swipe-right: root.city-count > 1;
@@ -1857,7 +1853,7 @@ export component MainWindow inherits Window {
                             root.swipe-city(-1);
                         }
                     }
-                hero := VerticalLayout {
+                VerticalLayout {
                     // Follows the finger, a little damped, and fades.
                     x: swipe.dx * 0.6;
                     animate x { duration: 220ms; easing: ease-out; }
@@ -1984,47 +1980,6 @@ export component MainWindow inherits Window {
                     if root.error != "": Text {
                         text: root.error; color: root.shown-theme.on-surface; font-size: 13px; wrap: word-wrap;
                         horizontal-alignment: center;
-                    }
-                    // The next hours, floating on the sky.
-                    if root.next-hours.length > 0: Rectangle {
-                        height: 84px;
-                        Rectangle {
-                            y: 14px;
-                            height: 70px;
-                            border-radius: 20px;
-                            background: root.shown-theme.surface-container.transparentize(45%);
-                            border-width: 1px;
-                            border-color: root.shown-theme.on-surface.transparentize(88%);
-                            HorizontalLayout {
-                                padding-left: 4px;
-                                padding-right: 4px;
-                                for h in root.next-hours: VerticalLayout {
-                                    alignment: center;
-                                    spacing: 1px;
-                                    Text {
-                                        text: h.label;
-                                        color: h.is-now ? root.shown-theme.on-surface : root.shown-theme.on-surface-variant;
-                                        font-size: 11px; font-weight: h.is-now ? 600 : 400;
-                                        horizontal-alignment: center;
-                                    }
-                                    HorizontalLayout {
-                                        alignment: center;
-                                        WeatherIcon {
-                                            width: 24px; height: 24px;
-                                            kind: h.icon-kind;
-                                            ink: root.shown-theme.on-surface-variant;
-                                            cloud-fill: root.shown-theme.surface-container;
-                                        }
-                                    }
-                                    Text {
-                                        text: h.temperature;
-                                        color: root.shown-theme.on-surface;
-                                        font-size: 14px; font-weight: 600;
-                                        horizontal-alignment: center;
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 }
