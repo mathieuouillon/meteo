@@ -19,7 +19,7 @@ app/         meteo: the Slint app (ui/main.slint) + glue in src/lib.rs.
 widget-ffi/  JNI functions for the Android widget (libmeteo_widget.so, no UI code).
 android/     Gradle project: packages the Rust libraries + the Kotlin Glance widget.
 docs/        screenshots, privacy policy, Play Store notes and icon.
-vendor/      Slint 1.18.1 core and Skia renderer with small fixes (see Notes).
+vendor/      Slint 1.19.0 core with small fixes (see Notes).
 scripts/     gen-widget-icons.py: the widget's icons from the app's drawn icons.
 ```
 
@@ -440,7 +440,7 @@ match). The home-screen widget reads the same files.
 
 ## Notes
 
-- **Patched Slint core:** `vendor/i-slint-core` is Slint 1.18.1's core with two
+- **Patched Slint core:** `vendor/i-slint-core` is Slint 1.19.0's core with two
   changes (search "Météo patch"), both so the day's hours can be swiped sideways
   inside the vertical page on a real phone:
   - `window.rs`: the press a Flickable holds back (100 ms, to tell a tap from a
@@ -451,8 +451,8 @@ match). The home-screen widget reads the same files.
     drags mostly along that axis, so the page doesn't take a sideways swipe
     that drifts 8px.
 
-  `vendor/i-slint-renderer-skia` (Skia renderer) has one more: `lib.rs` also
-  frees the cached layers (`cache-rendering-hint`) of a destroyed component.
+  Slint 1.19 frees the cached layers of a destroyed component itself, so the
+  patched Skia renderer is gone. The workspace needs Rust 1.100 or newer.
   Before, a rebuilt row of the 7-day list could show another row's image.
 
   Both are wired in with `[patch.crates-io]` in `Cargo.toml`; re-apply or drop

@@ -4,15 +4,15 @@ members = ["core", "app", "widget-ffi"]
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.100"
 version = "0.1.0"
 license = "MIT"
 
-# Slint 1.18.1 with small fixes (search "Météo patch" in vendor/): swiping the
-# day chart's hours inside the page on a real phone, and cached layers of
-# destroyed components. Drop them when upgrading Slint if upstream fixes these.
+# Slint 1.19.0 with small fixes (search "Météo patch" in vendor/): swiping the
+# day chart's hours inside the page on a real phone. Drop them when upgrading
+# Slint if upstream fixes these.
 [patch.crates-io]
 i-slint-core = { path = "vendor/i-slint-core" }
-i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
 
 # Release builds: smaller and a little faster. Link-time optimisation across
 # all crates, one code-generation unit, and abort on panic (a panic across the

@@ -1,6 +1,7 @@
 [package]
 name = "meteo"
 edition.workspace = true
+rust-version.workspace = true
 version.workspace = true
 license.workspace = true
 
@@ -8,22 +9,22 @@ license.workspace = true
 meteo-core = { version = "0.1.0", path = "../core" }
 # Skia only; each platform adds its own backend below (the defaults would pull
 # two more renderers and the desktop windowing into the Android library).
-slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
+slint = { version = "1.19.0", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "time", "macros"] }
 # Radar and map tiles; the version Slint's renderer already includes.
 png = "0.18.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # The desktop preview.
-slint = { version = "1.18.1", default-features = false, features = ["backend-winit", "accessibility"] }
+slint = { version = "1.19.0", default-features = false, features = ["backend-winit", "accessibility"] }
 
 [target.'cfg(not(target_os = "android"))'.dev-dependencies]
 # The screenshot test draws the UI without a window or a GPU.
-slint = { version = "1.18.1", default-features = false, features = ["renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
+slint = { version = "1.19.0", default-features = false, features = ["renderer-software", "software-renderer-path", "software-renderer-systemfonts"] }
 serde_json = "1.0.154"
 
 [target.'cfg(target_os = "android")'.dependencies]
-slint = { version = "1.18.1", default-features = false, features = ["backend-android-activity-06"] }
+slint = { version = "1.19.0", default-features = false, features = ["backend-android-activity-06"] }
 # Same version as already used by the TLS stack; for LocationManager/Geocoder calls.
 jni = "0.21.1"
 # __system_property_get, for the preview overrides (animation.rs).
@@ -35,4 +36,4 @@ ndk-sys = "0.6.0"
 crate-type = ["lib", "cdylib"]
 
 [build-dependencies]
-slint-build = "1.18.1"
+slint-build = "1.19.0"

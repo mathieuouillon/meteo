@@ -2,6 +2,7 @@
 name = "meteo-widget-ffi"
 description = "JNI functions the Android home-screen widget calls (no UI code)."
 edition.workspace = true
+rust-version.workspace = true
 version.workspace = true
 license.workspace = true
 publish = false
