@@ -63,7 +63,8 @@ started by `android.app.NativeActivity`) and `libmeteo_widget.so` (the widget's 
 
 Home-screen widgets in the app's editorial style: paper and ink in the weather's tones,
 the city in small capitals over a rule, the numbers and headlines in Newsreader. Tapping
-one opens the app. The main widget adapts to its size:
+one opens the app. The widget picker shows a preview of each (`res/layout/widget_preview_*`,
+Android 12+). The main widget starts at 4×2 and adapts to its size:
 
 - **Small** (2×2): the temperature large, the weather in italics, the day's high and low,
   or, when rain is coming, when it starts (in the accent).

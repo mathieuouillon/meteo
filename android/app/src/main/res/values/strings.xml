@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_description">Current weather and the next hours</string>
+    <string name="widget_description">The weather now and the next hours; larger, the days ahead</string>
     <string name="rain_widget_description">Rain in the next 2 hours</string>
     <string name="round_widget_description">Temperature and weather in a circle</string>
     <string name="tile_label">Météo</string>
+    <!-- Sample texts for the widget previews in the widget picker. -->
+    <string name="preview_city">PARIS</string>
+    <string name="preview_condition">Cloudy</string>
+    <string name="preview_high_low">Day 13° · Night 8°</string>
+    <string name="preview_now">Now</string>
+    <string name="preview_rain_title">NEXT 2 HOURS</string>
+    <string name="preview_rain">Rain in 30 min, for an hour</string>
 </resources>

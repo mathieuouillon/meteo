@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the rain widget looks like, for the widget picker (Android 12+). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_preview_paper"
+    android:orientation="vertical"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="12dp">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/preview_rain_title"
+        android:textColor="#1E1A15"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="4dp"
+        android:background="#1E1A15" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="serif"
+        android:maxLines="2"
+        android:text="@string/preview_rain"
+        android:textColor="#1E1A15"
+        android:textSize="17sp" />
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:orientation="horizontal">
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="0dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="0dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="6dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="14dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="22dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="26dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="18dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="4dp"
+                android:layout_height="8dp"
+                android:layout_gravity="bottom|start"
+                android:background="#2F5D8A" />
+        </FrameLayout>
+    </LinearLayout>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#1E1A15" />
+</LinearLayout>

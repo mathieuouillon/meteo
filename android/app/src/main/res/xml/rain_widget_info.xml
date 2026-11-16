@@ -2,6 +2,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/rain_widget_description"
     android:initialLayout="@layout/glance_default_loading_layout"
+    android:previewLayout="@layout/widget_preview_rain"
     android:minWidth="180dp"
     android:minHeight="110dp"
     android:minResizeWidth="140dp"

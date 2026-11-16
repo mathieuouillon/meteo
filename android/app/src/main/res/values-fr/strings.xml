@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">La météo maintenant et les prochaines heures ; en grand, les jours suivants</string>
+    <string name="rain_widget_description">La pluie dans les 2 prochaines heures</string>
+    <string name="round_widget_description">Température et météo dans un cercle</string>
+    <string name="preview_city">PARIS</string>
+    <string name="preview_condition">Nuageux</string>
+    <string name="preview_high_low">Jour 13° · Nuit 8°</string>
+    <string name="preview_now">Maint.</string>
+    <string name="preview_rain_title">2 PROCHAINES HEURES</string>
+    <string name="preview_rain">Pluie dans 30 min, pendant une heure</string>
+</resources>
