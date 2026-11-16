@@ -36,6 +36,9 @@ object RustBridge {
 
 data class WidgetHour(val label: String, val iconKind: String, val temperature: String)
 
+/** A day in the large widget's table; `rain` is the amount or the chance, empty when dry. */
+data class WidgetDay(val label: String, val iconKind: String, val rain: String, val min: String, val max: String)
+
 /** The widget's content; colours are the app's weather palette (0xRRGGBB). */
 data class WidgetView(
     val city: String,
@@ -58,8 +61,17 @@ data class WidgetView(
     val nowcastSummary: String,
     /** 15-minute bars: height 0–1, and whether it rains. */
     val nowcast: List<Pair<Double, Boolean>>,
+    /** "Now", "+30 min", … under every other bar. */
+    val nowcastLabels: List<String> = emptyList(),
     /** Rain falling or due within the hour (the main widget then shows it). */
     val rainSoon: Boolean = false,
+    /** A practical tip ("Take an umbrella from 16h"); empty when none. */
+    val advice: String = "",
+    /** The strongest official warning and its level (1 yellow, 2 orange, 3 red; 0 none). */
+    val warning: String = "",
+    val warningLevel: Int = 0,
+    /** Today and the next days. */
+    val days: List<WidgetDay> = emptyList(),
     /** Background opacity, 0–1, and whether to use the wallpaper's colours. */
     val opacity: Double = 1.0,
     val wallpaper: Boolean = false,
@@ -98,7 +110,21 @@ fun parseWidgetState(json: String): WidgetState {
             nowcast = it.optJSONArray("nowcast")?.let { bars ->
                 (0 until bars.length()).map { i -> bars.getJSONArray(i).let { b -> b.getDouble(0) to b.getBoolean(1) } }
             } ?: emptyList(),
+            nowcastLabels = it.optJSONArray("nowcast_labels")?.let { l -> (0 until l.length()).map { i -> l.getString(i) } }
+                ?: emptyList(),
             rainSoon = it.optBoolean("rain_soon"),
+            advice = it.optString("advice"),
+            warning = it.optString("warning"),
+            warningLevel = it.optInt("warning_level"),
+            days = it.optJSONArray("days")?.let { d ->
+                (0 until d.length()).map { i ->
+                    val day = d.getJSONObject(i)
+                    WidgetDay(
+                        day.getString("label"), day.getString("icon_kind"), day.getString("rain"),
+                        day.getString("min"), day.getString("max"),
+                    )
+                }
+            } ?: emptyList(),
             opacity = it.optDouble("opacity", 1.0),
             wallpaper = it.optBoolean("wallpaper"),
         )

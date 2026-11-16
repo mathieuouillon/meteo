@@ -61,11 +61,22 @@ started by `android.app.NativeActivity`) and `libmeteo_widget.so` (the widget's 
 
 ## Android widget
 
-A home-screen widget showing the selected city: icon, temperature, condition, high/low,
-and in its wide size the next 5 hours on a card. Tapping it opens the app. It uses the
-app's weather palette (background, text) and the same drawn icons. Glance can't draw
-Slint, so `scripts/gen-widget-icons.py` writes the icons as Android vector drawables
-(`res/drawable/wx_*`, a light and a dark variant each) from the same shapes as
+Home-screen widgets in the app's editorial style: paper and ink in the weather's tones,
+the city in small capitals over a rule, the numbers and headlines in Newsreader. Tapping
+one opens the app. The main widget adapts to its size:
+
+- **Small** (2×2): the temperature large, the weather in italics, the day's high and low,
+  or, when rain is coming, when it starts (in the accent).
+- **Wide** (4×2): the same, with the next 5 hours beside it, or the next 2 hours of rain
+  as stems when rain is coming.
+- **Large** (4×3 and up): also the strongest official warning, the advice ("Take an
+  umbrella from 19h"), the next hours, and the days ahead in a ruled table (as many as
+  fit).
+
+Glance can't use a font file, so the serif texts are drawn into small images with the
+APK's copy of Newsreader (Gradle copies it from `app/ui/fonts/`). Glance can't draw
+Slint either, so `scripts/gen-widget-icons.py` writes the icons as Android vector
+drawables (`res/drawable/wx_*`, a light and a dark variant each) from the same shapes as
 `app/ui/icons.slint`.
 
 - The layout is Kotlin Glance ([MeteoWidget.kt](android/app/src/main/java/dev/meteo/app/widget/MeteoWidget.kt)).
@@ -89,12 +100,11 @@ Also from the same Rust state:
 
 Two more widgets share the same Rust state:
 
-- **Météo · Rain** (3×2): the next two hours of rain, a sentence ("Rain in 30 min") and
-  eight quarter-hour bars.
-- **Météo · Round** (1×1): the icon and temperature in a circle.
+- **Météo · Rain** (3×2): the next two hours of rain, the sentence in the serif ("Rain
+  in 30 min") and eight quarter-hour stems on a baseline with the times.
+- **Météo · Round** (1×1): the icon and temperature on a paper disc.
 
-The main widget turns into the rain view on its own when rain should start within the
-hour. In the settings, widgets can be solid or see-through (20 % or 40 %), in the
+In the settings, widgets can be solid or see-through (20 % or 40 %), in the
 weather's colours or the wallpaper's (Android 12+).
 
 ## Wear OS

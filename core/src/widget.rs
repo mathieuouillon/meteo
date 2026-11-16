@@ -14,6 +14,8 @@ use crate::view::MainScreen;
 
 /// Hours shown in the wide widget.
 const WIDGET_HOURS: usize = 5;
+/// Days in the large widget's table (today first).
+const WIDGET_DAYS: usize = 4;
 /// A cached forecast older than this should be refreshed by the widget.
 const MAX_AGE_SECS: i64 = 30 * 60;
 
@@ -53,12 +55,32 @@ pub struct WidgetView {
     pub nowcast: Vec<(f64, bool)>,
     /// "Next 2 hours", in the widget's language.
     pub nowcast_title: String,
+    /// "Now", "+30 min", … under every other bar; empty otherwise.
+    pub nowcast_labels: Vec<String>,
     /// Rain falling or due within the hour: the main widget shows the rain.
     pub rain_soon: bool,
+    /// One practical tip ("Take an umbrella from 16h"); empty when none.
+    pub advice: String,
+    /// The strongest official warning ("Orange warning · Wind") and its
+    /// level (1 yellow, 2 orange, 3 red); empty and 0 when none.
+    pub warning: String,
+    pub warning_level: u8,
+    /// The days ahead, today first, for the large widget.
+    pub days: Vec<WidgetDay>,
     /// Background opacity, 0–1 (the settings' transparency).
     pub opacity: f64,
     /// Use the wallpaper's colours (Material You) instead of the weather's.
     pub wallpaper: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WidgetDay {
+    pub label: String,
+    pub icon_kind: String,
+    /// The day's rain ("6.5 mm") or its chance ("40%"); empty when dry.
+    pub rain: String,
+    pub min: String,
+    pub max: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -101,7 +123,23 @@ pub fn widget_state(dir: &Path, unix_now: i64, lang: Lang) -> WidgetState {
             nowcast_summary: s.nowcast.summary.clone(),
             nowcast: s.nowcast.bars.iter().map(|b| (b.height, b.wet)).collect(),
             nowcast_title: lang.labels().next_hours.into(),
+            nowcast_labels: s.nowcast.bars.iter().map(|b| b.label.clone()).collect(),
             rain_soon: s.nowcast.starts_in.is_some_and(|m| m <= 60),
+            advice: s.advice.clone(),
+            warning: s.warnings.first().map(|w| w.title.clone()).unwrap_or_default(),
+            warning_level: s.warnings.first().map_or(0, |w| w.level),
+            days: s
+                .days
+                .iter()
+                .take(WIDGET_DAYS)
+                .map(|d| WidgetDay {
+                    label: d.label.clone(),
+                    icon_kind: d.icon_kind.clone(),
+                    rain: if d.rain_total.is_empty() { d.precipitation.clone() } else { d.rain_total.clone() },
+                    min: d.min.clone(),
+                    max: d.max.clone(),
+                })
+                .collect(),
             opacity: 1.0 - f64::from(settings.widget_transparency.min(60)) / 100.0,
             wallpaper: settings.widget_colors == crate::source::ColorMode::Wallpaper,
             hours: s
@@ -166,6 +204,8 @@ mod tests {
         assert_eq!(v.updated, "Updated 1 min ago");
         assert_eq!(v.hours.len(), WIDGET_HOURS);
         assert_eq!(v.hours[0].label, "Now");
+        assert_eq!(v.days.len(), 1);
+        assert_eq!((v.days[0].min.as_str(), v.days[0].max.as_str()), ("8°", "12°"));
 
         // An hour later: still shown, but due for a refresh, and moved on.
         let later = widget_state(&dir, FETCHED_AT + 3600, Lang::En);

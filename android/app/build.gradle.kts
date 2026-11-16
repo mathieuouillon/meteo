@@ -56,6 +56,8 @@ android {
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
     // RustBridge.kt (the JNI calls into libmeteo_widget.so), shared with the watch app.
     sourceSets["main"].java.srcDir("../shared/kotlin")
+    // The app's serif (Newsreader), for the widgets' numbers and headlines.
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("widgetFonts"))
 }
 
 dependencies {
@@ -83,4 +85,9 @@ val cargoBuild by tasks.registering(Exec::class) {
             (if (release) listOf("--release") else emptyList())
     )
 }
-tasks.named("preBuild") { dependsOn(cargoBuild) }
+// The widgets draw their numbers and headlines in the app's serif.
+val widgetFonts by tasks.registering(Copy::class) {
+    from(File(rootDir.parentFile, "app/ui/fonts")) { include("Newsreader*.ttf") }
+    into(layout.buildDirectory.dir("widgetFonts"))
+}
+tasks.named("preBuild") { dependsOn(cargoBuild, widgetFonts) }
